@@ -435,7 +435,7 @@ fun TopBarSection(
                 )
                 DropdownMenuItem(
                     text = {
-                        Text("About", fontSize = 16.sp, fontFamily = SatoshiFontFamily)
+                        Text("Meet the Team", fontSize = 16.sp, fontFamily = SatoshiFontFamily)
                     },
                     onClick = {
                         menuExpanded = false

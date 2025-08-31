@@ -44,6 +44,7 @@ firebaseCrashlyticsBuildtoolsVersion = "3.0.4"
 appcompat = "1.6.1"
 uiToolingPreviewAndroid = "1.8.3"
 material3Jvmstubs = "1.4.0-alpha18"
+foundationVersion = "1.9.0"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -143,3 +144,4 @@ ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 androidx-ui-tooling-preview-android = { group = "androidx.compose.ui", name = "ui-tooling-preview-android", version.ref = "uiToolingPreviewAndroid" }
 androidx-material3-jvmstubs = { group = "androidx.compose.material3", name = "material3-jvmstubs", version.ref = "material3Jvmstubs" }
+foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundationVersion" }

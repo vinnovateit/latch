@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.data.StoredCredentials
 import com.vinnovateit.latch.features.home.MainActivity
+import com.vinnovateit.latch.features.onboarding.OnboardingActivity
 import com.vinnovateit.latch.ui.theme.LatchTheme
 import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 
@@ -44,13 +45,20 @@ class SecondPageActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val editMode = intent.getBooleanExtra("editMode", false)
+        val fromOnboarding = intent.getBooleanExtra("fromOnboarding", false)
+
         setContent {
             LatchTheme {
                 CredentialsScreen(
                     editMode = editMode,
                     onCredentialsSaved = {
-                        startActivity(Intent(this, MainActivity::class.java))
-                        finish()
+                        if (fromOnboarding) {
+                            setResult(RESULT_OK)
+                            finish()
+                        } else {
+                            startActivity(Intent(this, MainActivity::class.java))
+                            finish()
+                        }
                     }
                 )
             }

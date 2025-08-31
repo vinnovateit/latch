@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
@@ -36,6 +36,8 @@ import com.vinnovateit.latch.common.util.TooltipHint
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 // Data class for team members
 data class TeamMember(
@@ -97,7 +99,7 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://vinnovateit.com"))
                         context.startActivity(intent)
                     },
-                contentScale = ContentScale.Fit
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary) // Dynamic color for Vinnovate logo
             )
 
             // Social Media Logos
@@ -114,10 +116,14 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                     modifier = Modifier
                         .size(40.dp)
                         .offset(y = (-30).dp)
-                        .clickable {
+                        .clickable(
+                            indication = null, // Removes ripple effect
+                            interactionSource = remember { MutableInteractionSource() } // Removes ripple effect
+                        ) {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.linkedin.com/company/v-innovate-it/"))
                             context.startActivity(intent)
-                        }
+                        },
+                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary) // Corrected dynamic color
                 )
 
                 // GitHub Logo
@@ -128,12 +134,13 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                         .size(40.dp)
                         .offset(y = (-30).dp)
                         .clickable(
-                            indication = null, // Removes the grey highlight effect
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
+                            indication = null, // Removes ripple effect
+                            interactionSource = remember { MutableInteractionSource() } // Removes ripple effect
+                        ){
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/vinnovateit"))
                             context.startActivity(intent)
-                        }
+                        },
+                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary) // Corrected dynamic color
                 )
 
                 // Instagram Logo
@@ -143,10 +150,14 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                     modifier = Modifier
                         .size(40.dp)
                         .offset(y = (-30).dp)
-                        .clickable {
+                        .clickable(
+                            indication = null, // Removes ripple effect
+                            interactionSource = remember { MutableInteractionSource() } // Removes ripple effect
+                        ) {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/vinnovateit/"))
                             context.startActivity(intent)
-                        }
+                        },
+                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary) // Corrected dynamic color
                 )
             }
 
@@ -157,7 +168,7 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                     fontFamily = FontFamily(Font(R.font.outfit_variable))
                 ),
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFFC01221),
+                color = MaterialTheme.colorScheme.primary, // Changed to dynamic theme color
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -167,19 +178,23 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                 modifier = Modifier
                     .width(200.dp)
                     .height(3.dp)
-                    .background(Color(0xFFC01221))
+                    .background(MaterialTheme.colorScheme.primary) // Removed rounded clipping
             )
 
             Spacer(modifier = Modifier.height(32.dp))
 
             // Team Member Cards
+            val configuration = LocalConfiguration.current
+            val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                modifier = Modifier
+                    .padding(horizontal = if (isLandscape) 32.dp else 16.dp), // Adjust padding for landscape
+                verticalArrangement = Arrangement.spacedBy(if (isLandscape) 10.dp else 20.dp) // Adjust spacing for landscape
             ) {
-                teamMembers.chunked(2).forEach { rowMembers ->
+                teamMembers.chunked(if (isLandscape) 3 else 2).forEach { rowMembers -> // Adjust chunk size for landscape
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(25.dp),
+                        horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 15.dp else 25.dp), // Adjust spacing for landscape
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         rowMembers.forEach { member ->
@@ -188,12 +203,12 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        if (rowMembers.size == 1) Spacer(modifier = Modifier.weight(1f))
+                        if (rowMembers.size < (if (isLandscape) 3 else 2)) Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(50.dp)) // Added empty space at the bottom after the last team member
         }
 
         // Floating circular back button (overlayed)
@@ -210,7 +225,7 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                     .align(Alignment.TopStart)
             ) {
                 Icon(
-                    Icons.Default.ArrowBack,
+                    Icons.Rounded.ArrowBack, // Updated to use Rounded variant
                     contentDescription = "Back",
                     tint = MaterialTheme.colorScheme.primary // Match the tint color from SettingsActivity
                 )
@@ -235,9 +250,10 @@ fun TeamMemberCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
+        shape = RoundedCornerShape(0.dp), // Set to no shape for rectangle
         border = BorderStroke(
             width = 1.dp,
-            color = Color(0xFFFF1500)
+            color = MaterialTheme.colorScheme.primary // Dynamic color for border
         ),
     ) {
         Column(
@@ -252,12 +268,10 @@ fun TeamMemberCard(
                 painter = painterResource(id = teamMember.imageRes),
                 contentDescription = "Profile picture of ${teamMember.name}",
                 modifier = Modifier
-                    .size(120.dp)
-                    .clip(MaterialTheme.shapes.medium)
+                    .size(160.dp) // Removed rounded border
                     .border(
                         width = 2.dp,
-                        color = Color(0xFFFF1500),
-                        shape = MaterialTheme.shapes.medium
+                        color = MaterialTheme.colorScheme.primary, // Dynamic color for border
                     ),
                 contentScale = ContentScale.Crop
             )
@@ -267,16 +281,15 @@ fun TeamMemberCard(
             // Name
             val configuration = LocalConfiguration.current
             val screenWidth = configuration.screenWidthDp.dp
-            val dynamicFontSize = if (screenWidth < 360.dp) 8.sp else 10.sp // Adjust font size based on screen width
 
             Text(
                 text = teamMember.name,
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontFamily = FontFamily(Font(R.font.moderniz)),
-                    fontSize = dynamicFontSize
+                    fontSize = 10.sp // Reduced font size
                 ),
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFFC01221),
+                color = MaterialTheme.colorScheme.primary, // Dynamic color
                 textAlign = TextAlign.Center,
                 maxLines = 1
             )
@@ -287,11 +300,10 @@ fun TeamMemberCard(
             Text(
                 text = teamMember.role,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily(Font(R.font.satoshi_regular)),
-                    fontSize = 11.sp
+                    fontFamily = FontFamily(Font(R.font.satoshi_regular))
                 ),
                 fontWeight = FontWeight.Normal,
-                color = Color(0xFFC01221),
+                color = MaterialTheme.colorScheme.primary, // Dynamic color
                 textAlign = TextAlign.Center,
                 maxLines = 1
             )
@@ -300,40 +312,49 @@ fun TeamMemberCard(
 
             // Socials
             Row(
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally), // Centered with spacing
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Spacer(modifier = Modifier.weight(1f))
-                IconButton(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(teamMember.githubUrl))
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.size(24.dp)
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() }, // Disable ripple effect
+                            indication = null
+                        ) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(teamMember.githubUrl))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        }
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.github),
                         contentDescription = "GitHub of ${teamMember.name}",
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(25.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary) // Dynamic color
                     )
                 }
-                IconButton(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(teamMember.linkedinUrl))
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.size(24.dp)
+
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() }, // Disable ripple effect
+                            indication = null
+                        ) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(teamMember.linkedinUrl))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        }
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.linkedin),
                         contentDescription = "LinkedIn of ${teamMember.name}",
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(25.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary) // Dynamic color
                     )
                 }
-                Spacer(modifier = Modifier.weight(1f))
             }
         }
     }

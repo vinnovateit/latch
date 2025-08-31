@@ -63,6 +63,11 @@ dependencies {
 
     implementation("androidx.compose.animation:animation")
 
+    implementation("com.google.accompanist:accompanist-pager:0.32.0")
+    implementation("com.google.accompanist:accompanist-pager-indicators:0.32.0")
+    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.5")
+
     // Widget
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("androidx.glance:glance-material3:1.1.1")
@@ -75,6 +80,7 @@ dependencies {
 
     // Compose Core UI modules
     implementation("androidx.compose.foundation:foundation")
+    implementation(libs.foundation)
 
     // Tooling and Preview
     debugImplementation("androidx.compose.ui:ui-tooling")

@@ -220,7 +220,7 @@
 //                    }
 //                },
 //                modifier = Modifier
-//                    .fillMaxWidth()
+//                    .fillMaxWidth() // Set to max width
 //                    .padding(horizontal = 40.dp),
 //                shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp),
 //                colors = ButtonDefaults.buttonColors(
