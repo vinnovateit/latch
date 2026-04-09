@@ -1,8 +1,13 @@
 package com.vinnovateit.latch.features.wifi.manager
 
+import android.content.Context
 import android.net.Network
+import android.net.wifi.WifiManager
 import android.util.Log
+import com.vinnovateit.latch.common.debug.DebugRuntimeLogger
+import com.vinnovateit.latch.common.network.NetworkAwareDnsResolver
 import java.net.HttpURLConnection
+import java.net.UnknownHostException
 import java.net.URL
 import java.net.URLEncoder
 
@@ -16,40 +21,242 @@ object AutoLoginManager {
     private const val LOGIN_URL =
         "http://phc.prontonetworks.com/cgi-bin/authlogin?URI=http://example.com"
     private const val LOGOUT_URL = "http://phc.prontonetworks.com/cgi-bin/authlogout"
+    private const val TARGET_PORTAL_HOST = "phc.prontonetworks.com"
+    private const val TARGET_PORTAL_BASE_DOMAIN = "prontonetworks.com"
+
+    private fun toIpHostLiteral(ip: String): String {
+        return if (':' in ip && !ip.startsWith("[")) "[$ip]" else ip
+    }
+
+    private fun openResolvedConnection(
+        url: URL,
+        network: Network?,
+        connectTimeoutMs: Int,
+        readTimeoutMs: Int,
+        requestMethod: String
+    ): HttpURLConnection {
+        val resolvedIp = NetworkAwareDnsResolver.resolveFirst(url.host, network).hostAddress
+        val resolvedUrl = URL(
+            "${url.protocol}://${toIpHostLiteral(resolvedIp)}${url.file.ifBlank { "/" }}"
+        )
+        val connection = (network?.openConnection(resolvedUrl) ?: resolvedUrl.openConnection()) as HttpURLConnection
+        connection.instanceFollowRedirects = false
+        connection.connectTimeout = connectTimeoutMs
+        connection.readTimeout = readTimeoutMs
+        connection.requestMethod = requestMethod
+        connection.setRequestProperty("Host", url.host)
+        return connection
+    }
+
+    private fun createResolvedLoginConnection(network: Network?): HttpURLConnection {
+        val primary = URL(LOGIN_URL)
+        // #region agent log
+        DebugRuntimeLogger.log(
+            runId = "pre-fix",
+            hypothesisId = "G",
+            location = "AutoLoginManager.kt:createResolvedLoginConnection",
+            message = "createResolvedLoginConnection entry",
+            data = mapOf(
+                "hasNetwork" to (network != null),
+                "network" to (network?.toString() ?: "null"),
+                "primaryHost" to primary.host
+            )
+        )
+        // #endregion
+        return try {
+            openResolvedConnection(
+                url = primary,
+                network = network,
+                connectTimeoutMs = 5000,
+                readTimeoutMs = 5000,
+                requestMethod = "POST"
+            )
+        } catch (e: UnknownHostException) {
+            // #region agent log
+            DebugRuntimeLogger.log(
+                runId = "pre-fix",
+                hypothesisId = "E",
+                location = "AutoLoginManager.kt:createResolvedLoginConnection",
+                message = "Primary login host DNS failed; trying base domain",
+                data = mapOf(
+                    "primaryHost" to primary.host,
+                    "fallbackHost" to TARGET_PORTAL_BASE_DOMAIN,
+                    "exceptionClass" to e.javaClass.name,
+                    "exceptionMessage" to (e.message ?: "null")
+                )
+            )
+            // #endregion
+            val fallbackUrl = URL("http://$TARGET_PORTAL_BASE_DOMAIN${primary.file}")
+            openResolvedConnection(
+                url = fallbackUrl,
+                network = network,
+                connectTimeoutMs = 5000,
+                readTimeoutMs = 5000,
+                requestMethod = "POST"
+            )
+        }
+    }
+
+    private fun intToIpv4(value: Int): String {
+        return "${value and 0xff}.${(value shr 8) and 0xff}.${(value shr 16) and 0xff}.${(value shr 24) and 0xff}"
+    }
+
+    private fun createLoginConnectionWithGatewayFallback(context: Context, network: Network?): HttpURLConnection {
+        return try {
+            createResolvedLoginConnection(network)
+        } catch (e: UnknownHostException) {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val gatewayInt = wifiManager?.dhcpInfo?.gateway ?: 0
+            if (gatewayInt == 0) throw e
+
+            val gatewayIp = intToIpv4(gatewayInt)
+            // #region agent log
+            DebugRuntimeLogger.log(
+                runId = "pre-fix",
+                hypothesisId = "E",
+                location = "AutoLoginManager.kt:createLoginConnectionWithGatewayFallback",
+                message = "DNS fallback failed; trying DHCP gateway login URL",
+                data = mapOf(
+                    "gatewayIp" to gatewayIp,
+                    "exceptionClass" to e.javaClass.name,
+                    "exceptionMessage" to (e.message ?: "null")
+                )
+            )
+            // #endregion
+
+            val gatewayUrl = URL("http://$gatewayIp/cgi-bin/authlogin?URI=http://example.com")
+            val connection =
+                (network?.openConnection(gatewayUrl) ?: gatewayUrl.openConnection()) as HttpURLConnection
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Host", TARGET_PORTAL_HOST)
+            connection
+        }
+    }
 
     fun isTargetCaptivePortal(network: Network?): Boolean {
         return try {
             val url = URL(LOGIN_URL)
-            val connection = (network?.openConnection(url) ?: url.openConnection()) as HttpURLConnection
-            connection.instanceFollowRedirects = false
-            connection.connectTimeout = 3000 // Short timeout for a quick check
-            connection.readTimeout = 3000
-            connection.requestMethod = "GET"
+            // #region agent log
+            DebugRuntimeLogger.log(
+                runId = "pre-fix",
+                hypothesisId = "B",
+                location = "AutoLoginManager.kt:isTargetCaptivePortal",
+                message = "Starting target portal check",
+                data = mapOf(
+                    "hasNetwork" to (network != null),
+                    "url" to LOGIN_URL
+                )
+            )
+            // #endregion
+            val connection = openResolvedConnection(
+                url = url,
+                network = network,
+                connectTimeoutMs = 3000,
+                readTimeoutMs = 3000,
+                requestMethod = "GET"
+            )
             connection.connect()
             val responseCode = connection.responseCode
+            val locationHeader = connection.getHeaderField("Location")
             connection.disconnect()
-            responseCode == HttpURLConnection.HTTP_OK // Success is ONLY a 200 response
+            // #region agent log
+            DebugRuntimeLogger.log(
+                runId = "pre-fix",
+                hypothesisId = "B",
+                location = "AutoLoginManager.kt:isTargetCaptivePortal",
+                message = "Target portal check completed",
+                data = mapOf(
+                    "responseCode" to responseCode,
+                    "hasLocationHeader" to (locationHeader != null)
+                )
+            )
+            // #endregion
+            val isRedirect = responseCode in listOf(
+                HttpURLConnection.HTTP_MOVED_PERM, // 301
+                HttpURLConnection.HTTP_MOVED_TEMP, // 302
+                HttpURLConnection.HTTP_SEE_OTHER,  // 303
+                307,
+                308
+            )
+            val redirectHost = if (!locationHeader.isNullOrBlank()) {
+                runCatching { URL(locationHeader).host }.getOrNull()
+            } else null
+            val redirectHostResolvable = if (!redirectHost.isNullOrBlank()) {
+                runCatching { NetworkAwareDnsResolver.resolveFirst(redirectHost, network) }.isSuccess
+            } else false
+            val redirectLooksLikePortal = if (isRedirect && !locationHeader.isNullOrBlank()) {
+                val hostMatches = !redirectHost.isNullOrBlank() && (
+                    redirectHost.equals(TARGET_PORTAL_HOST, ignoreCase = true) ||
+                        redirectHost.equals(TARGET_PORTAL_BASE_DOMAIN, ignoreCase = true) ||
+                        redirectHost.endsWith(".$TARGET_PORTAL_BASE_DOMAIN", ignoreCase = true)
+                    )
+                hostMatches ||
+                    locationHeader.contains(TARGET_PORTAL_HOST, ignoreCase = true) ||
+                    locationHeader.contains(TARGET_PORTAL_BASE_DOMAIN, ignoreCase = true)
+            } else false
+
+            val isTarget = responseCode == HttpURLConnection.HTTP_OK || (redirectLooksLikePortal && redirectHostResolvable)
+            // #region agent log
+            DebugRuntimeLogger.log(
+                runId = "pre-fix",
+                hypothesisId = "B",
+                location = "AutoLoginManager.kt:isTargetCaptivePortal",
+                message = "Target portal final decision",
+                data = mapOf(
+                    "responseCode" to responseCode,
+                    "isRedirect" to isRedirect,
+                    "redirectHost" to (redirectHost ?: "null"),
+                    "locationHeader" to (locationHeader ?: "null"),
+                    "redirectHostResolvable" to redirectHostResolvable,
+                    "redirectLooksLikePortal" to redirectLooksLikePortal,
+                    "isTarget" to isTarget
+                )
+            )
+            // #endregion
+            isTarget
+        } catch (e: UnknownHostException) {
+            Log.w("AutoLoginManager", "Portal DNS blocked; treating as target", e)
+            // #region agent log
+            DebugRuntimeLogger.log(
+                runId = "pre-fix",
+                hypothesisId = "B",
+                location = "AutoLoginManager.kt:isTargetCaptivePortal",
+                message = "Target check DNS blocked; forcing captive handling",
+                data = mapOf(
+                    "exceptionClass" to e.javaClass.name,
+                    "exceptionMessage" to (e.message ?: "null"),
+                    "isTarget" to true
+                )
+            )
+            // #endregion
+            true
         } catch (e: Exception) {
             Log.d("AutoLoginManager", "Target portal check failed: ${e.message}")
+            // #region agent log
+            DebugRuntimeLogger.log(
+                runId = "pre-fix",
+                hypothesisId = "B",
+                location = "AutoLoginManager.kt:isTargetCaptivePortal",
+                message = "Target portal check exception",
+                data = mapOf(
+                    "exceptionClass" to e.javaClass.name,
+                    "exceptionMessage" to (e.message ?: "null")
+                )
+            )
+            // #endregion
             false
         }
     }
 
-    fun attemptLogin(userId: String, password: String, network: Network? = null): LoginResult {
-        val openConnection: (URL) -> HttpURLConnection = { url ->
-            (network?.openConnection(url) ?: url.openConnection()) as HttpURLConnection
-        }
-
+    fun attemptLogin(context: Context, userId: String, password: String, network: Network? = null): LoginResult {
         return try {
-            val loginUrl = URL(LOGIN_URL)
-            val connection = openConnection(loginUrl)
-            connection.requestMethod = "POST"
+            val connection = createLoginConnectionWithGatewayFallback(context, network)
             connection.doOutput = true
-            connection.instanceFollowRedirects = false // Do NOT follow redirects
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
 
             val postData = "userId=${URLEncoder.encode(userId, "UTF-8")}" +
               "&password=${URLEncoder.encode(password, "UTF-8")}" +
@@ -61,19 +268,68 @@ object AutoLoginManager {
                 HttpURLConnection.HTTP_OK -> { // 200
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
                     val isSuccess = "Access Granted" in response || "You have successfully connected" in response || "already logged in" in response.lowercase()
+                    val responsePreview = response
+                        .replace(Regex("\\s+"), " ")
+                        .take(500)
+                    val looksLikeLoginPage = response.contains("name=\"userId\"", ignoreCase = true) ||
+                        response.contains("name='userId'", ignoreCase = true) ||
+                        response.contains("password", ignoreCase = true)
+                    // #region agent log
+                    DebugRuntimeLogger.log(
+                        runId = "pre-fix",
+                        hypothesisId = "E",
+                        location = "AutoLoginManager.kt:attemptLogin",
+                        message = "Login HTTP 200 parsed",
+                        data = mapOf(
+                            "isSuccess" to isSuccess,
+                            "looksLikeLoginPage" to looksLikeLoginPage,
+                            "responsePreview" to responsePreview
+                        )
+                    )
+                    // #endregion
                     if (isSuccess) LoginResult.Success else LoginResult.Failure
                 }
                 HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP -> { // 301, 302
                     Log.d("AutoLoginManager", "Login resulted in a redirect ($responseCode). Assuming unsupported network.")
+                    // #region agent log
+                    DebugRuntimeLogger.log(
+                        runId = "pre-fix",
+                        hypothesisId = "E",
+                        location = "AutoLoginManager.kt:attemptLogin",
+                        message = "Login redirect treated as unsupported",
+                        data = mapOf("responseCode" to responseCode)
+                    )
+                    // #endregion
                     LoginResult.UnsupportedNetwork
                 }
                 else -> {
                     Log.w("AutoLoginManager", "Login failed with unexpected response code: $responseCode")
+                    // #region agent log
+                    DebugRuntimeLogger.log(
+                        runId = "pre-fix",
+                        hypothesisId = "E",
+                        location = "AutoLoginManager.kt:attemptLogin",
+                        message = "Login unexpected response code",
+                        data = mapOf("responseCode" to responseCode)
+                    )
+                    // #endregion
                     LoginResult.Failure
                 }
             }
         } catch (e: Exception) {
             Log.e("AutoLoginManager", "Login failed with exception", e)
+            // #region agent log
+            DebugRuntimeLogger.log(
+                runId = "pre-fix",
+                hypothesisId = "E",
+                location = "AutoLoginManager.kt:attemptLogin",
+                message = "Login exception",
+                data = mapOf(
+                    "exceptionClass" to e.javaClass.name,
+                    "exceptionMessage" to (e.message ?: "null")
+                )
+            )
+            // #endregion
             LoginResult.Failure
         }
     }

@@ -9,10 +9,12 @@ import android.net.NetworkRequest
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.vinnovateit.latch.common.debug.DebugRuntimeLogger
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.data.StoredCredentials
 import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.wifi.detector.CaptivePortalDetector
+import com.vinnovateit.latch.features.wifi.detector.PrivateDnsChecker
 import com.vinnovateit.latch.features.wifi.detector.WiFiConnectionDetector
 import com.vinnovateit.latch.features.wifi.detector.WiFiStateDetector
 import com.vinnovateit.latch.features.wifi.manager.AutoLoginManager
@@ -27,12 +29,29 @@ class ForegroundService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var connectivityManager: ConnectivityManager
     private var healthCheckJob: Job? = null
+    private val debugRunId = "pre-fix"
 
     companion object {
         const val ACTION_TRIGGER_LOGIN_CHECK = "com.vinnovateit.latch.ACTION_TRIGGER_LOGIN_CHECK"
         const val ACTION_TRIGGER_LOGOUT = "com.vinnovateit.latch.ACTION_TRIGGER_LOGOUT" // ADD
     }
 
+    private fun debugLog(
+        hypothesisId: String,
+        location: String,
+        message: String,
+        data: Map<String, Any?> = emptyMap()
+    ) {
+        // #region agent log
+        DebugRuntimeLogger.log(
+            runId = debugRunId,
+            hypothesisId = hypothesisId,
+            location = location,
+            message = message,
+            data = data
+        )
+        // #endregion
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -40,9 +59,26 @@ class ForegroundService : Service() {
         connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         startForeground(1, createNotification())
         registerNetworkCallback()
+        debugLog(
+            hypothesisId = "E",
+            location = "ForegroundService.kt:onCreate",
+            message = "Service created",
+            data = mapOf(
+                "privateDnsEnabled" to PrivateDnsChecker.isPrivateDnsEnabled(applicationContext)
+            )
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        debugLog(
+            hypothesisId = "E",
+            location = "ForegroundService.kt:onStartCommand",
+            message = "Received onStartCommand",
+            data = mapOf(
+                "action" to (intent?.action ?: "null"),
+                "privateDnsEnabled" to PrivateDnsChecker.isPrivateDnsEnabled(applicationContext),
+            )
+        )
         when (intent?.action) {
             ACTION_TRIGGER_LOGIN_CHECK -> {
                 Log.d("ForegroundService", "Manual login check triggered via intent.")
@@ -51,21 +87,42 @@ class ForegroundService : Service() {
                 if (!WiFiStateDetector.isWiFiEnabled(this)) {
                     Log.w("ForegroundService", "Wi-Fi is disabled, aborting manual check.")
                     ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getApplication(applicationContext).getString(R.string.status_wifi_off)))
+                    debugLog(
+                        hypothesisId = "D",
+                        location = "ForegroundService.kt:onStartCommand",
+                        message = "Abort: Wi-Fi disabled",
+                    )
                     return START_STICKY
                 }
 
                 if (!WiFiConnectionDetector.isConnectedToWiFi(this)) {
                     Log.w("ForegroundService", "Wi-Fi is enabled but not connected to a network.")
                     ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getApplication(applicationContext).getString(R.string.status_not_on_wifi)))
+                    debugLog(
+                        hypothesisId = "C",
+                        location = "ForegroundService.kt:onStartCommand",
+                        message = "Abort: no Wi-Fi network detected",
+                    )
                     return START_STICKY
                 }
 
                 val activeNetwork = WiFiConnectionDetector.getWifiNetwork(this)
                 if (activeNetwork != null) {
+                    debugLog(
+                        hypothesisId = "C",
+                        location = "ForegroundService.kt:onStartCommand",
+                        message = "Proceed: Wi-Fi network selected",
+                        data = mapOf("network" to activeNetwork.toString())
+                    )
                     checkNetworkAndAct(activeNetwork)
                 } else {
                     Log.w("ForegroundService", "Active network is not Wi-Fi. Aborting check.")
                     ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getApplication(applicationContext).getString(R.string.status_disconnected_message)))
+                    debugLog(
+                        hypothesisId = "C",
+                        location = "ForegroundService.kt:onStartCommand",
+                        message = "Abort: getWifiNetwork returned null",
+                    )
                 }
             }
             ACTION_TRIGGER_LOGOUT -> {
@@ -111,13 +168,41 @@ class ForegroundService : Service() {
                 getApplication(applicationContext).getString(R.string.status_checking_internet)
             ))
 
+            debugLog(
+                hypothesisId = "D",
+                location = "ForegroundService.kt:checkNetworkAndAct",
+                message = "Starting network check",
+                data = mapOf(
+                    "network" to network.toString(),
+                    "privateDnsEnabled" to PrivateDnsChecker.isPrivateDnsEnabled(applicationContext),
+                )
+            )
             connectivityManager.bindProcessToNetwork(network)
             try {
+                debugLog(
+                    hypothesisId = "D",
+                    location = "ForegroundService.kt:checkNetworkAndAct",
+                    message = "Process bound to network",
+                    data = mapOf("network" to network.toString())
+                )
                 val internetStatus = CaptivePortalDetector.checkPortalStatus(applicationContext, network)
+                debugLog(
+                    hypothesisId = "A",
+                    location = "ForegroundService.kt:checkNetworkAndAct",
+                    message = "Portal status checked",
+                    data = mapOf("internetStatus" to internetStatus)
+                )
 
                 if (internetStatus == 204) {
                     // vit wifi check
-                    if (AutoLoginManager.isTargetCaptivePortal(network)) {
+                    val isTarget = AutoLoginManager.isTargetCaptivePortal(network)
+                    debugLog(
+                        hypothesisId = "B",
+                        location = "ForegroundService.kt:checkNetworkAndAct",
+                        message = "Target portal check after 204",
+                        data = mapOf("isTarget" to isTarget)
+                    )
+                    if (isTarget) {
                         Log.d("ForegroundService", "Valid VIT WiFi with internet. Starting session.")
                         connectivityManager.reportNetworkConnectivity(network, true)
                         ConnectionStatusManager.postStatus(ConnectionStatus.Success)
@@ -138,7 +223,14 @@ class ForegroundService : Service() {
                 ConnectionStatusManager.postStatus(ConnectionStatus.Connecting(
                     getApplication(applicationContext).getString(R.string.status_verifying_network)
                 ))
-                if (AutoLoginManager.isTargetCaptivePortal(network)) {
+                val isTarget = AutoLoginManager.isTargetCaptivePortal(network)
+                debugLog(
+                    hypothesisId = "B",
+                    location = "ForegroundService.kt:checkNetworkAndAct",
+                    message = "Target portal check in captive flow",
+                    data = mapOf("isTarget" to isTarget, "internetStatus" to internetStatus)
+                )
+                if (isTarget) {
                     Log.d("ForegroundService", "Target captive portal confirmed (VIT).")
                     handleCaptivePortalSuspend(network)
                 } else {
@@ -147,6 +239,17 @@ class ForegroundService : Service() {
                         getApplication(applicationContext).getString(R.string.status_unsupported_network)
                     ))
                 }
+            } catch (t: Throwable) {
+                debugLog(
+                    hypothesisId = "D",
+                    location = "ForegroundService.kt:checkNetworkAndAct",
+                    message = "Exception in checkNetworkAndAct",
+                    data = mapOf(
+                        "exceptionClass" to t.javaClass.name,
+                        "exceptionMessage" to (t.message ?: "null")
+                    )
+                )
+                throw t
             } finally {
                 connectivityManager.bindProcessToNetwork(null)
             }
@@ -159,7 +262,7 @@ class ForegroundService : Service() {
         val user = StoredCredentials.getUserId(applicationContext)
         val pass = StoredCredentials.getPassword(applicationContext)
         if (user != null && pass != null) {
-            when (AutoLoginManager.attemptLogin(user, pass, network)) {
+            when (AutoLoginManager.attemptLogin(applicationContext, user, pass, network)) {
                 is LoginResult.Success -> {
                     Log.d("ForegroundService", "Login successful, re-validating network.")
                     checkNetworkAndAct(network)
@@ -235,8 +338,23 @@ class ForegroundService : Service() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
                 if (!WiFiStateDetector.isWiFiEnabled(this@ForegroundService)) {
+                    debugLog(
+                        hypothesisId = "F",
+                        location = "ForegroundService.kt:onAvailable",
+                        message = "onAvailable ignored because Wi-Fi reported disabled",
+                        data = mapOf("network" to network.toString())
+                    )
                     return
                 }
+                debugLog(
+                    hypothesisId = "C",
+                    location = "ForegroundService.kt:onAvailable",
+                    message = "Wi-Fi network available callback",
+                    data = mapOf(
+                        "network" to network.toString(),
+                        "privateDnsEnabled" to PrivateDnsChecker.isPrivateDnsEnabled(applicationContext),
+                    )
+                )
                 checkNetworkAndAct(network)
             }
 
