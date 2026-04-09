@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +50,7 @@ import com.vinnovateit.latch.features.onboarding.OnboardingActivity
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
+import com.vinnovateit.latch.features.wifi.detector.PrivateDnsChecker
 
 @Composable
 fun HomeRedCanvasBackground(buttonSizePx: Float, isPortrait: Boolean) {
@@ -288,6 +290,7 @@ fun HomeTopSection(
                 context.startActivity(Intent(context, MeetTheTeamActivity::class.java))
             },
         )
+        PrivateDnsWarningBanner()
         Spacer(Modifier.size(25.dp))
         Column(
             modifier = Modifier
@@ -529,5 +532,39 @@ fun HomeScreenLandscapePreview() {
             connectionStatus = ConnectionStatus.Idle,
             speedUnit = "B/s"
         )
+    }
+}
+
+@Composable
+fun PrivateDnsWarningBanner() {
+    val context = LocalContext.current
+    var isPrivateDnsOn by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isPrivateDnsOn = PrivateDnsChecker.isPrivateDnsEnabled(context)
+    }
+
+    if (isPrivateDnsOn) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Warning,
+                    contentDescription = "Warning",
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Private DNS is enabled. If login fails, try disabling it in System Settings.",
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontSize = 12.sp,
+                    fontFamily = SatoshiFontFamily
+                )
+            }
+        }
     }
 }
