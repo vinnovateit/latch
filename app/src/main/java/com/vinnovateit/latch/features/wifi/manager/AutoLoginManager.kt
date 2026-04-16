@@ -6,6 +6,7 @@ import android.net.wifi.WifiManager
 import android.util.Log
 import com.vinnovateit.latch.common.debug.DebugRuntimeLogger
 import com.vinnovateit.latch.common.network.NetworkAwareDnsResolver
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.UnknownHostException
 import java.net.URL
@@ -33,19 +34,36 @@ object AutoLoginManager {
         network: Network?,
         connectTimeoutMs: Int,
         readTimeoutMs: Int,
-        requestMethod: String
+        requestMethod: String,
+        hostHeader: String? = null
     ): HttpURLConnection {
-        val resolvedIp = NetworkAwareDnsResolver.resolveFirst(url.host, network).hostAddress
-        val resolvedUrl = URL(
-            "${url.protocol}://${toIpHostLiteral(resolvedIp)}${url.file.ifBlank { "/" }}"
-        )
-        val connection = (network?.openConnection(resolvedUrl) ?: resolvedUrl.openConnection()) as HttpURLConnection
+        // Use network.openConnection() directly — this routes through the network's own
+        // DNS stack (the local gateway), bypassing Private DNS/DoT entirely.
+        // No pre-resolution needed; the captive portal gateway handles DNS itself.
+        val connection = try {
+            (network?.openConnection(url) ?: url.openConnection()) as HttpURLConnection
+        } catch (e: IOException) {
+            if (network != null) {
+                Log.w("AutoLoginManager", "Network-bound connection failed, falling back to direct URL connection: ${e.message}")
+                url.openConnection() as HttpURLConnection
+            } else {
+                throw e
+            }
+        }
         connection.instanceFollowRedirects = false
         connection.connectTimeout = connectTimeoutMs
         connection.readTimeout = readTimeoutMs
         connection.requestMethod = requestMethod
-        connection.setRequestProperty("Host", url.host)
+        if (!hostHeader.isNullOrBlank()) {
+            connection.setRequestProperty("Host", hostHeader)
+        }
         return connection
+    }
+
+    private fun resolveLoginUrl(network: Network?, host: String, file: String): URL {
+        val resolvedAddress = NetworkAwareDnsResolver.resolveFirst(host, network)
+        val hostLiteral = toIpHostLiteral(resolvedAddress.hostAddress ?: throw UnknownHostException("No address for $host"))
+        return URL("http://$hostLiteral$file")
     }
 
     private fun createResolvedLoginConnection(network: Network?): HttpURLConnection {
@@ -64,12 +82,14 @@ object AutoLoginManager {
         )
         // #endregion
         return try {
+            val resolvedUrl = resolveLoginUrl(network, primary.host, primary.file)
             openResolvedConnection(
-                url = primary,
+                url = resolvedUrl,
                 network = network,
                 connectTimeoutMs = 5000,
                 readTimeoutMs = 5000,
-                requestMethod = "POST"
+                requestMethod = "POST",
+                hostHeader = primary.host
             )
         } catch (e: UnknownHostException) {
             // #region agent log
@@ -86,13 +106,14 @@ object AutoLoginManager {
                 )
             )
             // #endregion
-            val fallbackUrl = URL("http://$TARGET_PORTAL_BASE_DOMAIN${primary.file}")
+            val fallbackResolvedUrl = resolveLoginUrl(network, TARGET_PORTAL_BASE_DOMAIN, primary.file)
             openResolvedConnection(
-                url = fallbackUrl,
+                url = fallbackResolvedUrl,
                 network = network,
                 connectTimeoutMs = 5000,
                 readTimeoutMs = 5000,
-                requestMethod = "POST"
+                requestMethod = "POST",
+                hostHeader = TARGET_PORTAL_BASE_DOMAIN
             )
         }
     }
@@ -139,6 +160,7 @@ object AutoLoginManager {
     fun isTargetCaptivePortal(network: Network?): Boolean {
         return try {
             val url = URL(LOGIN_URL)
+            val resolvedUrl = resolveLoginUrl(network, url.host, url.file)
             // #region agent log
             DebugRuntimeLogger.log(
                 runId = "pre-fix",
@@ -152,11 +174,12 @@ object AutoLoginManager {
             )
             // #endregion
             val connection = openResolvedConnection(
-                url = url,
+                url = resolvedUrl,
                 network = network,
                 connectTimeoutMs = 3000,
                 readTimeoutMs = 3000,
-                requestMethod = "GET"
+                requestMethod = "GET",
+                hostHeader = url.host
             )
             connection.connect()
             val responseCode = connection.responseCode
@@ -334,11 +357,20 @@ object AutoLoginManager {
         }
     }
 
-    fun attemptLogout(): Boolean {
+    fun attemptLogout(network: Network? = null): Boolean {
         return try {
             val url = URL(LOGOUT_URL)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"               // CHANGED from POST -> GET
+            val resolvedUrl = resolveLoginUrl(network, url.host, url.file)
+            // Use openResolvedConnection to ensure NetworkAwareDnsResolver and network.openConnection are applied
+            val connection = openResolvedConnection(
+                url = resolvedUrl,
+                network = network,
+                connectTimeoutMs = 5000,
+                readTimeoutMs = 5000,
+                requestMethod = "GET",
+                hostHeader = url.host
+            )
+            // connection.instanceFollowRedirects, connectTimeout, readTimeout, requestMethod are handled by openResolvedConnection 
             connection.instanceFollowRedirects = false     // Don't auto-follow; we just care that it responded
             connection.connectTimeout = 5000
             connection.readTimeout = 5000

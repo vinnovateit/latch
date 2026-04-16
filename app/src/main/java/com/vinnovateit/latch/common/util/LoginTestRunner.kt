@@ -41,13 +41,7 @@ object LoginTestRunner {
       return@withContext
     }
 
-    // Bind the process to ensure the login request goes over the correct network
-    cm.bindProcessToNetwork(activeNetwork)
-    val success = try {
-      AutoLoginManager.attemptLogin(context, userId, password, activeNetwork)
-    } finally {
-      cm.bindProcessToNetwork(null) // Always unbind
-    }
+    val success = AutoLoginManager.attemptLogin(context, userId, password, activeNetwork)
 
     if (success == LoginResult.Success) {
       Log.d("LoginTest", "✅ Manual login successful!")

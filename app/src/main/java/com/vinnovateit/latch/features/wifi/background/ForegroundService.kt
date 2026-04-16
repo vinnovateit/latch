@@ -177,12 +177,11 @@ class ForegroundService : Service() {
                     "privateDnsEnabled" to PrivateDnsChecker.isPrivateDnsEnabled(applicationContext),
                 )
             )
-            connectivityManager.bindProcessToNetwork(network)
             try {
                 debugLog(
                     hypothesisId = "D",
                     location = "ForegroundService.kt:checkNetworkAndAct",
-                    message = "Process bound to network",
+                    message = "Proceeding with target network explicitly",
                     data = mapOf("network" to network.toString())
                 )
                 val internetStatus = CaptivePortalDetector.checkPortalStatus(applicationContext, network)
@@ -250,8 +249,6 @@ class ForegroundService : Service() {
                     )
                 )
                 throw t
-            } finally {
-                connectivityManager.bindProcessToNetwork(null)
             }
         }
     }
@@ -285,10 +282,8 @@ class ForegroundService : Service() {
 
         val network = WiFiConnectionDetector.getWifiNetwork(this)
         if (network != null) {
-
-            connectivityManager.bindProcessToNetwork(network)
             try {
-                val ok = AutoLoginManager.attemptLogout()
+                val ok = AutoLoginManager.attemptLogout(network)
                 if (ok) {
                     Log.d("ForegroundService", "Logout success.")
 
@@ -298,8 +293,8 @@ class ForegroundService : Service() {
                     Log.w("ForegroundService", "Logout failed.")
                     ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getApplication(applicationContext).getString(R.string.status_logout_failed)))
                 }
-            } finally {
-                connectivityManager.bindProcessToNetwork(null)
+            } catch (e: Exception) {
+                Log.e("ForegroundService", "Logout process threw exception", e)
             }
         } else {
             Log.w("ForegroundService", "No active network during logout.")
