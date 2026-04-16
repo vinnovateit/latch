@@ -49,7 +49,6 @@ class SecondPageActivity : ComponentActivity() {
         val editMode = intent.getBooleanExtra("editMode", false)
         val fromOnboarding = intent.getBooleanExtra("fromOnboarding", false)
 
-        // --- FIX 1: Enable edge-to-edge display ---
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
@@ -107,7 +106,6 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    // --- FIX 2: Replaced statusBarsPadding with safeDrawingPadding ---
                     .safeDrawingPadding()
                     .padding(horizontal = 32.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -192,16 +190,17 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                 }
             }
         } else {
-            // --- Portrait Layout (Original Code) ---
+            // --- Portrait Layout ---
+            // CRITICAL FIX: Changed from .align(Alignment.Center) to .fillMaxSize() + Arrangement.Center
+            // to stop infinite height constraint crashes while allowing vertical scrolling.
             Column(
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    // --- FIX 2: Added safeDrawingPadding to respect system bars ---
+                    .fillMaxSize()
                     .safeDrawingPadding()
-                    .offset(y = (-40).dp)
                     .padding(16.dp)
-                    .verticalScroll(rememberScrollState()), // Added scroll for small screens
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = stringResource(id = R.string.credentials_title),
@@ -273,9 +272,6 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
     }
 }
 
-/**
- * A shared composable for the TextFields to reduce code duplication.
- */
 @Composable
 private fun CredentialFormInputs(
     regNo: String,

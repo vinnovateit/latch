@@ -6,7 +6,10 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,7 +38,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.domain.model.LiveConnectionStatus
 import com.vinnovateit.latch.domain.model.SessionSummary
-import com.vinnovateit.latch.features.stats.DownloadReportButton
 import com.vinnovateit.latch.features.stats.StatsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -49,14 +52,21 @@ fun StatsList(
   speedUnits: String,
   showAllSessions: Boolean,
   onToggleShowAll: () -> Unit,
-  onDownloadReport: () -> Unit,
   addSpacer: Boolean = false,
+  contentPadding: PaddingValues = PaddingValues(0.dp),
   statsViewModel: StatsViewModel
 ) {
   val itemsToDisplay = if (showAllSessions) historyToShow else historyToShow.take(5)
+  val layoutDirection = LocalLayoutDirection.current
 
   LazyColumn(
     modifier = modifier,
+    contentPadding = PaddingValues(
+      top = contentPadding.calculateTopPadding(),
+      bottom = contentPadding.calculateBottomPadding() + 100.dp,
+      start = contentPadding.calculateStartPadding(layoutDirection),
+      end = contentPadding.calculateEndPadding(layoutDirection)
+    ),
     verticalArrangement = Arrangement.spacedBy(2.dp),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
@@ -66,7 +76,6 @@ fun StatsList(
       }
     }
     if (isLive && sessionToShow != null) {
-      // WHEN CONNECTED:
       if (showSessionCard) {
         item {
           Box(Modifier.height(250.dp)) {
@@ -79,8 +88,8 @@ fun StatsList(
         }
       }
       item {
-        val liveDownloadBps = liveStatus?.liveData?.lastOrNull()?.usage?.rxBytes ?: 0L
-        val liveUploadBps = liveStatus?.liveData?.lastOrNull()?.usage?.txBytes ?: 0L
+        val liveDownloadBps = liveStatus?.liveData?.lastOrNull()?.usage?.rxBps ?: 0L
+        val liveUploadBps = liveStatus?.liveData?.lastOrNull()?.usage?.txBps ?: 0L
         LiveSpeedSection(
           isLive = true,
           downloadBps = liveDownloadBps,
@@ -94,7 +103,6 @@ fun StatsList(
         Spacer(modifier = Modifier.height(15.dp))
       }
     } else {
-      // WHEN NOT CONNECTED:
       item {
         val allTimeMaxDownloadBps = historyToShow.maxOfOrNull { it.maxRxBps } ?: 0L
         val allTimeMaxUploadBps = historyToShow.maxOfOrNull { it.maxTxBps } ?: 0L
@@ -114,8 +122,7 @@ fun StatsList(
 
     if (itemsToDisplay.isNotEmpty()) {
       item {
-        Column(modifier = Modifier
-          .padding(vertical = 8.dp)) {
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
           Text(
             stringResource(R.string.stats_sessions),
             style = MaterialTheme.typography.headlineSmall,
@@ -128,7 +135,7 @@ fun StatsList(
           )
         }
       }
-      itemsIndexed(itemsToDisplay) { index, session ->
+      itemsIndexed(itemsToDisplay, key = { _, session -> session.startTimestamp }) { index, session ->
         val cornerRadius = 24.dp
         val listSize = itemsToDisplay.size
         val shape = when {
@@ -138,11 +145,9 @@ fun StatsList(
           else -> RoundedCornerShape(5.dp)
         }
 
-        // --- New Animation Logic ---
         var itemVisible by remember { mutableStateOf(index < 5) }
         LaunchedEffect(showAllSessions) {
           if (showAllSessions) {
-            // This will trigger the animation for items beyond the initial 5
             itemVisible = true
           }
         }
@@ -151,7 +156,6 @@ fun StatsList(
           targetValue = if (itemVisible) 1f else 0f,
           animationSpec = tween(
             durationMillis = 300,
-            // Stagger the animation start time for each item
             delayMillis = if (index >= 5) (index - 4) * 70 else 0
           ),
           label = "alphaAnim"
@@ -172,13 +176,5 @@ fun StatsList(
         }
       }
     }
-
-    if (historyToShow.isNotEmpty()) {
-      item {
-        Spacer(modifier = Modifier.height(15.dp))
-        DownloadReportButton(onDownloadReport)
-      }
-    }
-    item { Spacer(modifier = Modifier.height(100.dp)) }
   }
 }

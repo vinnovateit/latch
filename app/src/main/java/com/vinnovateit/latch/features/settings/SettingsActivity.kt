@@ -1,42 +1,92 @@
 package com.vinnovateit.latch.features.settings
 
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.rounded.Autorenew
+import androidx.compose.material.icons.rounded.ColorLens
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Password
+import androidx.compose.material.icons.rounded.SettingsBackupRestore
+import androidx.compose.material.icons.rounded.SettingsSystemDaydream
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
-import androidx.compose.runtime.*
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.R
-import com.vinnovateit.latch.common.util.TooltipHint
 import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.onboarding.SecondPageActivity
+import com.vinnovateit.latch.common.ui.components.ExpressiveTopBarContent
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import com.vinnovateit.latch.ui.theme.LatchTheme
-import com.vinnovateit.latch.ui.theme.ModernizFontFamily
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 class SettingsActivity : ComponentActivity() {
@@ -51,132 +101,291 @@ class SettingsActivity : ComponentActivity() {
   }
 }
 
+@Composable
+private fun SettingsTopBar(
+  collapseFraction: Float,
+  headerHeight: Dp,
+  onBackPressed: () -> Unit
+) {
+  val surfaceColor = MaterialTheme.colorScheme.surface
+  val haptic = LocalHapticFeedback.current
+
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .height(headerHeight)
+      .background(surfaceColor.copy(alpha = collapseFraction))
+  ) {
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .statusBarsPadding()
+    ) {
+      FilledIconButton(
+        modifier = Modifier
+          .align(Alignment.TopStart)
+          .padding(start = 12.dp, top = 4.dp),
+        onClick = {
+          haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+          onBackPressed()
+        },
+        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+      ) {
+        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
+      }
+
+      ExpressiveTopBarContent(
+        title = "Settings",
+        collapseFraction = collapseFraction,
+        modifier = Modifier
+          .fillMaxSize()
+          .padding(start = 0.dp, end = 0.dp)
+      )
+    }
+  }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBackClick: () -> Unit) {
   val context = LocalContext.current
+  val haptic = LocalHapticFeedback.current
   val autoLogin by SettingsManager.autoLogin.collectAsStateWithLifecycle()
+  val bypassPortalCheck by SettingsManager.bypassPortalCheck.collectAsStateWithLifecycle()
   val speedUnits by SettingsManager.speedUnits.collectAsStateWithLifecycle()
   val theme by SettingsManager.theme.collectAsStateWithLifecycle()
 
-  // Bottom sheet states
   var showSpeedUnitsSheet by remember { mutableStateOf(false) }
   var showThemeSheet by remember { mutableStateOf(false) }
   var showClearStatsSheet by remember { mutableStateOf(false) }
 
-  // 1. Remember the scroll state to check if scrolling is possible
-  val scrollState = rememberScrollState()
+  val density = LocalDensity.current
+  val coroutineScope = rememberCoroutineScope()
+  val lazyListState = rememberLazyListState()
 
-  // 2. Create scroll behavior that only activates if content can scroll
-  val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
-    rememberTopAppBarState(),
-    canScroll = { scrollState.maxValue > 0 } // This is the key change
-  )
+  val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+  val minTopBarHeight = 64.dp + statusBarHeight
+  val maxTopBarHeight = 180.dp
+  val minTopBarHeightPx = with(density) { minTopBarHeight.toPx() }
+  val maxTopBarHeightPx = with(density) { maxTopBarHeight.toPx() }
 
+  val topBarHeight = remember { Animatable(maxTopBarHeightPx) }
+  var collapseFraction by remember { mutableStateOf(0f) }
 
-  Scaffold(
-    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-    containerColor = MaterialTheme.colorScheme.surface,
-    topBar = {
-      LargeTopAppBar(
-        title = {
-          Text(
-            "Settings",
-            fontSize = 23.sp,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.ExtraBold,
-            maxLines = 1,
-            fontFamily = ModernizFontFamily,
-            overflow = TextOverflow.Ellipsis
-          )
-        },
-        navigationIcon = {
-          TooltipHint(tooltipText = "Back") {
-            IconButton(
-              onClick = onBackClick
-            ) {
-              Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-            }
-          }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-          containerColor = MaterialTheme.colorScheme.surface,
-          scrolledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-          navigationIconContentColor = Color.Unspecified,
-          titleContentColor = Color.Unspecified,
-          actionIconContentColor = Color.Unspecified
-        ),
-        scrollBehavior = scrollBehavior
-      )
-    }
-  ) { innerPadding ->
-    // 3. Apply the scroll state to the scrollable container
-    LazyColumn(
-      modifier = Modifier
-        .fillMaxSize()
-        .padding(innerPadding),
-      contentPadding = PaddingValues(bottom = 32.dp)
-    ) {
-        // Account Category
-        item{ PreferenceCategory(title = "Account") }
-        item{ PreferenceItem(
-          PreferenceData(
-            "Auto-login on Connect",
-            "Automatically log in to VIT Wi-Fi",
-            Icons.Rounded.Autorenew,
-            onClick = { SettingsManager.setAutoLogin(!autoLogin) },
-            trailing = {
-              Switch(checked = autoLogin, onCheckedChange = { SettingsManager.setAutoLogin(it) })
-            }
-          )
-        ) }
-      item{
-        PreferenceItem(
-          PreferenceData(
-            "Update Credentials",
-            "Change your registration number and password",
-            Icons.Rounded.Password,
-            onClick = {
-              context.startActivity(Intent(context, SecondPageActivity::class.java).apply {
-                putExtra("editMode", true)
-              })
-            }
-          )
-        )
-      }
-
-        // Display Category
-        item{ PreferenceCategory(title = "Display") }
-      item { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-          val useDynamicColors by SettingsManager.useDynamicColors.collectAsStateWithLifecycle()
-           PreferenceItem(
-            PreferenceData(
-              "Dynamic Colors",
-              "Adapt with your system's Material You theming",
-              Icons.Rounded.ColorLens,
-              onClick = { SettingsManager.setUseDynamicColors(!useDynamicColors) },
-              trailing = {
-                Switch(checked = useDynamicColors, onCheckedChange = { SettingsManager.setUseDynamicColors(it) })
-              }
-            )
-          ) }
-        }
-        item{ PreferenceItem(
-          PreferenceData("Speed Units", speedUnits, Icons.Rounded.Speed, onClick = { showSpeedUnitsSheet = true })
-        ) }
-        item{ PreferenceItem(
-          PreferenceData("Theme", theme, Icons.Rounded.DarkMode, onClick = { showThemeSheet = true })
-        ) }
-
-        // Data Management Category
-        item{ PreferenceCategory(title = "Data Management") }
-        item{ PreferenceItem(
-          PreferenceData("Clear Stats", "Reset usage history", Icons.Rounded.SettingsBackupRestore, onClick = { showClearStatsSheet = true })
-        ) }
-      }
+  LaunchedEffect(topBarHeight.value) {
+    collapseFraction = 1f - ((topBarHeight.value - minTopBarHeightPx) / (maxTopBarHeightPx - minTopBarHeightPx)).coerceIn(0f, 1f)
   }
 
-  // Bottom Sheets
+  val nestedScrollConnection = remember {
+    object : NestedScrollConnection {
+      override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        val delta = available.y
+        val isScrollingDown = delta < 0
+
+        if (!isScrollingDown && (lazyListState.firstVisibleItemIndex > 0 || lazyListState.firstVisibleItemScrollOffset > 0)) {
+          return Offset.Zero
+        }
+
+        val previousHeight = topBarHeight.value
+        val newHeight = (previousHeight + delta).coerceIn(minTopBarHeightPx, maxTopBarHeightPx)
+        val consumed = newHeight - previousHeight
+
+        if (consumed.roundToInt() != 0) {
+          coroutineScope.launch {
+            topBarHeight.snapTo(newHeight)
+          }
+        }
+
+        val canConsumeScroll = !(isScrollingDown && newHeight == minTopBarHeightPx)
+        return if (canConsumeScroll) Offset(0f, consumed) else Offset.Zero
+      }
+    }
+  }
+
+  LaunchedEffect(lazyListState.isScrollInProgress) {
+    if (!lazyListState.isScrollInProgress) {
+      val shouldExpand = topBarHeight.value > (minTopBarHeightPx + maxTopBarHeightPx) / 2
+      val canExpand = lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0
+
+      val targetValue = if (shouldExpand && canExpand) maxTopBarHeightPx else minTopBarHeightPx
+
+      if (topBarHeight.value != targetValue) {
+        coroutineScope.launch {
+          topBarHeight.animateTo(targetValue, spring(stiffness = Spring.StiffnessMedium))
+        }
+      }
+    }
+  }
+
+  Box(
+    modifier = Modifier
+      .nestedScroll(nestedScrollConnection)
+      .fillMaxSize()
+      .background(MaterialTheme.colorScheme.surface)
+  ) {
+    val currentTopBarHeightDp = with(density) { topBarHeight.value.toDp() }
+    LazyColumn(
+      state = lazyListState,
+      contentPadding = PaddingValues(top = currentTopBarHeightDp),
+      modifier = Modifier.fillMaxSize()
+    ) {
+      // ACCOUNT
+      item {
+        SettingsSection(title = "Account") {
+          Column(modifier = Modifier.clip(shape = RoundedCornerShape(24.dp))) {
+            SettingsItem(
+              title = "Auto-login on Connect",
+              subtitle = "Automatically log in to VIT Wi-Fi",
+              leadingIcon = {
+                Icon(
+                  Icons.Rounded.Autorenew,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary
+                )
+              },
+              trailingContent = {
+                Switch(
+                  checked = autoLogin,
+                  onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    SettingsManager.setAutoLogin(it)
+                  })
+              },
+              onClick = { SettingsManager.setAutoLogin(!autoLogin) }
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            SettingsItem(
+              title = "Direct Login",
+              subtitle = "Immediately send login request without validating wifi when connected",
+              leadingIcon = {
+                Icon(
+                  Icons.Rounded.FlashOn,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary
+                )
+              },
+              trailingContent = {
+                Switch(
+                  checked = bypassPortalCheck,
+                  onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    SettingsManager.setBypassPortalCheck(it)
+                  })
+              },
+              onClick = { SettingsManager.setBypassPortalCheck(!bypassPortalCheck) }
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            SettingsItem(
+              title = "Update Credentials",
+              subtitle = "Change your registration number and password",
+              leadingIcon = {
+                Icon(
+                  Icons.Rounded.Password,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary
+                )
+              },
+              onClick = {
+                context.startActivity(
+                  Intent(
+                    context,
+                    SecondPageActivity::class.java
+                  ).apply { putExtra("editMode", true) })
+              }
+            )
+          }
+        }
+      }
+
+      item { Spacer(modifier = Modifier.height(16.dp)) }
+
+      // DISPLAY
+      item {
+        SettingsSection(title = "Display") {
+          Column(modifier = Modifier.clip(shape = RoundedCornerShape(24.dp))) {
+            SettingsItem(
+              title = "Speed Units",
+              subtitle = speedUnits,
+              leadingIcon = {
+                Icon(
+                  Icons.Rounded.Speed,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary
+                )
+              },
+              onClick = { showSpeedUnitsSheet = true }
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            SettingsItem(
+              title = "Theme",
+              subtitle = theme,
+              leadingIcon = {
+                Icon(
+                  Icons.Rounded.DarkMode,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary
+                )
+              },
+              onClick = { showThemeSheet = true }
+            )
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            val useDynamicColors by SettingsManager.useDynamicColors.collectAsStateWithLifecycle()
+            SettingsItem(
+              title = "Dynamic Colors",
+              subtitle = "Adapt with your system's Material You theming",
+              leadingIcon = {
+                Icon(
+                  Icons.Rounded.ColorLens,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary
+                )
+              },
+              trailingContent = {
+                Switch(
+                  checked = useDynamicColors,
+                  onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    SettingsManager.setUseDynamicColors(it)
+                  })
+              },
+              onClick = { SettingsManager.setUseDynamicColors(!useDynamicColors) },
+            )
+          }
+        }
+      }
+
+      item { Spacer(modifier = Modifier.height(16.dp)) }
+
+      // DATA MANAGEMENT
+      item {
+        SettingsSection(title = "Data Management") {
+          Column(modifier = Modifier.clip(shape = RoundedCornerShape(24.dp))) {
+            SettingsItem(
+              title = "Clear Stats",
+              subtitle = "Reset usage history",
+              leadingIcon = {
+                Icon(
+                  Icons.Rounded.SettingsBackupRestore,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary
+                )
+              },
+              onClick = { showClearStatsSheet = true }
+            )
+          }
+        }
+      }
+      item { Spacer(modifier = Modifier.height(72.dp)) }
+    }
+    SettingsTopBar(
+      collapseFraction = collapseFraction,
+      headerHeight = maxTopBarHeight - ((maxTopBarHeight - minTopBarHeight) * collapseFraction),
+      onBackPressed = onBackClick
+    )
+  }
+
   if (showSpeedUnitsSheet) {
     SettingsSelectionBottomSheet(
       title = "Speed Units",
@@ -195,12 +404,11 @@ fun SettingsScreen(onBackClick: () -> Unit) {
   }
 
   if (showThemeSheet) {
-    val themeOptions = mutableListOf(
+    val themeOptions = listOf(
       SelectionOption("System Default", Icons.Rounded.SettingsSystemDaydream),
       SelectionOption("Light", Icons.Rounded.LightMode),
       SelectionOption("Dark", Icons.Rounded.DarkMode)
     )
-
     SettingsSelectionBottomSheet(
       title = "Theme",
       description = "Control the look of the app",
@@ -229,67 +437,95 @@ fun SettingsScreen(onBackClick: () -> Unit) {
   }
 }
 
-// Data class for preference items
-data class PreferenceData(
-  val title: String,
-  val subtitle: String,
-  val icon: ImageVector,
-  val onClick: () -> Unit = {},
-  val trailing: @Composable () -> Unit = {}
-)
-
 data class SelectionOption(
   val label: String,
   val icon: ImageVector
 )
 
-// Custom Composable
 @Composable
-fun PreferenceCategory(title: String) {
-  Text(
-    title,
-    style = MaterialTheme.typography.labelLarge.copy(
-      fontWeight = FontWeight.Bold,
-      color = MaterialTheme.colorScheme.primary
-    ),
-    modifier = Modifier.padding(top = 24.dp, bottom = 8.dp, start = 16.dp)
-  )
+fun SettingsSection(
+  title: String,
+  content: @Composable () -> Unit
+) {
+  Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      modifier = Modifier.padding(vertical = 8.dp)
+    ) {
+      Spacer(modifier = Modifier.width(12.dp))
+      Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface
+      )
+    }
+    content()
+  }
 }
 
 @Composable
-fun PreferenceItem(data: PreferenceData) {
-  Row(
+fun SettingsItem(
+  title: String,
+  subtitle: String,
+  leadingIcon: @Composable () -> Unit,
+  trailingContent: @Composable () -> Unit = {},
+  onClick: () -> Unit
+) {
+  val haptic = LocalHapticFeedback.current
+  Surface(
+    color = MaterialTheme.colorScheme.surfaceVariant,
     modifier = Modifier
       .fillMaxWidth()
-      .clickable(
-        interactionSource = remember { MutableInteractionSource() },
-        indication = ripple(),
-        onClick = data.onClick
-      )
-      .padding(16.dp),
-    verticalAlignment = Alignment.CenterVertically
+      .clip(RoundedCornerShape(10.dp))
+      .clickable(onClick = {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        onClick()
+      })
   ) {
-    Icon(data.icon, contentDescription = null, modifier = Modifier.padding(end = 16.dp), tint = MaterialTheme.colorScheme.primary)
-    Column(modifier = Modifier.weight(1f)) {
-      Text(
-        data.title,
-        style = MaterialTheme.typography.bodyLarge.copy(
-          fontWeight = FontWeight.W500,
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      modifier = Modifier
+        .padding(16.dp)
+        .fillMaxWidth()
+    ) {
+      Box(
+        modifier = Modifier
+          .padding(end = 16.dp)
+          .size(24.dp),
+        contentAlignment = Alignment.Center
+      ) {
+        leadingIcon()
+      }
+
+      Column(
+        modifier = Modifier
+          .weight(1f)
+          .padding(end = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+      ) {
+        Text(
+          text = title,
+          style = MaterialTheme.typography.titleMedium,
+          fontSize = 16.sp,
+          fontWeight = FontWeight.Medium,
           color = MaterialTheme.colorScheme.onSurface
         )
-      )
-      Text(
-        data.subtitle,
-        style = MaterialTheme.typography.bodySmall.copy(
-          fontWeight = FontWeight.W400,
-          color = MaterialTheme.colorScheme.onSurfaceVariant)
-      )
-    }
-    Box(
-      modifier = Modifier.padding(start = 16.dp),
-      contentAlignment = Alignment.CenterEnd) {
-      data.trailing()
+        Text(
+          text = subtitle,
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
       }
+
+      Box(
+        modifier = Modifier.padding(start = 16.dp),
+        contentAlignment = Alignment.CenterEnd
+      ) {
+        trailingContent()
+      }
+    }
   }
 }
 
@@ -297,13 +533,14 @@ fun PreferenceItem(data: PreferenceData) {
 @Composable
 fun SettingsSelectionBottomSheet(
   title: String,
-  description: String, // Add this parameter
+  description: String,
   options: List<SelectionOption>,
   selected: String,
   onSelect: (SelectionOption) -> Unit,
   onDismiss: () -> Unit
 ) {
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+  val haptic = LocalHapticFeedback.current
 
   ModalBottomSheet(
     onDismissRequest = onDismiss,
@@ -316,46 +553,48 @@ fun SettingsSelectionBottomSheet(
         .padding(vertical = 16.dp),
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-          title,
-          style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-          modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Text(
-          description,
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-          modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-        )
-        Spacer(Modifier.height(16.dp))
-        options.forEach { option ->
-          val isSelected = option.label == selected
-          val contentColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(),
-                onClick = { onSelect(option) }
-              )
-              .padding(vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Icon(option.icon, contentDescription = null, modifier = Modifier.padding(start = 16.dp, end = 16.dp), tint = contentColor)
-            Text(
-              option.label,
-              color = contentColor,
-              fontWeight = FontWeight.W500,
-              modifier = Modifier.padding(end = 16.dp)
+      Text(
+        title,
+        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+        modifier = Modifier.padding(horizontal = 16.dp)
+      )
+      Text(
+        description,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+      )
+      Spacer(Modifier.height(16.dp))
+      options.forEach { option ->
+        val isSelected = option.label == selected
+        val contentColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+              interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+              indication = ripple(),
+              onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onSelect(option)
+              }
             )
-          }
+            .padding(vertical = 12.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Icon(option.icon, contentDescription = null, modifier = Modifier.padding(start = 16.dp, end = 16.dp), tint = contentColor)
+          Text(
+            option.label,
+            color = contentColor,
+            fontWeight = FontWeight.W500,
+            modifier = Modifier.padding(end = 16.dp)
+          )
         }
       }
     }
+  }
 }
 
-// Bottom Sheet for Actions (confirm dialogs)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsActionBottomSheet(
@@ -366,6 +605,7 @@ fun SettingsActionBottomSheet(
   onConfirm: () -> Unit,
   onDismiss: () -> Unit
 ) {
+  val haptic = LocalHapticFeedback.current
   ModalBottomSheet(
     onDismissRequest = onDismiss,
     containerColor = MaterialTheme.colorScheme.surface,
@@ -386,11 +626,20 @@ fun SettingsActionBottomSheet(
             .padding(horizontal = 16.dp),
           horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-          OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+          OutlinedButton(
+            onClick = {
+              haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+              onDismiss()
+            },
+            modifier = Modifier.weight(1f)
+          ) {
             Text(cancelText, fontWeight = FontWeight.Bold)
           }
           Button(
-            onClick = onConfirm,
+            onClick = {
+              haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+              onConfirm()
+            },
             modifier = Modifier.weight(1f)
           ) {
             Text(confirmText, fontWeight = FontWeight.Bold)
@@ -399,10 +648,4 @@ fun SettingsActionBottomSheet(
       }
     }
   )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun PreviewFirstPage() {
-    SettingsScreen {}
 }

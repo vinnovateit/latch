@@ -40,7 +40,7 @@ fun SpectrumCard(
   isLandscape: Boolean,
 ) {
   val context = LocalContext.current
-  val topPadding = if (isLandscape) 50.dp else 105.dp
+  val topPadding = if (isLandscape) 0.dp else 105.dp
   Card(
     modifier = Modifier
       .padding(top = topPadding)
@@ -124,7 +124,7 @@ private fun StatusIndicator(connectionStatus: ConnectionStatus) {
       AnimatedVisibility(visible = iconVisible, enter = fadeIn(), exit = fadeOut()) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(92.dp)) {
           when (status) {
-            is ConnectionStatus.Connecting -> LoadingIndicator(
+            is ConnectionStatus.Companion.Connecting -> LoadingIndicator(
               modifier = Modifier
                 .size(92.dp)
                 .graphicsLayer { alpha = 0.35f }
@@ -149,7 +149,7 @@ private fun StatusIndicator(connectionStatus: ConnectionStatus) {
       Text(
         text = when (status) {
           is ConnectionStatus.Idle -> stringResource(R.string.home_no_data_for_graph)
-          is ConnectionStatus.Connecting -> status.message
+          is ConnectionStatus.Companion.Connecting -> status.message
           is ConnectionStatus.Success -> stringResource(R.string.status_connected)
           is ConnectionStatus.Failed -> status.message
         },

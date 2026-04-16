@@ -108,8 +108,8 @@ fun createGraphPaths(
     for (i in 0 until sparseHistory.size) {
         val p = sparseHistory.get(i)
         val xp = x(p.timestamp)
-        val yDL = y(p.usage.rxBytes)
-        val yUL = y(p.usage.txBytes)
+        val yDL = y(p.usage.rxBps)
+        val yUL = y(p.usage.txBps)
 
         if (i == 0) {
             lineDL.moveTo(xp, yDL)
@@ -119,8 +119,8 @@ fun createGraphPaths(
         } else {
             val prevPoint = sparseHistory.get(i - 1)
             val prevX = x(prevPoint.timestamp)
-            val prevYDL = y(prevPoint.usage.rxBytes)
-            val prevYUL = y(prevPoint.usage.txBytes)
+            val prevYDL = y(prevPoint.usage.rxBps)
+            val prevYUL = y(prevPoint.usage.txBps)
             val cx = (prevX + xp) / 2f
 
             lineDL.cubicTo(cx, prevYDL, cx, yDL, xp, yDL)

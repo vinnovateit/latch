@@ -1,0 +1,58 @@
+name: Build Dev APK
+
+on:
+  push:
+    branches:
+      - dev_lavan8t
+  workflow_dispatch:
+
+concurrency:
+  group: android-ci-dev_lavan8t
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show commit being built
+        run: |
+          echo "Branch: $GITHUB_REF"
+          echo "SHA: $GITHUB_SHA"
+          git log -1 --oneline
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew clean assembleDebug
+
+      - name: Upload Lint Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev-${{ github.run_number }}
+          name: dev-${{ github.run_number }}
+          prerelease: true
+          files: app/build/outputs/apk/debug/app-debug.apk

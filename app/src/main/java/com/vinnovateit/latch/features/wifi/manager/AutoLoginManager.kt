@@ -17,10 +17,10 @@ sealed class LoginResult {
     object Failure : LoginResult()
     object UnsupportedNetwork : LoginResult()
 }
+
 object AutoLoginManager {
 
-    private const val LOGIN_URL =
-        "http://phc.prontonetworks.com/cgi-bin/authlogin?URI=http://example.com"
+    private const val LOGIN_URL = "http://phc.prontonetworks.com/cgi-bin/authlogin?URI=http://example.com"
     private const val LOGOUT_URL = "http://phc.prontonetworks.com/cgi-bin/authlogout"
     private const val TARGET_PORTAL_HOST = "phc.prontonetworks.com"
     private const val TARGET_PORTAL_BASE_DOMAIN = "prontonetworks.com"
@@ -157,7 +157,28 @@ object AutoLoginManager {
         }
     }
 
+    private const val SECURE_LOGIN_URL = "https://phc.prontonetworks.com/cgi-bin/authlogin?URI=http://example.com"
+    private const val SECURE_LOGOUT_URL = "https://phc.prontonetworks.com/cgi-bin/authlogout"
+
+    private const val TAG = "AutoLoginManager"
+
+    // Helper functions for conditional logging
+    private fun logDebug(message: String) {
+        if (BuildConfig.DEBUG) Log.d(TAG, message)
+    }
+
+    private fun logError(message: String, throwable: Throwable? = null) {
+        if (BuildConfig.DEBUG) {
+            if (throwable != null) Log.e(TAG, message, throwable) else Log.e(TAG, message)
+        }
+    }
+
+    private fun logWarning(message: String) {
+        if (BuildConfig.DEBUG) Log.w(TAG, message)
+    }
+
     fun isTargetCaptivePortal(network: Network?): Boolean {
+        logDebug("Starting target captive portal check...")
         return try {
             val url = URL(LOGIN_URL)
             val resolvedUrl = resolveLoginUrl(network, url.host, url.file)
@@ -182,6 +203,7 @@ object AutoLoginManager {
                 hostHeader = url.host
             )
             connection.connect()
+
             val responseCode = connection.responseCode
             val locationHeader = connection.getHeaderField("Location")
             connection.disconnect()
@@ -281,14 +303,18 @@ object AutoLoginManager {
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
 
+            logDebug("Encoding credentials and building POST payload...")
             val postData = "userId=${URLEncoder.encode(userId, "UTF-8")}" +
-              "&password=${URLEncoder.encode(password, "UTF-8")}" +
-              "&serviceName=ProntoAuthentication"
+                    "&password=${URLEncoder.encode(password, "UTF-8")}" +
+                    "&serviceName=ProntoAuthentication"
 
+            logDebug("Writing POST payload to output stream...")
             connection.outputStream.bufferedWriter().use { it.write(postData) }
 
+            logDebug("Awaiting response from portal...")
             when (val responseCode = connection.responseCode) {
-                HttpURLConnection.HTTP_OK -> { // 200
+                HttpURLConnection.HTTP_OK -> {
+                    logDebug("Received 200 OK. Reading response body...")
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
                     val isSuccess = "Access Granted" in response || "You have successfully connected" in response || "already logged in" in response.lowercase()
                     val responsePreview = response
@@ -377,20 +403,23 @@ object AutoLoginManager {
             connection.connect()
 
             val code = connection.responseCode
-            Log.d("AutoLoginManager", "Logout response code: $code")
+            logDebug("Logout returned response code: $code")
 
-            // Drain response to avoid leaked connections
+            logDebug("Draining response streams to prevent connection leaks...")
             try {
                 (if (code >= 400) connection.errorStream else connection.inputStream)
                     ?.buffered()?.use { it.readBytes() }
-            } catch (_: Exception) { /* ignore */ }
+            } catch (e: Exception) {
+                logDebug("Stream drain exception (ignored): ${e.message}")
+            }
 
             connection.disconnect()
-            code in 200..399
+            val success = code in 200..399
+            logDebug("Logout success evaluation: $success")
+            success
         } catch (e: Exception) {
-            Log.e("AutoLoginManager", "Logout failed: ${e.message}")
+            logError("Logout failed with exception: ${e.message}", e)
             false
         }
     }
-
 }

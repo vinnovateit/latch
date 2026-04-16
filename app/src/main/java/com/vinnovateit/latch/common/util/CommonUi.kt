@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +51,7 @@ fun Tag(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
+            .clip(CircleShape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .background(color.copy(0.15f))
             .padding(horizontal = 12.dp, vertical = 6.dp),

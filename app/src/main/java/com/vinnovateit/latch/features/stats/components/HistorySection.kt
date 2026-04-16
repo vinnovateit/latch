@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -29,10 +30,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material3.Icon
@@ -54,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
@@ -62,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.google.firebase.crashlytics.buildtools.reloc.org.apache.http.client.CircularRedirectException
 import com.vinnovateit.latch.common.util.NoDataCard
 import com.vinnovateit.latch.common.util.formatBytes
 import com.vinnovateit.latch.domain.model.DataUsage
@@ -118,6 +119,10 @@ private fun HistoryBarChartContent(chartItems: List<HistoryChartItem>) {
 
     val todayIdx = chartItems.indexOfLast { it is HistoryChartItem.BarData }
     var selectedIndex by remember { mutableIntStateOf(todayIdx) }
+
+    // Add state to track if we are programmatically scrolling
+    var isAutoScrolling by remember { mutableStateOf(false) }
+
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -149,7 +154,8 @@ private fun HistoryBarChartContent(chartItems: List<HistoryChartItem>) {
             }
             .distinctUntilChanged()
             .collect { centerIndex ->
-                if (centerIndex != -1 && selectedIndex != centerIndex) {
+                // Only update selection if we are NOT in the middle of an auto-scroll
+                if (!isAutoScrolling && centerIndex != -1 && selectedIndex != centerIndex) {
                     haptic.performHapticFeedback(HapticFeedbackType.KeyboardTap)
                     selectedIndex = centerIndex
 
@@ -166,27 +172,21 @@ private fun HistoryBarChartContent(chartItems: List<HistoryChartItem>) {
             }
     }
 
-    LaunchedEffect(lazyListState.isScrollInProgress) {
-        if (!lazyListState.isScrollInProgress && selectedIndex != -1) {
-            delay(100)
-            lazyListState.scrollToItem(selectedIndex)
+    // Initial scroll to today
+    LaunchedEffect(Unit) {
+        if (todayIdx != -1) {
+            lazyListState.scrollToItem(todayIdx)
         }
+        displayedData = totalUsageData to totalUsageLabel
     }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val halfScreenWidth = this.maxWidth / 2
-            val barWidth = 35.dp
-            val rowHeight = 170.dp
+            val barWidth = 52.dp // Made bars bigger
+            val rowHeight = 220.dp // Increased height
             val barAreaHeight = rowHeight * 0.8f
             val horizontalPadding = halfScreenWidth - (barWidth / 2)
-
-            LaunchedEffect(Unit) {
-                if (todayIdx != -1) {
-                    lazyListState.scrollToItem(todayIdx)
-                }
-                displayedData = totalUsageData to totalUsageLabel
-            }
 
             LazyRow(
                 state = lazyListState,
@@ -213,10 +213,26 @@ private fun HistoryBarChartContent(chartItems: List<HistoryChartItem>) {
                                 isSelected = (idx == selectedIndex),
                                 barAreaHeight = barAreaHeight,
                                 onTap = {
-                                    // Tapping now just instantly scrolls to the item.
                                     if (selectedIndex != idx) {
+                                        // 1. Set flag to prevent intermediate snaps
+                                        isAutoScrolling = true
+
+                                        // 2. Update selection immediately
+                                        selectedIndex = idx
+
+                                        // 3. Update displayed data immediately
+                                        displayedData = item.usage to dateFormatter.format(Date(item.timestamp))
+                                        revertJob?.cancel()
+                                        revertJob = coroutineScope.launch {
+                                            delay(7000)
+                                            displayedData = totalUsageData to totalUsageLabel
+                                        }
+
+                                        // 4. Perform the smooth scroll
                                         coroutineScope.launch {
-                                            lazyListState.scrollToItem(idx)
+                                            lazyListState.animateScrollToItem(idx)
+                                            // 5. Reset flag after scroll completes
+                                            isAutoScrolling = false
                                         }
                                     }
                                 }
@@ -272,17 +288,15 @@ private fun Bar(
     onTap: () -> Unit
 ) {
     val total = usage.rxBytes + usage.txBytes
-    // Calculate the raw fraction of the bar's height compared to the max usage.
     val rawFrac = if (maxUsage > 0) total.toFloat() / maxUsage else 0f
-
-    // Enforce a minimum height of 10% for visual consistency, even for zero-usage days.
     val targetFrac = rawFrac.coerceAtLeast(0.15f)
 
+    // Modified animation for "Go slow / Accelerate" and "Overshoot"
     val heightFrac by animateFloatAsState(
         targetValue = targetFrac,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
+            dampingRatio = 0.45f, // Bouncy (Overshoot)
+            stiffness = Spring.StiffnessLow // Slow start/settle
         ),
         label = "BarHeight"
     )
@@ -312,7 +326,7 @@ private fun Bar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(barHeightInDp)
-                    .clip(RoundedCornerShape(25.dp))
+                    .clip(CircleShape)
             ) {
                 if (total > 0) {
                     val w = size.width
@@ -322,31 +336,52 @@ private fun Bar(
 
                     if (dlH > 0) {
                         drawRect(
-                            color = ColorGraphDownload,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(ColorGraphDownload, ColorGraphDownload.copy(alpha = 0.6f)),
+                                startY = 0f,
+                                endY = dlH
+                            ),
                             topLeft = Offset(0f, 0f),
                             size = Size(w, dlH)
                         )
                     }
                     if (ulH > 0) {
                         drawRect(
-                            color = ColorGraphUpload,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(ColorGraphUpload, ColorGraphUpload.copy(alpha = 0.6f)),
+                                startY = dlH,
+                                endY = h
+                            ),
                             topLeft = Offset(0f, dlH),
                             size = Size(w, ulH)
                         )
                     }
                 } else {
-                    // Draw a faint gray bar for zero-usage days
-                    drawRect(color = Color.Gray)
+                    drawRect(color = Color.Gray.copy(alpha = 0.3f))
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            dayLabel,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-        )
+
+        Spacer(Modifier.height(12.dp))
+
+        val backgroundColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+        val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(backgroundColor)
+        ) {
+            Text(
+                text = dayLabel,
+                style = MaterialTheme.typography.bodyMedium, // Bigger font
+                color = textColor,
+                fontWeight = FontWeight.Bold, // Bold text
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -369,7 +404,7 @@ private fun StatDetailRow(data: Pair<DataUsage, String>) {
             targetState = totalFmt,
             transitionSpec = {
                 (slideInVertically { it } + fadeIn()) togetherWith
-                  (slideOutVertically { -it } + fadeOut())
+                        (slideOutVertically { -it } + fadeOut())
             },
             label = "TotalUsageSwitch"
         ) { (v, u) ->

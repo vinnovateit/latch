@@ -30,7 +30,6 @@ fun StandardSlidePage(slide: SlideContent) {
                 .align(Alignment.TopStart)
         )
 
-        // The outer Column centers the inner scrollable one
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -38,7 +37,6 @@ fun StandardSlidePage(slide: SlideContent) {
                 .fillMaxSize()
                 .padding(horizontal = 40.dp)
         ) {
-            // --- FIX: This inner Column is now scrollable ---
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally

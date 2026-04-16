@@ -180,8 +180,6 @@ fun LandscapeFloatingNavControls(
     onFinishClicked: () -> Unit,
     isFinishButtonEnabled: Boolean
 ) {
-    // --- Start of Added Animation Logic ---
-    // Animation specs and states copied from the portrait BottomBar to restore the animations.
     val morphAnimationSpec = tween<Float>(durationMillis = 600, easing = FastOutSlowInEasing)
     val rotationAnimationSpec = tween<Float>(durationMillis = 900, easing = FastOutSlowInEasing)
 
@@ -201,7 +199,6 @@ fun LandscapeFloatingNavControls(
         animationSpec = rotationAnimationSpec,
         label = "Rotation"
     )
-    // --- End of Added Animation Logic ---
 
     Row(
         modifier = modifier

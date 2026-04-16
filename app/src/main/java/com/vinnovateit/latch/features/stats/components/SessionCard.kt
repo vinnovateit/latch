@@ -59,9 +59,6 @@ import kotlin.math.max
 fun SessionCard(session: SessionSummary, speedUnit: String) {
     var lastInteraction by remember { mutableStateOf(0L) }
     var showOverlay by remember { mutableStateOf(true) }
-    var visibleMaxSpeed by remember { mutableLongStateOf(0L) }
-    var visibleMaxSpeedIsDownload by remember { mutableStateOf(true) }
-
 
     LaunchedEffect(lastInteraction) {
         if (lastInteraction != 0L) {
@@ -86,23 +83,12 @@ fun SessionCard(session: SessionSummary, speedUnit: String) {
                 onUserInteraction = { timestamp ->
                     lastInteraction = timestamp
                     showOverlay = false
-                },
-                onMaxSpeedUpdate = { maxSpeed, isDl ->
-                    visibleMaxSpeed = maxSpeed
-                    visibleMaxSpeedIsDownload = isDl
                 }
             )
 
             SessionDetailsOverlay(
                 modifier = Modifier.graphicsLayer { alpha = overlayAlpha },
                 session = session,
-            )
-
-            MaxSpeedTag(
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp),
-                maxSpeed = visibleMaxSpeed,
-                isDownload = visibleMaxSpeedIsDownload,
-                speedUnit = speedUnit
             )
         }
     }
@@ -143,7 +129,7 @@ private fun SessionDetailsOverlay(
 @Composable
 private fun SessionHeader(session: SessionSummary) {
     var duration by remember(session.startTimestamp) {
-      mutableLongStateOf(System.currentTimeMillis() - session.startTimestamp)
+        mutableLongStateOf(System.currentTimeMillis() - session.startTimestamp)
     }
     LaunchedEffect(Unit) {
         while (true) {
@@ -170,7 +156,6 @@ private fun SessionRateGraph(
     rateHistory: List<LiveDataPoint>,
     overlayAlpha: Float,
     onUserInteraction: (Long) -> Unit,
-    onMaxSpeedUpdate: (Long, Boolean) -> Unit
 ) {
     val initialScale = if (rateHistory.size > POINTS_IN_30_SECONDS) {
         rateHistory.size.toFloat() / POINTS_IN_30_SECONDS
@@ -181,10 +166,9 @@ private fun SessionRateGraph(
     var lastInteractionTime by remember { mutableLongStateOf(0L) }
     var isAutoScrolling by remember { mutableStateOf(false) }
 
-    // Auto-scroll logic when new data arrives and user is idle
     LaunchedEffect(rateHistory.size) {
         val idleDuration = System.currentTimeMillis() - lastInteractionTime
-        if (lastInteractionTime == 0L || idleDuration > 5000L) { // Autoscroll on first load or after idle
+        if (lastInteractionTime == 0L || idleDuration > 5000L) {
             isAutoScrolling = true
             scrollState.animateScrollTo(
                 scrollState.maxValue,
@@ -194,11 +178,9 @@ private fun SessionRateGraph(
         }
     }
 
-    // Reset scale after a period of inactivity
     LaunchedEffect(lastInteractionTime) {
-        if (lastInteractionTime == 0L) return@LaunchedEffect // Don't run on initial composition
+        if (lastInteractionTime == 0L) return@LaunchedEffect
         delay(5000L)
-        // Check again after delay in case of new interaction
         if (System.currentTimeMillis() - lastInteractionTime >= 5000L) {
             animate(initialValue = scale, targetValue = initialScale) { value, _ ->
                 scale = value
@@ -230,7 +212,6 @@ private fun SessionRateGraph(
             val containerHeight = constraints.maxHeight
             val density = LocalDensity.current
 
-            // User interaction detection for scrolling
             LaunchedEffect(scrollState.isScrollInProgress) {
                 if (scrollState.isScrollInProgress && !isAutoScrolling) {
                     val time = System.currentTimeMillis()
@@ -243,7 +224,6 @@ private fun SessionRateGraph(
                 var maxSpeed by remember { mutableStateOf(1L) }
                 val xAxisSpace = with(density) { 30.dp.toPx() }
                 val graphDrawHeight = containerHeight - xAxisSpace
-
 
                 LaunchedEffect(rateHistory, scrollState.value, scale) {
                     if (rateHistory.size < 2) return@LaunchedEffect
@@ -262,10 +242,9 @@ private fun SessionRateGraph(
                         it.timestamp in visibleStartTime..visibleEndTime
                     }
 
-                    val maxRx = visiblePoints.maxOfOrNull { it.usage.rxBytes } ?: 0L
-                    val maxTx = visiblePoints.maxOfOrNull { it.usage.txBytes } ?: 0L
+                    val maxRx = visiblePoints.maxOfOrNull { it.usage.rxBps } ?: 0L
+                    val maxTx = visiblePoints.maxOfOrNull { it.usage.txBps } ?: 0L
                     maxSpeed = if (visiblePoints.isEmpty()) 1L else max(maxRx, maxTx)
-                    onMaxSpeedUpdate(maxSpeed, maxRx >= maxTx)
                 }
 
                 val animatedMaxSpeed by animateFloatAsState(
@@ -326,7 +305,6 @@ private fun SessionRateGraph(
                             val startTimestamp = rateHistory.first().timestamp
                             val totalDuration = max(rateHistory.last().timestamp - startTimestamp, 1L)
                             val divisions = 5
-                            // Corrected loop to draw N-1 labels, avoiding the duplicate end time
                             for (i in 0 until divisions) {
                                 val fraction = i.toFloat() / divisions
                                 val x = size.width * fraction
@@ -341,7 +319,6 @@ private fun SessionRateGraph(
                         }
                     }
 
-                    // Blur overlay covering the graph area, controlled by overlayAlpha
                     if (overlayAlpha > 0f) {
                         Box(
                             modifier = Modifier
@@ -355,13 +332,6 @@ private fun SessionRateGraph(
     }
 }
 
-@Composable
-private fun MaxSpeedTag(modifier: Modifier = Modifier, maxSpeed: Long, isDownload: Boolean, speedUnit: String) {
-    if (maxSpeed > 0) {
-        val (v, u) = formatBitsPerSecond(maxSpeed, speedUnit)
-        Tag(text = "MAX ${v}${u}", color = if (isDownload) ColorGraphDownload else ColorGraphUpload, modifier = modifier.padding(end = 16.dp, top = 8.dp))
-    }
-}
 
 @Composable
 fun DataUsageCircle(

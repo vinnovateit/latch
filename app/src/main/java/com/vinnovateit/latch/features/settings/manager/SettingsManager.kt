@@ -8,7 +8,6 @@ import com.vinnovateit.latch.features.wifi.background.ForegroundService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-
 object SettingsManager {
 
   private const val PREFS_NAME = "app_settings"
@@ -17,6 +16,7 @@ object SettingsManager {
 
   // Keys
   private const val KEY_AUTO_LOGIN = "auto_login"
+  private const val KEY_BYPASS_PORTAL_CHECK = "bypass_portal_check"
   private const val KEY_SPEED_UNITS = "speed_units"
   private const val KEY_THEME = "theme"
   private const val KEY_USE_DYNAMIC_COLORS = "use_dynamic_colors"
@@ -24,6 +24,7 @@ object SettingsManager {
 
   // Default Values
   private const val DEFAULT_AUTO_LOGIN = true
+  private const val DEFAULT_BYPASS_PORTAL_CHECK = true // Enabled by default as requested
   private const val DEFAULT_SPEED_UNITS = "bps"
   private const val DEFAULT_THEME = "System Default"
   private const val DEFAULT_USE_DYNAMIC_COLORS = false
@@ -31,6 +32,9 @@ object SettingsManager {
   // StateFlows to observe changes
   private val _autoLogin = MutableStateFlow(DEFAULT_AUTO_LOGIN)
   val autoLogin: StateFlow<Boolean> = _autoLogin
+
+  private val _bypassPortalCheck = MutableStateFlow(DEFAULT_BYPASS_PORTAL_CHECK)
+  val bypassPortalCheck: StateFlow<Boolean> = _bypassPortalCheck
 
   private val _speedUnits = MutableStateFlow(DEFAULT_SPEED_UNITS)
   val speedUnits: StateFlow<String> = _speedUnits
@@ -49,6 +53,7 @@ object SettingsManager {
 
   private fun loadSettings() {
     _autoLogin.value = sharedPreferences.getBoolean(KEY_AUTO_LOGIN, DEFAULT_AUTO_LOGIN)
+    _bypassPortalCheck.value = sharedPreferences.getBoolean(KEY_BYPASS_PORTAL_CHECK, DEFAULT_BYPASS_PORTAL_CHECK)
     _speedUnits.value = sharedPreferences.getString(KEY_SPEED_UNITS, DEFAULT_SPEED_UNITS) ?: DEFAULT_SPEED_UNITS
     _theme.value = sharedPreferences.getString(KEY_THEME, DEFAULT_THEME) ?: DEFAULT_THEME
     _useDynamicColors.value = sharedPreferences.getBoolean(KEY_USE_DYNAMIC_COLORS, DEFAULT_USE_DYNAMIC_COLORS)
@@ -61,19 +66,17 @@ object SettingsManager {
     appContext?.let {
       val serviceIntent = Intent(it, ForegroundService::class.java)
       if (enabled) {
-        // Start the service if the toggle is turned ON
         it.startService(serviceIntent)
       } else {
-        // Stop the service if the toggle is turned OFF
         it.stopService(serviceIntent)
       }
     }
   }
 
-//  fun setAutoLogin(enabled: Boolean) {
-//    _autoLogin.value = enabled
-//    sharedPreferences.edit { putBoolean(KEY_AUTO_LOGIN, enabled) }
-//  }
+  fun setBypassPortalCheck(enabled: Boolean) {
+    _bypassPortalCheck.value = enabled
+    sharedPreferences.edit { putBoolean(KEY_BYPASS_PORTAL_CHECK, enabled) }
+  }
 
   fun setSpeedUnits(units: String) {
     _speedUnits.value = units
@@ -98,5 +101,4 @@ object SettingsManager {
       it.sendBroadcast(intent)
     }
   }
-
 }

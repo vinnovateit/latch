@@ -39,7 +39,6 @@ class WiFiStatusViewModel(application: Application) : AndroidViewModel(applicati
     private val _ssid = MutableStateFlow("Not Connected")
 
     init {
-        //startStatsService()
         refreshStatus()
     }
 
@@ -49,7 +48,7 @@ class WiFiStatusViewModel(application: Application) : AndroidViewModel(applicati
 
             withContext(Dispatchers.Main) {
                 _ssid.value = if (isSessionActive) "Connected" else ("Not Connected")
-                }
+            }
 
             Log.d("WiFiStatusViewModel", "UI Refreshed: SSID is ${_ssid.value}, IsSessionActive is $isSessionActive")
         }
@@ -66,11 +65,6 @@ class WiFiStatusViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
 
-        if (SessionRepository.liveStatus.value != null) {
-            UiNotifier.showToast(ctx, "Re-validating connection...")
-        } else {
-            UiNotifier.showToast(ctx, "Checking network...")
-        }
 
         Log.d("WiFiStatusViewModel", "Delegating network check to ForegroundService.")
         val serviceIntent = Intent(getApplication(), ForegroundService::class.java).apply {

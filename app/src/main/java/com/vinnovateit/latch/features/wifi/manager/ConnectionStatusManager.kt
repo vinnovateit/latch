@@ -15,9 +15,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 sealed class ConnectionStatus {
   object Idle : ConnectionStatus()
-  data class Connecting(val message: String) : ConnectionStatus()
   object Success : ConnectionStatus()
   data class Failed(val message: String) : ConnectionStatus()
+  companion object {
+    data class Connecting(val message: String) : ConnectionStatus()
+  }
 }
 
 object ConnectionStatusManager {

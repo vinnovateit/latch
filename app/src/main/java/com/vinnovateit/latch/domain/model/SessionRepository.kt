@@ -21,6 +21,8 @@ import com.vinnovateit.latch.features.wifi.widget.LatchWidgetUpdater
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.Date
+import java.util.Calendar
+import kotlin.random.Random
 
 object SessionRepository {
   private var applicationContext: Application? = null
@@ -130,8 +132,8 @@ object SessionRepository {
     val totalRxBytes = sessionToFinalize.liveData.sumOf { it.usage.rxBytes }
     val totalTxBytes = sessionToFinalize.liveData.sumOf { it.usage.txBytes }
     val totalDataUsed = totalRxBytes + totalTxBytes
-    val maxRxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.rxBytes } ?: 0L
-    val maxTxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.txBytes } ?: 0L
+    val maxRxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.rxBps } ?: 0L
+    val maxTxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.txBps } ?: 0L
 
     if (totalDataUsed < 1024) {
       triggerWidgetUpdate()
@@ -162,6 +164,52 @@ object SessionRepository {
     repoScope.launch {
       statsDao.clearAllSessions()
       UiNotifier.showToast(applicationContext!!, "Stats Cleared!")
+    }
+  }
+
+  // Developer Option to Fill Dummy Data
+  fun generateDummyData() {
+    repoScope.launch {
+      val calendar = Calendar.getInstance()
+      val sessions = mutableListOf<Session>()
+
+      for (i in 0..6) {
+        val dayCal = Calendar.getInstance()
+        dayCal.add(Calendar.DAY_OF_YEAR, -i)
+
+        // Generate 1-2 sessions per day for variety
+        val sessionsCount = Random.nextInt(1, 3)
+
+        for (j in 0 until sessionsCount) {
+          // Random start time within that day (approximate)
+          val durationSeconds = Random.nextLong(600, 7200) // 10 mins to 2 hours
+          val startOffset = Random.nextLong(0, 3600 * 10) // Spread within 10 hours
+          val startTimeMillis = dayCal.timeInMillis - (startOffset * 1000)
+          val endTimeMillis = startTimeMillis + (durationSeconds * 1000)
+
+          // Random Data Usage (High enough to be visible on graph)
+          val rxBytes = Random.nextLong(50 * 1024 * 1024, 800 * 1024 * 1024) // 50MB - 800MB
+          val txBytes = Random.nextLong(10 * 1024 * 1024, 200 * 1024 * 1024) // 10MB - 200MB
+
+          // Calculate fake max speeds based on duration
+          val maxRx = rxBytes / durationSeconds.coerceAtLeast(1) * 2 // Peak is roughly double avg
+          val maxTx = txBytes / durationSeconds.coerceAtLeast(1) * 2
+
+          sessions.add(
+            Session(
+              startTime = Date(startTimeMillis),
+              endTime = Date(endTimeMillis),
+              rxBytes = rxBytes,
+              txBytes = txBytes,
+              maxRxBps = maxRx,
+              maxTxBps = maxTx
+            )
+          )
+        }
+      }
+
+      sessions.forEach { addSessionToDb(it) }
+      applicationContext?.let { UiNotifier.showToast(it, "Added dummy data for past 7 days") }
     }
   }
 

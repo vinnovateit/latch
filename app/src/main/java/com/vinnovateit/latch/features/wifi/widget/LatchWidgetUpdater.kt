@@ -7,6 +7,7 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -16,13 +17,10 @@ import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus
 import com.vinnovateit.latch.features.wifi.manager.ConnectionStatusManager
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.serialization.encodeToString
 
 class LatchWidgetUpdater(
   context: Context,
@@ -34,7 +32,11 @@ class LatchWidgetUpdater(
 
     fun enqueueOneTimeUpdate(context: Context) {
       val request = OneTimeWorkRequestBuilder<LatchWidgetUpdater>().build()
-      WorkManager.getInstance(context).enqueue(request)
+      WorkManager.getInstance(context).enqueueUniqueWork(
+        "latch_widget_update_immediate",
+        ExistingWorkPolicy.REPLACE,
+        request
+      )
     }
 
     fun enqueuePeriodicUpdate(context: Context) {
@@ -64,7 +66,7 @@ class LatchWidgetUpdater(
     val detailedStatus = ConnectionStatusManager.status.firstOrNull()
 
     val widgetState = when (detailedStatus) {
-      is ConnectionStatus.Connecting -> LatchWidgetState(
+      is ConnectionStatus.Companion.Connecting -> LatchWidgetState(
         status = detailedStatus.message,
         connectedDuration = "...",
         isConnected = false,
@@ -78,7 +80,6 @@ class LatchWidgetUpdater(
         isLightTheme = !isDarkMode,
         useDynamicColors = useDynamic
       )
-      // For Success, Idle, or null, we rely on the session state.
       else -> {
         if (liveSession != null) {
           val connectedAt = liveSession.startTimeMillis

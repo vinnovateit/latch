@@ -40,7 +40,6 @@ fun SetUpAccountPage(
         credentialsExist = StoredCredentials.credentialsExist(context)
     }
 
-    // --- FIX: The layout is now a single Column to allow proper scrolling ---
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -57,7 +56,7 @@ fun SetUpAccountPage(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 4.dp), // Adjusted padding
+                .padding(start = 4.dp),
             textAlign = TextAlign.Start
         )
 
@@ -106,7 +105,6 @@ fun SetUpAccountPage(
             }
         }
 
-        // --- FIX: Spacer with weight pushes the Surface to the bottom ---
         Spacer(modifier = Modifier.weight(1f).heightIn(min = 32.dp))
 
         // Bottom notice Surface

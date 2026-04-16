@@ -1,14 +1,15 @@
 package com.vinnovateit.latch.features.about
 
 import android.content.Intent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,11 +19,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -62,153 +68,184 @@ val teamMembers = listOf(
 fun MeetTheTeamPage(onBackClick: () -> Unit) {
     Scaffold { innerPadding ->
         val context = LocalContext.current
+        val haptic = LocalHapticFeedback.current
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Top Row: Back Arrow (left) + Logo (right)
-            Row(
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Scrollable Content
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = innerPadding.calculateBottomPadding())
+                    // Apply content padding to push the start of the list below the TopBar area
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Spacer to push the vinnovate logo down, leaving room for the absolutely positioned back button
+                Spacer(modifier = Modifier.height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp))
+
+                // Centered Vinnovate Logo with cropped height
+                Box(
+                    modifier = Modifier
+                        .height(70.dp) // your cropped height
+                        .width(200.dp), // keep width
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_vinnovateit),
+                        contentDescription = "Vinnovate Logo",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://vinnovateit.com".toUri())
+                                context.startActivity(intent)
+                            },
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
+                    )
+                }
+
+                // Social Media Logo
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(60.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 30.dp, bottom = 30.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.linkedin),
+                        contentDescription = "LinkedIn",
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://www.linkedin.com/company/v-innovate-it/".toUri())
+                                context.startActivity(intent)
+                            },
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.github),
+                        contentDescription = "GitHub",
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://github.com/vinnovateit".toUri())
+                                context.startActivity(intent)
+                            },
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.instagram),
+                        contentDescription = "Instagram",
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                val intent = Intent(Intent.ACTION_VIEW, "https://www.instagram.com/vinnovateit/".toUri())
+                                context.startActivity(intent)
+                            },
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
+                    )
+                }
+
+                // Heading
+                Text(
+                    text = "Meet The Team",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontFamily = FontFamily(Font(R.font.outfit_variable))
+                    ),
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .width(200.dp)
+                        .height(3.dp)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+
+                Spacer(modifier = Modifier.height(30.dp))
+
+                // Team Member Cards
+                val configuration = LocalConfiguration.current
+                val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+                Column(
+                    modifier = Modifier.padding(horizontal = if (isLandscape) 32.dp else 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (isLandscape) 10.dp else 20.dp)
+                ) {
+                    teamMembers.chunked(if (isLandscape) 3 else 2).forEach { rowMembers ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 15.dp else 25.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            rowMembers.forEach { member ->
+                                TeamMemberCard(
+                                    teamMember = member,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (rowMembers.size < (if (isLandscape) 3 else 2)) Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+                ContributingSection()
+                Spacer(modifier = Modifier.height(100.dp))
+            }
+
+            // Protective Status Bar Gradient Scrim
+            // Fades from solid surface color at the top to transparent at the bottom
+            val surfaceColor = MaterialTheme.colorScheme.surface
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 2.dp, start = 5.dp, end = 10.dp),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.Start
-            ) {
-                TooltipHint(tooltipText = "Back") {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-            // Centered Vinnovate Logo with cropped height
-            Box(
-                modifier = Modifier
-                    .height(70.dp) // your cropped height
-                    .width(200.dp), // keep width
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_vinnovateit),
-                    contentDescription = "Vinnovate Logo",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            val intent = Intent(Intent.ACTION_VIEW, "https://vinnovateit.com".toUri())
-                            context.startActivity(intent)
-                        },
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
-                )
-            }
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Social Media Logo
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(60.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 30.dp, bottom = 30.dp)
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.linkedin),
-                    contentDescription = "LinkedIn",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            val intent = Intent(Intent.ACTION_VIEW, "https://www.linkedin.com/company/v-innovate-it/".toUri())
-                            context.startActivity(intent)
-                        },
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
-                )
-                Image(
-                    painter = painterResource(id = R.drawable.github),
-                    contentDescription = "GitHub",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            val intent = Intent(Intent.ACTION_VIEW, "https://github.com/vinnovateit".toUri())
-                            context.startActivity(intent)
-                        },
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
-                )
-                Image(
-                    painter = painterResource(id = R.drawable.instagram),
-                    contentDescription = "Instagram",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            val intent = Intent(Intent.ACTION_VIEW, "https://www.instagram.com/vinnovateit/".toUri())
-                            context.startActivity(intent)
-                        },
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
-                )
-            }
-
-            // Heading
-            Text(
-                text = "Meet The Team",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontFamily = FontFamily(Font(R.font.outfit_variable))
-                ),
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            Box(
-                modifier = Modifier
-                    .width(200.dp)
-                    .height(3.dp)
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-
-            Spacer(modifier = Modifier.height(30.dp))
-
-            // Team Member Cards
-            val configuration = LocalConfiguration.current
-            val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-            Column(
-                modifier = Modifier.padding(horizontal = if (isLandscape) 32.dp else 16.dp),
-                verticalArrangement = Arrangement.spacedBy(if (isLandscape) 10.dp else 20.dp)
-            ) {
-                teamMembers.chunked(if (isLandscape) 3 else 2).forEach { rowMembers ->
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 15.dp else 25.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        rowMembers.forEach { member ->
-                            TeamMemberCard(
-                                teamMember = member,
-                                modifier = Modifier.weight(1f)
+                    .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 24.dp)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                surfaceColor,
+                                surfaceColor.copy(alpha = 0.8f),
+                                Color.Transparent
                             )
-                        }
-                        if (rowMembers.size < (if (isLandscape) 3 else 2)) Spacer(modifier = Modifier.weight(1f))
-                    }
+                        )
+                    )
+            )
+
+            TooltipHint(tooltipText = "Back") {
+                FilledIconButton(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(start = 12.dp, top = 4.dp)
+                        .size(40.dp)
+                        .clip(CircleShape),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onBackClick()
+                    },
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
-            ContributingSection()
-            // Added extra space at the end
-            Spacer(modifier = Modifier.height(100.dp))
         }
     }
 }
