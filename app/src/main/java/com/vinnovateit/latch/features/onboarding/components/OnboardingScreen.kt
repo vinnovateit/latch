@@ -83,8 +83,8 @@ fun OnboardingScreen(
                     )
                 }),
             SlideContent(
-                "Enable Notifications",
-                buildAnnotatedString { append("To monitor your connection and provide status updates, Latch runs a service that requires a persistent notification. You can minimize or hide it from your phone's settings at any time.") },
+                "Permissions Required",
+                buildAnnotatedString { append("Latch requires Location access to verify the Wi-Fi network (SSID), and Notification access to provide status updates while running in the background.") },
                 {
                     Icon(
                         imageVector = Icons.Rounded.Notifications,

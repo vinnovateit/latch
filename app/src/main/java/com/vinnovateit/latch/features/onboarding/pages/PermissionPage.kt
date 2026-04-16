@@ -25,21 +25,27 @@ import com.google.accompanist.permissions.rememberPermissionState
 import com.vinnovateit.latch.features.onboarding.components.SlideContent
 import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
+
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun NotificationPermissionPage(
     slide: SlideContent,
     onPermissionGranted: () -> Unit
 ) {
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.POST_NOTIFICATIONS
-    } else ""
+    val permissionsToRequest = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
-    val notificationPermissionState = rememberPermissionState(
-        permission = permission
-    ) { granted -> if (granted) onPermissionGranted() }
+    val permissionsState = rememberMultiplePermissionsState(permissions = permissionsToRequest) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            onPermissionGranted()
+        }
+    }
 
-    val isGranted = notificationPermissionState.status.isGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+    val isGranted = permissionsState.allPermissionsGranted
 
     LaunchedEffect(isGranted) {
         if (isGranted) onPermissionGranted()
@@ -88,7 +94,7 @@ fun NotificationPermissionPage(
                 Button(
                     onClick = {
                         if (!isGranted) {
-                            notificationPermissionState.launchPermissionRequest()
+                            permissionsState.launchMultiplePermissionRequest()
                         }
                     },
                     enabled = !isGranted,
@@ -114,13 +120,20 @@ fun NotificationPermissionPage(
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun NotificationPermissionPageLandscape(slide: SlideContent, onPermissionGranted: () -> Unit) {
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.POST_NOTIFICATIONS
-    } else ""
-    val notificationPermissionState = rememberPermissionState(
-        permission = permission
-    ) { granted -> if (granted) onPermissionGranted() }
-    val isGranted = notificationPermissionState.status.isGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+    val permissionsToRequest = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    val permissionsState = rememberMultiplePermissionsState(permissions = permissionsToRequest) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            onPermissionGranted()
+        }
+    }
+
+    val isGranted = permissionsState.allPermissionsGranted
+
     LaunchedEffect(isGranted) {
         if (isGranted) onPermissionGranted()
     }
@@ -128,7 +141,7 @@ fun NotificationPermissionPageLandscape(slide: SlideContent, onPermissionGranted
     PageScaffoldLandscape(slide) {
         Spacer(modifier = Modifier.height(24.dp))
         Button(
-            onClick = { if (!isGranted) notificationPermissionState.launchPermissionRequest() },
+            onClick = { if (!isGranted) permissionsState.launchMultiplePermissionRequest() },
             enabled = !isGranted,
             contentPadding = PaddingValues(horizontal = 28.dp, vertical = 14.dp)
         ) {

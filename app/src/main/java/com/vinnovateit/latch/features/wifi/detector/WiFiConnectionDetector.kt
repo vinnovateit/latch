@@ -7,25 +7,30 @@ import android.net.NetworkCapabilities
 object WiFiConnectionDetector {
 
     /**
+     * Retrieves the current Wi-Fi network, regardless of validation status.
+     * This grabs the network from `allNetworks` bypassing the default `activeNetwork`
+     * which only returns validated connections that the OS promotes.
+     *
+     * @param context Application context
+     * @return The Wi-Fi Network object, if any.
+     */
+    fun getWifiNetwork(context: Context): android.net.Network? {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return null
+
+        return connectivityManager.allNetworks.firstOrNull { network ->
+            val caps = connectivityManager.getNetworkCapabilities(network)
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+    }
+
+    /**
      * Checks if the device is currently connected to any Wi-Fi network.
      *
      * @param context Application context
      * @return true if connected to a Wi-Fi network, false otherwise
      */
     fun isConnectedToWiFi(context: Context): Boolean {
-        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return false
-
-        // activeNetwork might be null or point to Cellular if Wi-Fi has no internet (like a captive portal)
-        // So we iterate through all currently connected networks to find a Wi-Fi transport.
-        val networks = connectivityManager.allNetworks
-        for (network in networks) {
-            val capabilities = connectivityManager.getNetworkCapabilities(network)
-            if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
-                return true
-            }
-        }
-
-        return false
+        return getWifiNetwork(context) != null
     }
 }

@@ -37,7 +37,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -65,10 +66,40 @@ import com.vinnovateit.latch.features.onboarding.OnboardingActivity
 import com.vinnovateit.latch.features.settings.SettingsActivity
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
-import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus
-import com.vinnovateit.latch.ui.theme.*
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.vinnovateit.latch.features.wifi.detector.PrivateDnsChecker
+
+@Composable
+fun HomeRedCanvasBackground(buttonSizePx: Float, isPortrait: Boolean) {
+    val colorScheme = MaterialTheme.colorScheme
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer(alpha = 0.99f)
+    ) {
+        drawRect(
+            color = colorScheme.primaryContainer,
+            size = size
+        )
+        if (isPortrait) {
+            val cutoutRatio = 1.2f
+            val cutoutDiameter = buttonSizePx * cutoutRatio
+            val cutoutRadius = cutoutDiameter / 2f
+            val circleTopLeft = Offset(
+                x = (size.width - cutoutDiameter) / 2f,
+                y = -cutoutRadius
+            )
+            drawArc(
+                color = Color.Transparent,
+                startAngle = 0f,
+                sweepAngle = 180f,
+                useCenter = true,
+                topLeft = circleTopLeft,
+                size = Size(cutoutDiameter, cutoutDiameter),
+                blendMode = BlendMode.Clear
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -333,39 +364,29 @@ fun StaggeredStatusText(
     isConnected: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val text = if (isConnected) "CONNECTED" else "DISCONNECTED"
-    val color = if (isConnected) ColorStatusConnected else ColorStatusDisconnected
-
-    val containerHeight by animateDpAsState(
-        targetValue = if (visible) 28.dp else 0.dp,
-        animationSpec = if (visible) {
-            spring(stiffness = Spring.StiffnessMediumLow)
-        } else {
-            tween(durationMillis = 300, delayMillis = 400, easing = FastOutSlowInEasing)
-        },
-        label = "containerHeight"
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(containerHeight)
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.2f to Color.Black,
-                        1f to Color.Black
-                    ),
-                    blendMode = BlendMode.DstIn
-                )
-            }
-            .clipToBounds(),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        if (containerHeight > 0.dp) {
+    val context = LocalContext.current
+    Column(modifier = modifier) {
+        TopBarSection(
+            onPreferencesClick = {
+                context.startActivity(Intent(context, SettingsActivity::class.java))
+            },
+            onHowItWorksClick = {
+                context.startActivity(Intent(context, OnboardingActivity::class.java).apply {
+                    putExtra("start_from_step_one", true)
+                })
+            },
+            onMeetTheTeamClick = {
+                context.startActivity(Intent(context, MeetTheTeamActivity::class.java))
+            },
+        )
+        PrivateDnsWarningBanner()
+        Spacer(Modifier.size(25.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(bottom = if (isLandscape) 16.dp else 90.dp) // Increased bottom padding
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
@@ -670,5 +691,39 @@ fun HomeScreenPortraitPreview() {
 fun HomeScreenLandscapePreview() {
     LatchTheme {
         HomeScreen(isConnected = true, networkSpeed = "12 mbps", session = null, connectionStatus = ConnectionStatus.Idle, speedUnit = "B/s")
+    }
+}
+
+@Composable
+fun PrivateDnsWarningBanner() {
+    val context = LocalContext.current
+    var isPrivateDnsOn by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isPrivateDnsOn = PrivateDnsChecker.isPrivateDnsEnabled(context)
+    }
+
+    if (isPrivateDnsOn) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Warning,
+                    contentDescription = "Warning",
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Private DNS is enabled. If login fails, try disabling it in System Settings.",
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontSize = 12.sp,
+                    fontFamily = SatoshiFontFamily
+                )
+            }
+        }
     }
 }
