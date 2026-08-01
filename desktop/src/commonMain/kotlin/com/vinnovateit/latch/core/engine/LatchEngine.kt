@@ -83,6 +83,14 @@ class LatchEngine(
     private var started = false
 
     /**
+     * The portal address the last successful login used, so logout can reach the
+     * same place without paying for another Wi-Fi DNS lookup -- and so it still
+     * works when the user brings a VPN up *after* latching, which is the normal
+     * order of events.
+     */
+    private var lastPortalIp: String? = null
+
+    /**
      * Serialises checkAndAct entry points so two flows -- e.g. the startup
      * CheckAndLogin command and the first polled Wi-Fi Available event -- cannot
      * race the portal with simultaneous credential POSTs. Pronto responds to
@@ -244,16 +252,18 @@ class LatchEngine(
             return
         }
 
-        if (!isTargetNetwork()) {
+        val portalIp = resolveTargetPortal()
+        if (portalIp == null) {
             logger.w(TAG, "Captive portal present but this is not a known Latch network.")
             ConnectionStatusManager.postStatus(
-                ConnectionStatus.Failed(ConnectionStatus.Reason.NotTargetNetwork)
+                ConnectionStatus.Failed(failureReason(ConnectionStatus.Reason.NotTargetNetwork))
             )
             return
         }
 
         logger.d(TAG, "Captive portal detected on a known network. Logging in.")
-        handleCaptivePortal(handle)
+        lastPortalIp = portalIp
+        handleCaptivePortal(handle, portalIp)
     }
 
     /**
@@ -271,24 +281,58 @@ class LatchEngine(
      * to a Pronto network. The SSID match is defence in depth, checked with
      * [isVitCampusSsid].
      */
-    private suspend fun isTargetNetwork(): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun resolveTargetPortal(): String? = withContext(Dispatchers.IO) {
         val ssid = platform.wifi.currentSsid()
         if (!isVitCampusSsid(ssid)) {
             logger.w(TAG, "SSID '$ssid' is not a VIT campus network; refusing to send credentials.")
-            return@withContext false
+            return@withContext null
         }
-        val resolves = runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess
-        if (!resolves) {
-            logger.w(TAG, "Portal host does not resolve on this network; refusing to log in.")
+
+        // The system resolver is asked first, so the ordinary path is unchanged,
+        // but a failure from it is not taken as final: a filtering resolver or a
+        // DNS blocklist answering for the system used to fail this gate outright
+        // and block login on a network that was perfectly fine. The Wi-Fi
+        // adapter's own DHCP DNS is what the network itself would answer with, so
+        // it gets the last word.
+        val systemAnswer = runCatching { InetAddress.getByName(PORTAL_HOST).hostAddress }.getOrNull()
+        val resolved = systemAnswer ?: platform.wifi.resolveViaWifiDns(PORTAL_HOST)
+
+        if (resolved == null) {
+            logger.w(
+                TAG,
+                "Portal host resolves via neither the system resolver nor the Wi-Fi DNS " +
+                    "servers; this is not a Pronto network. Refusing to log in.",
+            )
+        } else if (systemAnswer == null) {
+            logger.d(TAG, "Portal resolved to $resolved via Wi-Fi DNS (system resolver could not).")
         }
-        resolves
+        resolved
     }
+
+    /**
+     * Re-labels a network failure as [ConnectionStatus.Reason.VpnRouting] when a
+     * tunnel holds the default route.
+     *
+     * Checked only on failure paths, never speculatively: it costs a PowerShell
+     * invocation, and a VPN is not itself a problem -- it only matters once
+     * something has already gone wrong, because then it is almost certainly why.
+     */
+    private suspend fun failureReason(fallback: ConnectionStatus.Reason): ConnectionStatus.Reason =
+        withContext(Dispatchers.IO) {
+            val tunnel = platform.wifi.activeTunnelName()
+            if (tunnel != null) {
+                logger.w(TAG, "Attributing failure to VPN adapter '$tunnel' holding the default route.")
+                ConnectionStatus.Reason.VpnRouting
+            } else {
+                fallback
+            }
+        }
 
     /** True only for SSIDs shaped like "G-VIT" -- a single letter, a dash, "VIT". */
     private fun isVitCampusSsid(ssid: String?): Boolean =
         ssid != null && VIT_SSID_PATTERN.containsMatchIn(ssid.trim())
 
-    private suspend fun handleCaptivePortal(handle: NetworkHandle) {
+    private suspend fun handleCaptivePortal(handle: NetworkHandle, portalIp: String?) {
         ConnectionStatusManager.postStatus(
             ConnectionStatus.Connecting(ConnectionStatus.Step.Authenticating)
         )
@@ -308,6 +352,7 @@ class LatchEngine(
                 handle = handle,
                 useAlternate = false,
                 fallbackIp = platform.wifi.gatewayIp(),
+                portalIp = portalIp,
             )
             when (result) {
                 is LoginResult.Success -> {
@@ -316,14 +361,19 @@ class LatchEngine(
                 }
 
                 is LoginResult.Failure -> {
+                    val reason = failureReason(ConnectionStatus.Reason.LoginFailed)
+                    val vpn = reason == ConnectionStatus.Reason.VpnRouting
                     platform.notifier.notifyTransient(
                         title = "Login failed",
-                        text = "Check your credentials.",
+                        text = if (vpn) {
+                            "A VPN is routing your traffic. Pause it, or exclude " +
+                                "phc.prontonetworks.com from its tunnel."
+                        } else {
+                            "Check your credentials."
+                        },
                         isError = true,
                     )
-                    ConnectionStatusManager.postStatus(
-                        ConnectionStatus.Failed(ConnectionStatus.Reason.LoginFailed)
-                    )
+                    ConnectionStatusManager.postStatus(ConnectionStatus.Failed(reason))
                 }
             }
         } finally {
@@ -340,7 +390,12 @@ class LatchEngine(
         val handle = currentHandle ?: platform.wifi.activeHandle()
         platform.wifi.bindProcess(handle)
         try {
-            val ok = login.attemptLogout(handle, false, platform.wifi.gatewayIp())
+            val ok = login.attemptLogout(
+                handle = handle,
+                useAlternate = false,
+                fallbackIp = platform.wifi.gatewayIp(),
+                portalIp = lastPortalIp ?: platform.wifi.resolveViaWifiDns(PORTAL_HOST),
+            )
             _isLatched.value = false
             sessions.stopSession()
             if (ok) {

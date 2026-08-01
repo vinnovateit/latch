@@ -55,12 +55,39 @@ class AutoLoginManager(
     private fun logError(message: String, throwable: Throwable? = null) =
         logger.e(TAG, message, throwable)
 
+    /**
+     * The addresses to try for the portal, in order: the hostname first (the
+     * unchanged path, and the only one a virtual-host portal is guaranteed to
+     * answer), then [portalIp], then [fallbackIp].
+     *
+     * Only an *exception* advances to the next candidate. A response that parses
+     * as a failure means we reached the portal and it said no, and re-POSTing
+     * the same credentials at another address would just be repeat login
+     * attempts against a portal that already rejected them once.
+     *
+     * IP substitution is skipped for HTTPS: the certificate is issued for the
+     * hostname, so a bare-IP URL fails validation before the request goes out.
+     */
+    private fun candidates(
+        targetUrlStr: String,
+        portalIp: String?,
+        fallbackIp: String?,
+    ): List<String> = buildList {
+        add(targetUrlStr)
+        if (targetUrlStr.startsWith("http://")) {
+            listOfNotNull(portalIp, fallbackIp)
+                .map { targetUrlStr.replace(PORTAL_HOST, it) }
+                .forEach { if (it !in this) add(it) }
+        }
+    }
+
     fun attemptLogin(
         userId: String,
         password: String,
         handle: NetworkHandle? = null,
         useAlternate: Boolean = false,
         fallbackIp: String? = null,
+        portalIp: String? = null,
     ): LoginResult {
         logDebug("Initiating login attempt for user: $userId (useAlternate=$useAlternate)")
         val targetUrlStr = if (useAlternate) SECURE_LOGIN_URL else LOGIN_URL
@@ -113,32 +140,21 @@ class AutoLoginManager(
             }
         }
 
-        return try {
-            doAttempt(targetUrlStr)
-        } catch (e: java.net.UnknownHostException) {
-            logError("Login failed with UnknownHostException.", e)
-            if (fallbackIp != null) {
-                val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
-                logDebug("Retrying login with fallback IP: $fallbackTargetUrlStr")
-                try {
-                    doAttempt(fallbackTargetUrlStr)
-                } catch (fallbackE: Exception) {
-                    logError("Fallback login failed: ${fallbackE.message}", fallbackE)
-                    LoginResult.Failure
-                }
-            } else {
-                LoginResult.Failure
+        for (candidate in candidates(targetUrlStr, portalIp, fallbackIp)) {
+            try {
+                return doAttempt(candidate)
+            } catch (e: Exception) {
+                logError("Login attempt via $candidate failed: ${e.message}", e)
             }
-        } catch (e: Exception) {
-            logError("Login failed with exception: ${e.message}", e)
-            LoginResult.Failure
         }
+        return LoginResult.Failure
     }
 
     fun attemptLogout(
         handle: NetworkHandle? = null,
         useAlternate: Boolean = false,
         fallbackIp: String? = null,
+        portalIp: String? = null,
     ): Boolean {
         logDebug("Initiating logout attempt (useAlternate=$useAlternate)")
         val targetUrlStr = if (useAlternate) SECURE_LOGOUT_URL else LOGOUT_URL
@@ -168,24 +184,13 @@ class AutoLoginManager(
             return code in 200..399
         }
 
-        return try {
-            doAttempt(targetUrlStr)
-        } catch (e: java.net.UnknownHostException) {
-            logError("Logout failed with UnknownHostException.", e)
-            if (fallbackIp != null) {
-                val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
-                try {
-                    doAttempt(fallbackTargetUrlStr)
-                } catch (fallbackE: Exception) {
-                    logError("Fallback logout failed: ${fallbackE.message}", fallbackE)
-                    false
-                }
-            } else {
-                false
+        for (candidate in candidates(targetUrlStr, portalIp, fallbackIp)) {
+            try {
+                return doAttempt(candidate)
+            } catch (e: Exception) {
+                logError("Logout attempt via $candidate failed: ${e.message}", e)
             }
-        } catch (e: Exception) {
-            logError("Logout failed with exception: ${e.message}", e)
-            false
         }
+        return false
     }
 }

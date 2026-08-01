@@ -31,6 +31,8 @@ sealed interface ConnectionStatus {
         WifiOff,
         NotOnWifi,
         NotTargetNetwork,
+        /** A VPN holds the default route, so portal traffic never reaches the portal. */
+        VpnRouting,
         NoCredentials,
         LoginFailed,
         LogoutFailed,

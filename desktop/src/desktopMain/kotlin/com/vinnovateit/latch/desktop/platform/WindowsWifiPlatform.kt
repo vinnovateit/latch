@@ -32,6 +32,9 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
         const val CACHE_TTL_MS = 3_000L
         const val PS_TIMEOUT_SEC = 10L
 
+        val HOSTNAME_PATTERN = Regex("^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$")
+        val IPV4_PATTERN = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
+
         /** Attempts to spend waiting for the radio to associate after enabling it. */
         const val ENABLE_SETTLE_ATTEMPTS = 6
         const val ENABLE_SETTLE_INTERVAL_MS = 1_000L
@@ -243,6 +246,76 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
     override fun currentSsid(): String? = snapshot().ssid
 
     override fun gatewayIp(): String? = snapshot().gateway
+
+    /**
+     * Looks for an Up *virtual* adapter holding a default-ish route.
+     *
+     * The 0.0.0.0/1 + 128.0.0.0/1 pair is the WireGuard full-tunnel idiom (WARP,
+     * Tailscale exit nodes, most WireGuard clients); plain 0.0.0.0/0 covers the
+     * VPNs that replace the default route outright. Matching on the route rather
+     * than on adapter names avoids maintaining a list of every VPN vendor's
+     * driver description.
+     *
+     * `Virtual` is the discriminator: it excludes a docked Ethernet port, which
+     * can also steal the default route but is a different problem with a
+     * different fix. Hyper-V/WSL switches are virtual but hold no default route,
+     * so the route filter drops them before the Virtual check is reached.
+     */
+    override fun activeTunnelName(): String? {
+        val script = """
+            ${'$'}ErrorActionPreference = 'SilentlyContinue'
+            ${'$'}name = ''
+            foreach (${'$'}r in (Get-NetRoute -DestinationPrefix '0.0.0.0/0','0.0.0.0/1','128.0.0.0/1')) {
+              ${'$'}ad = Get-NetAdapter -InterfaceIndex ${'$'}r.ifIndex
+              if (${'$'}ad -and ${'$'}ad.Virtual -and ${'$'}ad.Status -eq 'Up') { ${'$'}name = ${'$'}ad.Name; break }
+            }
+            Write-Output ("RESULT|" + ${'$'}name)
+        """.trimIndent()
+
+        return runPowerShell(script)
+            ?.removePrefix("RESULT|")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.also { logger.w(TAG, "Default route is held by tunnel adapter '$it'") }
+    }
+
+    /**
+     * Resolves [host] against the Wi-Fi adapter's own DHCP-assigned DNS servers.
+     *
+     * Get-DnsClientServerAddress is read per *interface*, so it returns what DHCP
+     * gave the Wi-Fi NIC even while a VPN owns the system resolver; -DnsOnly and
+     * -NoHostsFile then keep Resolve-DnsName from consulting NetBIOS/LLMNR or the
+     * hosts file, and -QuickTimeout stops a dead server stalling the whole login.
+     * Each server is tried in order, since the first is often unreachable on a
+     * captive network until authentication completes.
+     */
+    override fun resolveViaWifiDns(host: String): String? {
+        // Interpolated straight into a script, so anything that is not plainly a
+        // hostname is refused rather than escaped.
+        if (!HOSTNAME_PATTERN.matches(host)) {
+            logger.w(TAG, "Refusing to resolve suspicious host '$host'")
+            return null
+        }
+
+        val script = """
+            ${'$'}ErrorActionPreference = 'SilentlyContinue'
+            ${'$'}a = Get-NetAdapter -Physical | Where-Object { ${'$'}_.PhysicalMediaType -match '802.11' } | Select-Object -First 1
+            ${'$'}ip = ''
+            if (${'$'}a) {
+              ${'$'}servers = (Get-DnsClientServerAddress -InterfaceIndex ${'$'}a.ifIndex -AddressFamily IPv4).ServerAddresses
+              foreach (${'$'}s in ${'$'}servers) {
+                ${'$'}rec = Resolve-DnsName -Name '$host' -Server ${'$'}s -Type A -DnsOnly -NoHostsFile -QuickTimeout |
+                  Where-Object { ${'$'}_.IPAddress } | Select-Object -First 1
+                if (${'$'}rec) { ${'$'}ip = ${'$'}rec.IPAddress; break }
+              }
+            }
+            Write-Output ("RESULT|" + ${'$'}ip)
+        """.trimIndent()
+
+        val ip = runPowerShell(script)?.removePrefix("RESULT|")?.trim()?.takeIf { it.isNotEmpty() }
+        logger.d(TAG, "resolveViaWifiDns('$host') -> ${ip ?: "no answer"}")
+        return ip?.takeIf { IPV4_PATTERN.matches(it) }
+    }
 
     override fun activeHandle(): NetworkHandle? =
         snapshot().takeIf { it.adapterUp }?.adapterName?.let { SimpleNetworkHandle(it) }

@@ -38,6 +38,8 @@ fun main() = runBlocking {
     println("currentSsid      : ${platform.wifi.currentSsid()}")
     println("gatewayIp        : ${platform.wifi.gatewayIp()}")
     println("activeHandle     : ${platform.wifi.activeHandle()?.id}")
+    println("tunnelHoldingRoute: ${platform.wifi.activeTunnelName() ?: "none"}")
+    println("portal via wifiDns: ${platform.wifi.resolveViaWifiDns("phc.prontonetworks.com") ?: "unresolved"}")
 
     println()
     println("--- SSID gate ---")

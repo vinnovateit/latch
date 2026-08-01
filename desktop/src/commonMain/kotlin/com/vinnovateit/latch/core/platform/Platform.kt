@@ -90,7 +90,41 @@ interface WifiPlatform {
     /** Best-effort; only used as a fallback when portal DNS fails. */
     fun gatewayIp(): String?
 
+    /**
+     * Resolves [host] using the DNS servers the *Wi-Fi adapter* was handed by
+     * DHCP, bypassing the system resolver entirely.
+     *
+     * This exists because the system resolver is not necessarily the network's.
+     * A VPN, a filtering resolver or a DNS-level blocklist can all answer for it,
+     * and any of them can fail to return the portal's address on a network that
+     * would happily resolve it. Asking the Wi-Fi adapter's own DHCP-assigned
+     * servers gets the answer the network itself would give.
+     *
+     * Note this is NOT what makes Latch work under a full-tunnel VPN. The Pronto
+     * portal is a public name on a public address, so a VPN's resolver answers it
+     * correctly and this path never even runs -- see [activeTunnelName] for what
+     * actually breaks there, and why it cannot be fixed here.
+     *
+     * @return the resolved IPv4 literal, or null if it could not be resolved
+     *   this way (no adapter, no DHCP DNS, or the name genuinely does not exist).
+     */
+    fun resolveViaWifiDns(host: String): String? = null
+
     fun activeHandle(): NetworkHandle?
+
+    /**
+     * The name of a VPN/tunnel adapter that has taken over the default route, or
+     * null if traffic is leaving by a real interface.
+     *
+     * Latch cannot route around this. A full-tunnel VPN claims the default route
+     * with 0.0.0.0/1 + 128.0.0.0/1, which beat the Wi-Fi adapter's 0.0.0.0/0 on
+     * longest-prefix match, and Windows picks the route by destination -- binding
+     * a socket to the Wi-Fi address does not override it. The override that would
+     * work is a /32 host route, which needs administrator rights Latch does not
+     * have. So this exists purely to turn an inexplicable failure into a message
+     * naming the cause and the fix.
+     */
+    fun activeTunnelName(): String? = null
 
     val events: Flow<WifiEvent>
 

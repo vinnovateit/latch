@@ -38,6 +38,11 @@ fun ConnectionStatus.displayText(): String = when (this) {
         ConnectionStatus.Reason.NotOnWifi -> stringResource(Res.string.status_not_on_wifi)
         // Desktop-only: no Android string exists for the SSID gate.
         ConnectionStatus.Reason.NotTargetNetwork -> "Not a known Latch network"
+        // Deliberately names the fix, not just the fault: the user cannot guess
+        // that a working VPN is what stopped a Wi-Fi login from going through.
+        ConnectionStatus.Reason.VpnRouting ->
+            "VPN is routing your traffic — pause it, or add phc.prontonetworks.com " +
+                "to its split-tunnel exclusions"
         ConnectionStatus.Reason.NoCredentials -> stringResource(Res.string.status_login_failed)
         ConnectionStatus.Reason.LoginFailed -> stringResource(Res.string.status_login_failed)
         ConnectionStatus.Reason.LogoutFailed -> stringResource(Res.string.status_logout_failed)
