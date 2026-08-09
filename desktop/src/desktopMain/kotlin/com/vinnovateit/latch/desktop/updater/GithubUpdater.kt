@@ -182,7 +182,9 @@ class GithubUpdater(
      * the app for good. A relaunch has to happen from a process that outlives
      * ours, so this writes a throwaway .cmd that runs msiexec *synchronously*
      * (cmd waits for it, unlike our own ProcessBuilder.start() which does not),
-     * then starts Latch.exe again once it's done, then deletes itself.
+     * then starts Latch.exe again once it's done, then deletes itself. The
+     * script's first job is to wait for this process to actually exit, so
+     * msiexec never meets a still-locked Latch.exe -- see writeRelaunchScript.
      *
      * @return true if the script actually launched, and therefore whether the
      * caller should exit. Quitting regardless would discard the
@@ -204,10 +206,50 @@ class GithubUpdater(
 
     private fun writeRelaunchScript(msiPath: String): File {
         val exePath = InstalledBuild.path
+        val pid = ProcessHandle.current().pid()
         val script = File.createTempFile("latch-relaunch-", ".cmd")
         script.writeText(
             buildString {
                 appendLine("@echo off")
+
+                // Wait for *this* process to actually be gone before handing the
+                // MSI to msiexec. The caller exits immediately after launching
+                // this script, but "launched" is not "exited": if msiexec gets
+                // there first it finds Latch.exe still locked, and under /qn the
+                // user sees no error explaining why -- just a failed upgrade, or
+                // a silently scheduled reboot.
+                //
+                // Polling the PID rather than sleeping a fixed couple of seconds:
+                // a blind sleep is simultaneously too long on a fast exit and too
+                // short on a slow one. tasklist's /fi filter means the output is
+                // either the one process or an "INFO: No tasks..." line, so find
+                // failing to match is exactly the "it's gone" signal.
+                appendLine("set PID=$pid")
+                appendLine("set /a tries=0")
+                appendLine(":waitloop")
+                // Absolute System32 paths, not bare names: a user with Git for
+                // Windows (or any MSYS/Cygwin toolchain) on PATH resolves `find`
+                // to the Unix one, which does not understand these arguments and
+                // exits non-zero -- indistinguishable here from "the process is
+                // gone", so the wait would silently skip and the race would be
+                // back with no visible symptom.
+                appendLine(
+                    "%SystemRoot%\\System32\\tasklist.exe /fi \"PID eq %PID%\" /nh 2>nul | " +
+                        "%SystemRoot%\\System32\\find.exe \"%PID%\" >nul"
+                )
+                appendLine("if errorlevel 1 goto ready")
+                appendLine("set /a tries+=1")
+                // ~30s ceiling, then install anyway: a process wedged this long
+                // is not going to exit, and failing the upgrade outright is worse
+                // than attempting it and letting msiexec report the locked file.
+                appendLine("if %tries% geq 30 goto ready")
+                // ping, not timeout: timeout aborts with "Input redirection is
+                // not supported" when stdin isn't a console, which is exactly how
+                // this script gets launched.
+                appendLine("ping -n 2 127.0.0.1 >nul")
+                appendLine("goto waitloop")
+                appendLine(":ready")
+
                 appendLine("msiexec /i \"$msiPath\" /qn /norestart")
                 // Relaunch either way -- a failed upgrade still leaves the
                 // previously-installed version in place and working.
