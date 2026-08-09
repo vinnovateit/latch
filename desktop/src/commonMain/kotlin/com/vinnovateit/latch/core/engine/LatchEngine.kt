@@ -66,11 +66,13 @@ class LatchEngine(
         const val REVALIDATE_DELAY_MS = 2000L
         const val MAX_REVALIDATE_RETRIES = 3
 
-        // Campus networks are always named "<letter>-VIT", optionally with a
-        // trailing band suffix Windows appends (e.g. "G-VIT 5"). Anchored to the
-        // start of the SSID so an unrelated network that merely contains "VIT"
-        // somewhere in its name does not match.
-        val VIT_SSID_PATTERN = Regex("^[A-Za-z]-VIT", RegexOption.IGNORE_CASE)
+        // Campus networks come in two shapes: the hostel/block form
+        // "<letter>-VIT" (optionally with a trailing band suffix Windows
+        // appends, e.g. "G-VIT 5") and the academic-block form "VIT<band>"
+        // ("VIT5G", "VIT2.4G"). Anchored to the start of the SSID so an
+        // unrelated network that merely contains "VIT" somewhere in its name
+        // does not match.
+        val VIT_SSID_PATTERN = Regex("^(?:[A-Za-z]-)?VIT", RegexOption.IGNORE_CASE)
     }
 
     private val logger = platform.logger
@@ -284,7 +286,7 @@ class LatchEngine(
         resolves
     }
 
-    /** True only for SSIDs shaped like "G-VIT" -- a single letter, a dash, "VIT". */
+    /** True for SSIDs starting with "VIT" or "<letter>-VIT" (e.g. "G-VIT", "VIT5G"). */
     private fun isVitCampusSsid(ssid: String?): Boolean =
         ssid != null && VIT_SSID_PATTERN.containsMatchIn(ssid.trim())
 
