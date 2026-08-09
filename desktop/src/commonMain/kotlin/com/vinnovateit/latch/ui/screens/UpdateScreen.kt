@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,7 +24,6 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,19 +47,22 @@ private val ContentMaxWidth = 560.dp
  * too so the in-progress takeover doesn't just vanish, but a plain check failure
  * stays silent and demoted to Settings -- see LatchRoot's gating.
  *
- * Installing itself is not a button here -- LatchRoot fires it automatically
- * the instant the state becomes [UpdateState.Downloaded], since there is
- * nothing left for the user to decide once the file is on disk. This screen
- * just reflects that it's happening; [onRetry] only matters if it fails.
+ * Updates are **mandatory**: there is no "Not now" and no cancel. Neither
+ * downloading nor installing is a button -- LatchRoot starts the download the
+ * instant an update is found and fires the install the instant the file is on
+ * disk, so this screen only reports progress. [onRetry] is the single control,
+ * and only when something failed.
+ *
+ * The gate covers the window, not the app. Connect/Disconnect stay on the tray
+ * menu throughout (see Main.kt), so a user who cannot complete the update --
+ * broken download, GitHub unreachable -- can still get onto Wi-Fi, which is the
+ * one thing they must never be locked out of.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun UpdateScreen(
     state: UpdateState,
-    onDownload: () -> Unit,
-    onCancelDownload: () -> Unit,
     onRetry: () -> Unit,
-    onSkip: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -94,7 +95,7 @@ fun UpdateScreen(
 
                 val version = state.versionOrNull()
                 Text(
-                    text = if (version != null) "Update available: v$version" else "Downloading update…",
+                    text = if (version != null) "Required update: v$version" else "Downloading update…",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -102,9 +103,11 @@ fun UpdateScreen(
                 Spacer(Modifier.height(8.dp))
 
                 when (state) {
+                    // Transient: LatchRoot starts the download as soon as this
+                    // state appears, so this is a beat, not a decision point.
                     is UpdateState.UpdateAvailable -> {
                         Text(
-                            text = "A new version of Latch is ready to download.",
+                            text = "Latch must update before you can continue. Starting the download…",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 20.dp),
@@ -113,10 +116,7 @@ fun UpdateScreen(
                             ReleaseNotesCard(state.releaseNotes)
                             Spacer(Modifier.height(24.dp))
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            TextButton(onClick = onSkip) { Text("Not now") }
-                            Button(onClick = onDownload) { Text("Download update") }
-                        }
+                        LoadingIndicator(modifier = Modifier.size(32.dp))
                     }
 
                     is UpdateState.Downloading -> {
@@ -136,8 +136,6 @@ fun UpdateScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Spacer(Modifier.height(16.dp))
-                        TextButton(onClick = onCancelDownload) { Text("Cancel") }
                     }
 
                     is UpdateState.Downloaded -> {
@@ -155,15 +153,21 @@ fun UpdateScreen(
                             text = state.message,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = 12.dp),
+                        )
+                        // No dismiss: the update is required. Point at the tray
+                        // instead so a user stuck behind a failing download can
+                        // still get themselves online.
+                        Text(
+                            text = "You can still connect from the Latch tray icon while this is resolved.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 24.dp),
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            TextButton(onClick = onSkip) { Text("Dismiss") }
-                            Button(
-                                onClick = onRetry,
-                                colors = ButtonDefaults.buttonColors(),
-                            ) { Text("Retry") }
-                        }
+                        Button(
+                            onClick = onRetry,
+                            colors = ButtonDefaults.buttonColors(),
+                        ) { Text("Retry") }
                     }
 
                     else -> Unit

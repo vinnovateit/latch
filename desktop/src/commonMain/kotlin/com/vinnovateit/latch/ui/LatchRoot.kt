@@ -107,12 +107,15 @@ fun LatchRoot(
                 return@Surface
             }
 
-            // Surfaced the moment an update is found rather than left for
-            // someone to stumble on in Settings. Only the states worth
-            // interrupting for take the window over; a background check that
-            // is still Checking, came back UpToDate, or failed silently
-            // (Error while nothing was already showing -- see the Error branch
-            // below) leaves the user on whatever screen they were on.
+            // Updates are mandatory: the moment one is found the window is
+            // taken over and there is no way back to the app until it installs.
+            // Only the states worth interrupting for take over; a background
+            // check that is still Checking, came back UpToDate, or failed
+            // silently (Error while nothing was already showing -- see the
+            // Error branch below) leaves the user on whatever screen they were
+            // on. Note the gate is the *window*, not the app: the tray menu's
+            // Connect/Disconnect keep working, so a user whose update cannot
+            // complete is never locked out of getting online.
             var showUpdateScreen by remember { mutableStateOf(false) }
 
             // Remembered so a failed install can be retried directly instead of
@@ -141,6 +144,15 @@ fun LatchRoot(
                     lastDownloadedPath = null
                 }
 
+                // Downloading is automatic for the same reason installing is:
+                // with the update mandatory there is nothing to decide, and a
+                // "Download" button would just be a gate the user has to click
+                // through. This moves straight to Downloading, so it cannot
+                // re-enter and loop.
+                if (updateState is UpdateState.UpdateAvailable) {
+                    onDownloadUpdate()
+                }
+
                 // Installing is automatic once the file is on disk -- there is
                 // nothing left for the user to decide at this point, and the
                 // MSI silently installing (see GithubUpdater.installAndExit) is
@@ -157,8 +169,6 @@ fun LatchRoot(
             if (showUpdateScreen) {
                 UpdateScreen(
                     state = updateState,
-                    onDownload = onDownloadUpdate,
-                    onCancelDownload = onCancelDownload,
                     // Retrying after a download failure means fetching again;
                     // after an install failure the file is already on disk, so
                     // retrying means handing that same path to msiexec again.
@@ -166,7 +176,6 @@ fun LatchRoot(
                         val path = lastDownloadedPath
                         if (path != null) onInstallUpdate(path) else onDownloadUpdate()
                     },
-                    onSkip = onDismissUpdate,
                 )
                 return@Surface
             }
