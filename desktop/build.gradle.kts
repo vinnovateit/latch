@@ -100,7 +100,35 @@ compose.desktop {
     application {
         mainClass = "com.vinnovateit.latch.desktop.MainKt"
 
-        jvmArgs += listOf("-Xmx256m", "-Dfile.encoding=UTF-8")
+        // What Task Manager reports for a JVM is not the heap -- it is heap +
+        // metaspace + JIT code cache + GC bookkeeping + Skia's surfaces. -Xmx
+        // alone only bounds the first of those, which is why a 256 MB cap still
+        // showed a few hundred MB of RSS.
+        jvmArgs += listOf(
+            "-Xmx256m",
+
+            // A tray app that idles most of the day cares about footprint, not
+            // pause times. G1 (the default) reserves per-region remembered sets
+            // and starts several worker threads for a heap this small; the
+            // serial collector has neither and gives back tens of MB of native
+            // overhead for GC pauses nobody will see at this heap size.
+            "-XX:+UseSerialGC",
+            // Serial GC is also the collector that will actually *shrink* the
+            // committed heap: after a full GC it resizes to keep free space
+            // within these ratios and hands the rest back to the OS. Without
+            // them the heap ratchets up to its high-water mark and stays there
+            // for the rest of the session.
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=30",
+
+            // Both default to reserving far more than this app uses (the code
+            // cache alone reserves 240 MB), and both grow committed memory
+            // monotonically.
+            "-XX:MaxMetaspaceSize=128m",
+            "-XX:ReservedCodeCacheSize=64m",
+
+            "-Dfile.encoding=UTF-8",
+        )
 
         // `packageReleaseMsi` runs the jars through ProGuard. Obfuscation is off:
         // it saves little here and makes stack traces in the support log useless.

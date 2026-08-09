@@ -96,12 +96,10 @@ fun StatsScreen(
         ) {
             liveStatus?.let { live ->
                 item {
-                    val usage = live.liveData.fold(DataUsage(0, 0)) { acc, point ->
-                        DataUsage(
-                            rxBytes = acc.rxBytes + point.usage.rxBytes,
-                            txBytes = acc.txBytes + point.usage.txBytes,
-                        )
-                    }
+                    // Whole-session totals come from the running aggregates;
+                    // liveData only holds the recent window (see
+                    // LiveConnectionStatus).
+                    val usage = DataUsage(live.totalRxBytes, live.totalTxBytes)
                     LiveSessionCard(
                         startTimeMillis = live.startTimeMillis,
                         usage = usage,

@@ -30,6 +30,15 @@ class SessionRepository(
     private val throughput: ThroughputMonitor,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
+    private companion object {
+        /**
+         * Samples kept in memory for the live chart. The home chart draws at most
+         * 150 points, so anything older is retained by the running totals in
+         * [LiveConnectionStatus] instead of by the list.
+         */
+        const val LIVE_WINDOW = 150
+    }
+
     private var sessionUpdateJob: Job? = null
 
     /** Fired when a session starts or ends, so the tray can refresh. */
@@ -79,8 +88,18 @@ class SessionRepository(
         sessionUpdateJob = scope.launch {
             throughput.dataUsageFlow.collect { usage ->
                 val current = _liveStatus.value ?: return@collect
+                val point = LiveDataPoint(System.currentTimeMillis(), usage)
+                // Drop the oldest sample once the window is full rather than
+                // growing without bound -- the aggregates below keep the parts
+                // of the session the list no longer holds.
+                val window = current.liveData
+                    .let { if (it.size >= LIVE_WINDOW) it.subList(it.size - LIVE_WINDOW + 1, it.size) else it }
                 _liveStatus.value = current.copy(
-                    liveData = current.liveData + LiveDataPoint(System.currentTimeMillis(), usage),
+                    liveData = window + point,
+                    totalRxBytes = current.totalRxBytes + usage.rxBytes,
+                    totalTxBytes = current.totalTxBytes + usage.txBytes,
+                    maxRxBps = maxOf(current.maxRxBps, usage.rxBps),
+                    maxTxBps = maxOf(current.maxTxBps, usage.txBps),
                 )
             }
         }
@@ -95,10 +114,12 @@ class SessionRepository(
         throughput.stop()
         _liveStatus.value = null
 
-        val totalRxBytes = sessionToFinalize.liveData.sumOf { it.usage.rxBytes }
-        val totalTxBytes = sessionToFinalize.liveData.sumOf { it.usage.txBytes }
-        val maxRxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.rxBps } ?: 0L
-        val maxTxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.txBps } ?: 0L
+        // Read the running aggregates, not the sample list: the list is a
+        // rolling window and no longer covers the whole session.
+        val totalRxBytes = sessionToFinalize.totalRxBytes
+        val totalTxBytes = sessionToFinalize.totalTxBytes
+        val maxRxBps = sessionToFinalize.maxRxBps
+        val maxTxBps = sessionToFinalize.maxTxBps
 
         // Discard trivial sessions so the history isn't polluted by a connect
         // that carried no traffic. Threshold matches Android.
