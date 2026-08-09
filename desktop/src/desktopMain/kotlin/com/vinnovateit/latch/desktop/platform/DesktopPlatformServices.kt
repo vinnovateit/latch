@@ -15,7 +15,7 @@ import com.vinnovateit.latch.desktop.AppPaths
 
 private object DesktopBuildInfo : BuildInfo {
     // Kept in step with the MSI packageVersion in build.gradle.kts.
-    override val versionName: String = "1.3.5"
+    override val versionName: String = "1.3.6"
     override val isDebug: Boolean = System.getProperty("latch.debug") == "true"
     override val isInstalled: Boolean = InstalledBuild.isInstalled
 }
