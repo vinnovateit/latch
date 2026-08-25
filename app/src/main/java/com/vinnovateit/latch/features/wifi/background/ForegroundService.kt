@@ -201,9 +201,20 @@ class ForegroundService : Service() {
     }
 
     private fun getActiveWifiNetwork(): Network? {
+        // activeNetwork alone is not reliable here: a captive-portal Wi-Fi
+        // network (like VIT's) stays unvalidated until this service logs it
+        // in, so Android keeps mobile data as the "active" default network in
+        // the meantime. Fall back to scanning all networks for one with the
+        // Wi-Fi transport, same as WiFiConnectionDetector does for the UI check.
         val activeNetwork = connectivityManager.activeNetwork
-        val caps = connectivityManager.getNetworkCapabilities(activeNetwork)
-        return if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) activeNetwork else null
+        val activeCaps = connectivityManager.getNetworkCapabilities(activeNetwork)
+        if (activeCaps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
+            return activeNetwork
+        }
+        return connectivityManager.allNetworks.firstOrNull { network ->
+            connectivityManager.getNetworkCapabilities(network)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
     }
 
     private fun checkNetworkAndAct(network: Network, isRevalidating: Boolean, retryCount: Int = 0, isSilent: Boolean = false) {

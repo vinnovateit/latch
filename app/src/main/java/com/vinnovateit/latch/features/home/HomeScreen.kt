@@ -59,6 +59,7 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.os.Build
 import android.provider.Settings
+import com.vinnovateit.latch.features.wifi.detector.WiFiConnectionDetector
 import com.vinnovateit.latch.features.wifi.detector.WiFiStateDetector
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.common.ui.LeafOverlay
@@ -116,10 +117,7 @@ fun HomeScreen(
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         statusTimerTrigger = System.currentTimeMillis()
 
-        val connectivityManager = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        val activeNetwork = connectivityManager.activeNetwork
-        val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
-        val isWifiConnected = networkCapabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+        val isWifiConnected = WiFiConnectionDetector.isConnectedToWiFi(context)
 
         if (!isConnected && (!WiFiStateDetector.isWiFiEnabled(context) || !isWifiConnected)) {
             val panelIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
