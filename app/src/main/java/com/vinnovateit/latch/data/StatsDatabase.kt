@@ -96,7 +96,9 @@ abstract class LatchDatabase : RoomDatabase() {
           LatchDatabase::class.java,
           "latch_database"
         )
-          .fallbackToDestructiveMigration(false) // Handles schema change by rebuilding DB
+          // No destructive fallback: a future version bump without a real Migration
+          // should fail loudly during development instead of silently wiping every
+          // user's session history on update.
           .build()
         INSTANCE = instance
         instance
