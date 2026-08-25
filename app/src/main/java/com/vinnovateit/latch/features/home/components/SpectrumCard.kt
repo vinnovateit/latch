@@ -194,7 +194,7 @@ private fun StatusIndicator(connectionStatus: ConnectionStatus) {
                   modifier = Modifier.size(64.dp)
                 )
                 is ConnectionStatus.Failed -> {
-                    val isUnsupported = status.message.equals(stringResource(R.string.status_unsupported_network), ignoreCase = true)
+                    val isUnsupported = status.message.contains(stringResource(R.string.status_unsupported_network), ignoreCase = true)
                     Icon(
                       imageVector = if (isUnsupported) Icons.Rounded.QuestionMark else Icons.Rounded.Error,
                       contentDescription = stringResource(R.string.status_login_failed),

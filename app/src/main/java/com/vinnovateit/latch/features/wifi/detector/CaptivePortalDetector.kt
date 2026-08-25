@@ -6,8 +6,16 @@ import android.net.Network
 import android.util.Log
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.UnknownHostException
 
 object CaptivePortalDetector {
+
+    /**
+     * Sentinel returned when the connectivity probe fails specifically because the hostname
+     * could not be resolved (e.g. Android Private DNS blocking resolution on an unauthenticated
+     * captive network), as opposed to other connection failures.
+     */
+    const val DNS_RESOLUTION_FAILED = -2
 
     /**
      * Checks for a captive portal by connecting to a known endpoint.
@@ -16,7 +24,8 @@ object CaptivePortalDetector {
      * @param context Application context
      * @param network The network to check. If null, uses the active network.
      * @return The HTTP response code from the check. Returns 204 for success, other codes
-     * for a captive portal, or -1 for an exception.
+     * for a captive portal, [DNS_RESOLUTION_FAILED] if hostname resolution failed, or -1 for
+     * any other exception.
      */
     fun checkPortalStatus(context: Context, network: Network? = null): Int {
         val connectivityManager =
@@ -38,6 +47,9 @@ object CaptivePortalDetector {
             val responseCode = connection.responseCode
             connection.disconnect()
             responseCode
+        } catch (e: UnknownHostException) {
+            Log.e("CaptivePortalDetector", "Portal check failed to resolve host", e)
+            DNS_RESOLUTION_FAILED
         } catch (e: Exception) {
             Log.e("CaptivePortalDetector", "Portal check failed with exception", e)
             -1
