@@ -44,6 +44,12 @@ class LatchTileService : TileService() {
     override fun onClick() {
         Log.d(TAG, "=== TILE CLICKED ===")
 
+        // SettingsManager may not have been initialized yet in this process (e.g. the
+        // tile is tapped right after a reboot, before MainActivity/ForegroundService/
+        // the widget ever ran) - setAutoLogin() below would crash on its lateinit
+        // sharedPreferences without this.
+        SettingsManager.initialize(applicationContext)
+
         if (isProcessing) {
             Log.d(TAG, "Already processing, ignoring click")
             return
@@ -72,8 +78,8 @@ class LatchTileService : TileService() {
                 val autoLoginEnabled = SettingsManager.autoLogin.value
                 val isConnected = SessionRepository.liveStatus.value != null
 
-                if (autoLoginEnabled || isConnected) {
-                    Log.d(TAG, "Currently connected or auto-login enabled. Triggering logout...")
+                if (isConnected) {
+                    Log.d(TAG, "Currently connected. Triggering logout...")
                     val intent = Intent(this@LatchTileService, ForegroundService::class.java).apply {
                         action = ForegroundService.ACTION_TRIGGER_LOGOUT
                     }
