@@ -58,9 +58,9 @@
   <source srcset="https://raw.githubusercontent.com/vinnovateit/latch/main/.github/assets/redLogoLatch.svg">
   <img alt="Project Logo" src="https://raw.githubusercontent.com/vinnovateit/latch/main/.github/assets/redLogoLatch.svg" width="200" align="right">
 </picture>
-Latch is an Android application developed by VinnovateIT that automates the login process for VIT hostel WiFi networks. It detects network connections, submits credentials automatically, and optionally logs network statistics. The app improves convenience and reduces repetitive manual logins for students. A companion desktop client for Windows and Linux, sharing the same auto-login logic, is also available in the [`desktop/`](./desktop) directory of this repository.
+Latch is an Android application developed by VinnovateIT that automates the login process for VIT hostel WiFi networks. It detects network connections, submits credentials automatically, and optionally logs network statistics. The app improves convenience and reduces repetitive manual logins for students. A companion desktop client for Windows and Linux, sharing the same auto-login logic, is also available in the `./desktop` directory of this repository.
 
-**Key features:**
+## **Key features:**
 - Automatic detection of VIT hostel WiFi networks
 - Auto-login with securely stored credentials
 - Logging and display of network usage statistics
@@ -71,6 +71,7 @@ Use width modifier to control size
 Use wisely: don't overfill & don't use too heavy imgs
 -->
 <details>
+
   <summary><b>Screenshots</b></summary>
 
 | Landing Screen | Home Screen |
@@ -81,7 +82,7 @@ Use wisely: don't overfill & don't use too heavy imgs
 
 </details>
 
-### Built With
+### Built With 
 
 [![Kotlin][Kotlin-badge]][Kotlin-url]  [![Android Studio][Android-badge]][Android-url]  [![Jetpack Compose][Compose-badge]][Compose-url]
 
@@ -91,6 +92,7 @@ Use wisely: don't overfill & don't use too heavy imgs
 
 - Add support for multiple VIT campuses
 - Improve UI responsiveness
+- CLI client ;)
 
 See the [open issues](https://github.com/vinnovateit/latch/issues) for a full list of proposed features and known issues.
 
@@ -102,23 +104,20 @@ See the [open issues](https://github.com/vinnovateit/latch/issues) for a full li
 Follow these steps to get a local copy of Latch up and running.
 
 ### Prerequisites
-
 - Android Studio
 - Kotlin (latest stable version)
 - JDK 21 (check Android Studio's own Gradle JDK setting under Build, Execution, Deployment > Build Tools > Gradle if Gradle sync fails)
 - Android device or emulator running Android 8.0 (API 26) or higher
 
-### Installation
+## Installation
 
-#### For Users
-
-**Windows (Desktop)**
+### **Windows (Desktop)**
 
 1. Download `Latch-Setup.msi` from the [latest release](https://github.com/vinnovateit/latch/releases/latest)
 2. Run the installer and follow the setup wizard
 3. Launch Latch from the Start menu and enter your VIT hostel credentials
 
-**Linux (Desktop)**
+### **Linux (Desktop)**
 
 1. Run the install script:
 
@@ -131,13 +130,13 @@ Follow these steps to get a local copy of Latch up and running.
 
    To install manually instead, download `latch-1.3.7-linux-x64.tar.gz` from the [latest release](https://github.com/vinnovateit/latch/releases/latest) and extract it.
 
-**Android**
+### **Android**
 
-No pre-built APK is currently published for the Android app. To use it today, build it from source — see [Development Setup](#development-setup) below.
+No pre-built APK is currently published for the Android app. To use it today, build it from source. See [Dev Setup](#dev-setup) below.
 
-#### Development Setup
+## Dev Setup
 
-**Android app**
+### **Android app**
 
 1. Clone the repository
 
@@ -145,18 +144,21 @@ No pre-built APK is currently published for the Android app. To use it today, bu
    git clone https://github.com/vinnovateit/latch.git
    ```
 2. Open the project in Android Studio
-3. Sync Gradle and build the project. The app targets `compileSdk 37`, newer than what the pinned Android Gradle Plugin (8.13.0) was tested against — if Android Studio's SDK Manager doesn't already have Android SDK Platform 37 installed, the first sync will prompt you to download it and accept its license
+3. Sync Gradle and build the project. 
+> The app targets `compileSdk 37`. If Android Studio's SDK Manager doesn't already have Android SDK Platform 37 installed, the first sync will prompt you to download it and accept its license
 4. Run on a connected device or emulator
 5. Enter your VIT hostel credentials when prompted
 
-**Desktop app**
+### **Desktop app**
 
 1. Clone the repository (if not already done above)
+
 2. Run it directly:
 
    ```sh
    ./gradlew :desktop:run
    ```
+
 3. Or build a native package for your OS:
 
    ```sh
@@ -166,18 +168,21 @@ No pre-built APK is currently published for the Android app. To use it today, bu
    ./gradlew :desktop:packageReleaseTarGz        # .tar.gz (Linux)
    ```
 
-   Build artifacts land in `desktop/build/distributions/`. For example, `packageReleaseTarGz` produces `latch-1.3.7-linux-x64.tar.gz`, containing a single `latch-1.3.7/` directory with `bin/Latch` (the launcher) and `lib/` (bundled JRE, app jar, and resources) — the same layout `install.sh` expects.
+   Build artifacts land in `desktop/build/distributions/`
 
+4. To test a locally-built (or otherwise custom) tarball without publishing a release, point `install.sh` at it directly instead of letting it download from GitHub:
+
+   ```sh
+   LATCH_LOCAL_TAR=desktop/build/distributions/latch-1.3.7-linux-x64.tar.gz sh install.sh
+   ```
    This module is built as part of the same Gradle project as `:app`, so the Android SDK still needs to be configured (see the Android app prerequisites above) even though the desktop app itself doesn't run on Android.
-
-
-
-
 
 <!-- USAGE - REMOVE IF NOT NEEDED -->
 ## Usage
 
-Latch automatically detects VIT hostel WiFi networks and logs in using the credentials provided. Optionally, it records network statistics for monitoring purposes.
+Latch automatically detects VIT hostel WiFi networks and logs in using the credentials provided by you.  
+
+Optionally, it records network statistics for monitoring purposes.
 
 ### Top contributors:
 
