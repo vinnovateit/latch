@@ -205,7 +205,13 @@ tasks.register<Tar>("packageReleaseTarGz") {
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
     compression = Compression.GZIP
 
-    from(layout.buildDirectory.dir("compose/binaries/main-release/app")) {
+    // Compose Desktop places the app image one level deeper than the "app"
+    // directory, under a subdirectory named after packageName ("Latch") -
+    // package that directly so the tar has a single latch-1.3.7/ wrapper
+    // around bin/ and lib/, matching what install.sh's --strip-components=1
+    // expects (the previous "app" path produced an extra Latch/ nesting
+    // level that broke the installer).
+    from(layout.buildDirectory.dir("compose/binaries/main-release/app/Latch")) {
         into("latch-1.3.7")
     }
 }

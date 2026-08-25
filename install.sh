@@ -44,7 +44,7 @@ if [ $(id -u) -eq 0 ] || [ $USE_SUDO -eq 1 ]; then
 Name=Latch
 Comment=VIT Hostel Wi-Fi Auto-Login
 Exec=/opt/latch/bin/Latch
-Icon=/opt/latch/lib/latch.png
+Icon=/opt/latch/lib/Latch.png
 Terminal=false
 Type=Application
 Categories=Network;Utility;
@@ -64,7 +64,7 @@ else
 Name=Latch
 Comment=VIT Hostel Wi-Fi Auto-Login
 Exec=$LOCAL_OPT/bin/Latch
-Icon=$LOCAL_OPT/lib/latch.png
+Icon=$LOCAL_OPT/lib/Latch.png
 Terminal=false
 Type=Application
 Categories=Network;Utility;
