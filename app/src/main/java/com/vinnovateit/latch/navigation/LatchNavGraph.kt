@@ -114,7 +114,6 @@ fun LatchNavGraph(
 
         // Credentials screen
         composable(LatchRoutes.CREDENTIALS) { backStackEntry ->
-            val context = LocalContext.current
             val editMode = backStackEntry.arguments?.getString("editMode")?.toBoolean() ?: false
             CredentialsScreen(
                 editMode = editMode,
@@ -122,11 +121,11 @@ fun LatchNavGraph(
                     if (editMode) {
                         navController.popBackStack()
                     } else {
-                        val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                        prefs.edit().putBoolean("hasSeenOnboarding", true).apply()
-                        navController.navigate(LatchRoutes.HOME) {
-                            popUpTo(navController.graph.id) { inclusive = true }
-                        }
+                        // Return to the onboarding pager to let it finish its remaining
+                        // slides instead of jumping straight to Home; OnboardingScreen's
+                        // own onComplete() is what marks onboarding as seen and navigates
+                        // to Home once the pager itself finishes.
+                        navController.popBackStack(LatchRoutes.ONBOARDING, inclusive = false)
                     }
                 }
             )
