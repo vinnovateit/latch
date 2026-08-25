@@ -39,15 +39,21 @@ class LatchWidgetUpdater(
       )
     }
 
+    private const val PERIODIC_UPDATE_WORK_NAME = "latch_widget_periodic_update"
+
     fun enqueuePeriodicUpdate(context: Context) {
       val periodicRequest = PeriodicWorkRequestBuilder<LatchWidgetUpdater>(
         15, TimeUnit.MINUTES
       ).build()
       WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-        "latch_widget_periodic_update",
+        PERIODIC_UPDATE_WORK_NAME,
         ExistingPeriodicWorkPolicy.KEEP,
         periodicRequest
       )
+    }
+
+    fun cancelPeriodicUpdate(context: Context) {
+      WorkManager.getInstance(context).cancelUniqueWork(PERIODIC_UPDATE_WORK_NAME)
     }
   }
 
