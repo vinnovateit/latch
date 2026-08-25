@@ -24,6 +24,8 @@ import com.vinnovateit.latch.features.wifi.manager.ConnectionStatusManager
 import com.vinnovateit.latch.features.wifi.manager.LoginResult
 import com.vinnovateit.latch.features.wifi.manager.UiNotifier
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -41,6 +43,13 @@ class ForegroundService : Service() {
 
     private var isNotificationHidden = false
     private var notificationUpdateJob: Job? = null
+
+    // Guards bindProcessToNetwork(...) usage: handleCaptivePortal() and logoutAndStop()
+    // both bind/unbind the process to a network around an HTTP request, and can run
+    // concurrently from independent coroutines (network callback, health check, manual
+    // login/logout intents) - without this, one can unbind the process out from under
+    // the other's in-flight request.
+    private val networkBindMutex = Mutex()
 
     companion object {
         const val ACTION_TRIGGER_LOGIN_CHECK = "com.vinnovateit.latch.ACTION_TRIGGER_LOGIN_CHECK"
@@ -294,31 +303,33 @@ class ForegroundService : Service() {
             ConnectionStatusManager.postStatus(
                 ConnectionStatus.Companion.Connecting(getString(R.string.status_authenticating))
             )
-            connectivityManager.bindProcessToNetwork(network)
-            try {
-                val user = StoredCredentials.getUserId(applicationContext)
-                val pass = StoredCredentials.getPassword(applicationContext)
-                if (user != null && pass != null) {
-                    val fallbackIp = getGatewayIp()
-                    when (AutoLoginManager.attemptLogin(user, pass, network, false, fallbackIp)) {
-                        is LoginResult.Success -> {
-                            Log.d("ForegroundService", "Login successful, re-validating network.")
-                            checkNetworkAndAct(network, true, notifyOnReconnect = notifyOnReconnect)
+            networkBindMutex.withLock {
+                connectivityManager.bindProcessToNetwork(network)
+                try {
+                    val user = StoredCredentials.getUserId(applicationContext)
+                    val pass = StoredCredentials.getPassword(applicationContext)
+                    if (user != null && pass != null) {
+                        val fallbackIp = getGatewayIp()
+                        when (AutoLoginManager.attemptLogin(user, pass, network, false, fallbackIp)) {
+                            is LoginResult.Success -> {
+                                Log.d("ForegroundService", "Login successful, re-validating network.")
+                                checkNetworkAndAct(network, true, notifyOnReconnect = notifyOnReconnect)
+                            }
+                            is LoginResult.Failure -> {
+                                ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getString(R.string.status_login_failed)))
+                            }
                         }
-                        is LoginResult.Failure -> {
-                            ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getString(R.string.status_login_failed)))
-                        }
+                    } else {
+                        ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getString(R.string.status_login_failed)))
                     }
-                } else {
-                    ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getString(R.string.status_login_failed)))
+                } finally {
+                    connectivityManager.bindProcessToNetwork(null)
                 }
-            } finally {
-                connectivityManager.bindProcessToNetwork(null)
             }
         }
     }
 
-    private fun logoutAndStop() {
+    private suspend fun logoutAndStop() {
         ConnectionStatusManager.postStatus(
             ConnectionStatus.Companion.Connecting(getString(R.string.status_logging_out))
         )
@@ -327,20 +338,22 @@ class ForegroundService : Service() {
         val network = currentWifiNetwork ?: connectivityManager.activeNetwork
 
         if (network != null) {
-            connectivityManager.bindProcessToNetwork(network)
-            try {
-                val fallbackIp = getGatewayIp()
-                val ok = AutoLoginManager.attemptLogout(false, fallbackIp)
-                if (ok) {
-                    Log.d("ForegroundService", "Logout success.")
-                    SessionRepository.stopSession()
-                    ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getString(R.string.status_disconnected_message)))
-                } else {
-                    Log.w("ForegroundService", "Logout failed.")
-                    ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getString(R.string.status_logout_failed)))
+            networkBindMutex.withLock {
+                connectivityManager.bindProcessToNetwork(network)
+                try {
+                    val fallbackIp = getGatewayIp()
+                    val ok = AutoLoginManager.attemptLogout(false, fallbackIp, network)
+                    if (ok) {
+                        Log.d("ForegroundService", "Logout success.")
+                        SessionRepository.stopSession()
+                        ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getString(R.string.status_disconnected_message)))
+                    } else {
+                        Log.w("ForegroundService", "Logout failed.")
+                        ConnectionStatusManager.postStatus(ConnectionStatus.Failed(getString(R.string.status_logout_failed)))
+                    }
+                } finally {
+                    connectivityManager.bindProcessToNetwork(null)
                 }
-            } finally {
-                connectivityManager.bindProcessToNetwork(null)
             }
         } else {
             Log.w("ForegroundService", "No active network during logout.")

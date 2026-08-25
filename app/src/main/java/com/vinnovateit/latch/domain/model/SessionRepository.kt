@@ -36,6 +36,10 @@ object SessionRepository {
   private var sessionUpdateJob: Job? = null
   private val isInitialized = AtomicBoolean(false)
   private var notificationSent = false
+  // Atomically guards session start/stop so concurrent callers (network callback,
+  // health check, login re-validation) can't both pass the "no session yet" check
+  // and each start their own session against the same shared state.
+  private val sessionActive = AtomicBoolean(false)
 
   private val _liveStatus = MutableStateFlow<LiveConnectionStatus?>(null)
   val liveStatus = _liveStatus.asStateFlow()
@@ -78,8 +82,8 @@ object SessionRepository {
   }
 
   fun startSession(network: android.net.Network) {
-    if (sessionUpdateJob?.isActive == true || _liveStatus.value != null) return
-    val context = applicationContext ?: return
+    if (!sessionActive.compareAndSet(false, true)) return
+    val context = applicationContext ?: run { sessionActive.set(false); return }
     notificationSent = false
 
     val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
@@ -124,8 +128,8 @@ object SessionRepository {
   }
 
   fun stopSession() {
+    if (!sessionActive.compareAndSet(true, false)) return
     val context = applicationContext ?: return
-    if (sessionUpdateJob == null && _liveStatus.value == null) return
     val sessionToFinalize = _liveStatus.value ?: return
 
     sessionUpdateJob?.cancel()

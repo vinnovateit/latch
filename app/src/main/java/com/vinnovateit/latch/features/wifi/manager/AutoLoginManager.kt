@@ -115,14 +115,14 @@ object AutoLoginManager {
         }
     }
 
-    fun attemptLogout(useAlternate: Boolean = false, fallbackIp: String? = null): Boolean {
+    fun attemptLogout(useAlternate: Boolean = false, fallbackIp: String? = null, network: Network? = null): Boolean {
         logDebug("Initiating logout attempt (useAlternate=$useAlternate)")
         val targetUrlStr = if (useAlternate) SECURE_LOGOUT_URL else LOGOUT_URL
-        
+
         fun doAttempt(urlStr: String): Boolean {
             val url = URL(urlStr)
             logDebug("Opening connection to: $urlStr")
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = (network?.openConnection(url) ?: url.openConnection()) as HttpURLConnection
             connection.requestMethod = "GET"
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 10000
