@@ -140,11 +140,14 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                                     val year = regNo.substring(0, 2).toIntOrNull() ?: 99
                                     if (year <= 22) {
                                         regNoError = "Your college life is over... go find a job! 🎓"
-                                    }
-                                    scope.launch {
-                                        StoredCredentials.saveCredentials(context, regNo, password)
-                                        if (year <= 22) kotlinx.coroutines.delay(2000)
-                                        onCredentialsSaved()
+                                    } else {
+                                        scope.launch {
+                                            if (StoredCredentials.saveCredentials(context, regNo, password)) {
+                                                onCredentialsSaved()
+                                            } else {
+                                                passwordError = "Couldn't save credentials securely. Please try again."
+                                            }
+                                        }
                                     }
                                 }
                             } else {
@@ -227,11 +230,14 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                                 val year = regNo.substring(0, 2).toIntOrNull() ?: 99
                                 if (year <= 22) {
                                     regNoError = "Your college life is over... go find a job! 🎓"
-                                }
-                                scope.launch {
-                                    StoredCredentials.saveCredentials(context, regNo, password)
-                                    if (year <= 22) kotlinx.coroutines.delay(2000)
-                                    onCredentialsSaved()
+                                } else {
+                                    scope.launch {
+                                        if (StoredCredentials.saveCredentials(context, regNo, password)) {
+                                            onCredentialsSaved()
+                                        } else {
+                                            passwordError = "Couldn't save credentials securely. Please try again."
+                                        }
+                                    }
                                 }
                             }
                         } else {

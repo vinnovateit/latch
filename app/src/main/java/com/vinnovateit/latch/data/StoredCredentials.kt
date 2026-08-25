@@ -41,13 +41,14 @@ object StoredCredentials {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit { clear() }
     }
 
-    fun saveCredentials(context: Context, userId: String, password: String) {
-        val prefs = getEncryptedPrefs(context)
-        prefs?.edit()
-            ?.putString(KEY_USER_ID, userId)
-            ?.putString(KEY_PASSWORD, password)
-            ?.apply()
+    fun saveCredentials(context: Context, userId: String, password: String): Boolean {
+        val prefs = getEncryptedPrefs(context) ?: return false
+        prefs.edit()
+            .putString(KEY_USER_ID, userId)
+            .putString(KEY_PASSWORD, password)
+            .apply()
         context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE).edit().putBoolean("has_credentials", true).apply()
+        return true
     }
 
     fun getUserId(context: Context): String? {
