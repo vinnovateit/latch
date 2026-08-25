@@ -24,6 +24,12 @@ import java.util.Calendar
 import kotlin.random.Random
 
 object SessionRepository {
+  // Bounds the in-memory per-point history kept for the live speed graph. At the ~2s poll
+  // interval used by TrafficStatsLogger this is roughly an hour of history; session-end totals
+  // (rx/tx bytes, max speeds) are tracked separately in LiveConnectionStatus and are NOT affected
+  // by this cap.
+  private const val MAX_LIVE_HISTORY_POINTS = 1800
+
   private var applicationContext: Application? = null
   private lateinit var statsDao: StatsDao
   private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -103,7 +109,11 @@ object SessionRepository {
               dataUsage
             )
           val updatedStatus = currentStatus.copy(
-            liveData = currentStatus.liveData + newPoint
+            liveData = (currentStatus.liveData + newPoint).takeLast(MAX_LIVE_HISTORY_POINTS),
+            totalRxBytes = currentStatus.totalRxBytes + dataUsage.rxBytes,
+            totalTxBytes = currentStatus.totalTxBytes + dataUsage.txBytes,
+            maxRxBps = maxOf(currentStatus.maxRxBps, dataUsage.rxBps),
+            maxTxBps = maxOf(currentStatus.maxTxBps, dataUsage.txBps)
           )
           _liveStatus.value = updatedStatus
         }
@@ -126,11 +136,11 @@ object SessionRepository {
     connectivityManager.bindProcessToNetwork(null)
     _liveStatus.value = null
 
-    val totalRxBytes = sessionToFinalize.liveData.sumOf { it.usage.rxBytes }
-    val totalTxBytes = sessionToFinalize.liveData.sumOf { it.usage.txBytes }
+    val totalRxBytes = sessionToFinalize.totalRxBytes
+    val totalTxBytes = sessionToFinalize.totalTxBytes
     val totalDataUsed = totalRxBytes + totalTxBytes
-    val maxRxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.rxBps } ?: 0L
-    val maxTxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.txBps } ?: 0L
+    val maxRxBps = sessionToFinalize.maxRxBps
+    val maxTxBps = sessionToFinalize.maxTxBps
 
     if (totalDataUsed < 1024) {
       triggerWidgetUpdate()

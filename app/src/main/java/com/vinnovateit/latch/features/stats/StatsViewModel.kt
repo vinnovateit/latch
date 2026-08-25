@@ -35,12 +35,10 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         SessionSummary(
           startTimestamp = it.startTimeMillis,
           endTimestamp = System.currentTimeMillis(), // It's ongoing
-          totalData = DataUsage(
-            it.liveData.sumOf { p -> p.usage.rxBytes },
-            it.liveData.sumOf { p -> p.usage.txBytes }),
+          totalData = DataUsage(it.totalRxBytes, it.totalTxBytes),
           history = it.liveData,
-          maxRxBps = it.liveData.maxOfOrNull { p -> p.usage.rxBytes } ?: 0L,
-          maxTxBps = it.liveData.maxOfOrNull { p -> p.usage.txBytes } ?: 0L
+          maxRxBps = it.maxRxBps,
+          maxTxBps = it.maxTxBps
         )
       } ?: last // If not live, show the last completed session
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -54,12 +52,10 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         val liveSummary = SessionSummary(
           startTimestamp = it.startTimeMillis,
           endTimestamp = System.currentTimeMillis(),
-          totalData = DataUsage(
-            it.liveData.sumOf { p -> p.usage.rxBytes },
-            it.liveData.sumOf { p -> p.usage.txBytes }),
+          totalData = DataUsage(it.totalRxBytes, it.totalTxBytes),
           history = it.liveData,
-          maxRxBps = it.liveData.maxOfOrNull { p -> p.usage.rxBytes } ?: 0L,
-          maxTxBps = it.liveData.maxOfOrNull { p -> p.usage.txBytes } ?: 0L
+          maxRxBps = it.maxRxBps,
+          maxTxBps = it.maxTxBps
         )
         val historyWithoutLive = history.filter { it.startTimestamp != liveSummary.startTimestamp }
         mergeSessions(listOf(liveSummary) + historyWithoutLive, 60_000L)
