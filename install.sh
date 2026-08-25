@@ -4,6 +4,10 @@ set -e
 # ==============================================================================
 # Latch Universal Linux Installer Script
 # Usage: curl -fsSL https://latch.vinnovateit.com/install.sh | sh
+#
+# To install from a local tarball instead of downloading the latest release
+# (e.g. a custom or pre-release build), set LATCH_LOCAL_TAR:
+#   LATCH_LOCAL_TAR=/path/to/latch-custom-linux-x64.tar.gz sh install.sh
 # ==============================================================================
 
 REPO="vinnovateit/latch"
@@ -11,17 +15,28 @@ DEFAULT_TAR_URL="https://github.com/${REPO}/releases/latest/download/latch-1.3.7
 
 echo "==== Installing Latch Desktop by VinnovateIT ===="
 
-TAR_URL=""
-if command -v curl >/dev/null 2>&1; then
-    TAR_URL=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4 | head -n 1 || true)
-fi
-if [ -z "$TAR_URL" ]; then
-    TAR_URL="$DEFAULT_TAR_URL"
-fi
+CLEANUP_TMP_TAR=0
+if [ -n "$LATCH_LOCAL_TAR" ]; then
+    if [ ! -f "$LATCH_LOCAL_TAR" ]; then
+        echo "ERROR: LATCH_LOCAL_TAR is set but '$LATCH_LOCAL_TAR' does not exist." >&2
+        exit 1
+    fi
+    echo "--> Using local tarball: $LATCH_LOCAL_TAR"
+    TMP_TAR="$LATCH_LOCAL_TAR"
+else
+    TAR_URL=""
+    if command -v curl >/dev/null 2>&1; then
+        TAR_URL=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4 | head -n 1 || true)
+    fi
+    if [ -z "$TAR_URL" ]; then
+        TAR_URL="$DEFAULT_TAR_URL"
+    fi
 
-TMP_TAR=$(mktemp /tmp/latch-XXXXXX.tar.gz)
-echo "--> Downloading latest release from GitHub..."
-curl -fsSL "$TAR_URL" -o "$TMP_TAR"
+    TMP_TAR=$(mktemp /tmp/latch-XXXXXX.tar.gz)
+    CLEANUP_TMP_TAR=1
+    echo "--> Downloading latest release from GitHub..."
+    curl -fsSL "$TAR_URL" -o "$TMP_TAR"
+fi
 
 USE_SUDO=0
 if [ $(id -u) -ne 0 ] && command -v sudo >/dev/null 2>&1; then
@@ -71,7 +86,7 @@ Categories=Network;Utility;
 EOF
 fi
 
-rm -f "$TMP_TAR"
+[ "$CLEANUP_TMP_TAR" -eq 1 ] && rm -f "$TMP_TAR"
 
 echo "==== Latch Desktop successfully installed! ===="
 echo "Launch from your application menu or run 'latch' in terminal."
