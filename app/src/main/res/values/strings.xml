@@ -69,6 +69,7 @@
     <string name="status_revalidating">Re-validating connection…</string>
     <string name="status_checking_network">Checking network…</string>
     <string name="status_unsupported_network">Unsupported Network</string>
+    <string name="status_private_dns_blocking">Unsupported Network — Private DNS may be blocking detection. Try disabling it in Wi-Fi settings.</string>
     <string name="status_login_failed">Login Failed</string>
     <string name="status_credentials_not_set">Credentials not set</string>
     <string name="status_disconnected_message">Disconnected</string>
