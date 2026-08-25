@@ -58,7 +58,12 @@
   <source srcset="https://raw.githubusercontent.com/vinnovateit/latch/main/.github/assets/redLogoLatch.svg">
   <img alt="Project Logo" src="https://raw.githubusercontent.com/vinnovateit/latch/main/.github/assets/redLogoLatch.svg" width="200" align="right">
 </picture>
-Latch is an Android application developed by VinnovateIT that automates the login process for VIT hostel WiFi networks. It detects network connections, submits credentials automatically, and optionally logs network statistics. The app improves convenience and reduces repetitive manual logins for students.
+Latch is an Android application developed by VinnovateIT that automates the login process for VIT hostel WiFi networks. It detects network connections, submits credentials automatically, and optionally logs network statistics. The app improves convenience and reduces repetitive manual logins for students. A companion desktop client for Windows and Linux, sharing the same auto-login logic, is also available in the [`desktop/`](./desktop) directory of this repository.
+
+**Key features:**
+- Automatic detection of VIT hostel WiFi networks
+- Auto-login with securely stored credentials
+- Logging and display of network usage statistics
 
 
 <!-- Put appropriate SCREENSHOTS here
@@ -78,15 +83,12 @@ Use wisely: don't overfill & don't use too heavy imgs
 
 ### Built With
 
-[![Kotlin][Kotlin-badge]][Kotlin-url]  [![Android Studio][Android-badge]][Android-url]  [![Jetpack Compose][Compose-badge]][Compose-url]  [![Firebase][Firebase-badge]][Firebase-url]
+[![Kotlin][Kotlin-badge]][Kotlin-url]  [![Android Studio][Android-badge]][Android-url]  [![Jetpack Compose][Compose-badge]][Compose-url]
 
 
 <!-- ROADMAP -->
 ## Roadmap
 
-- Automatic detection of VIT hostel WiFi
-- Auto-login with stored credentials
-- Log and display network statistics
 - Add support for multiple VIT campuses
 - Improve UI responsiveness
 
@@ -97,26 +99,76 @@ See the [open issues](https://github.com/vinnovateit/latch/issues) for a full li
 <!-- GETTING STARTED -->
 ## Getting Started
 
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple steps.
+Follow these steps to get a local copy of Latch up and running.
 
 ### Prerequisites
 
 - Android Studio
 - Kotlin (latest stable version)
-- Android device or emulator running Android 10+
+- JDK 21 (check Android Studio's own Gradle JDK setting under Build, Execution, Deployment > Build Tools > Gradle if Gradle sync fails)
+- Android device or emulator running Android 8.0 (API 26) or higher
 
 ### Installation
+
+#### For Users
+
+**Windows (Desktop)**
+
+1. Download `Latch-Setup.msi` from the [latest release](https://github.com/vinnovateit/latch/releases/latest)
+2. Run the installer and follow the setup wizard
+3. Launch Latch from the Start menu and enter your VIT hostel credentials
+
+**Linux (Desktop)**
+
+1. Run the install script:
+
+   ```sh
+   curl -fsSL https://latch.vinnovateit.com/install.sh | sh
+   ```
+
+   This installs Latch to `/opt/latch` (system-wide, if run with `sudo` access) or `~/.local/share/latch` (user-local otherwise), and registers a desktop entry.
+2. Launch Latch from your application menu, or run `latch` in a terminal
+
+   To install manually instead, download `latch-1.3.7-linux-x64.tar.gz` from the [latest release](https://github.com/vinnovateit/latch/releases/latest) and extract it.
+
+**Android**
+
+No pre-built APK is currently published for the Android app. To use it today, build it from source — see [Development Setup](#development-setup) below.
+
+#### Development Setup
+
+**Android app**
 
 1. Clone the repository
 
    ```sh
    git clone https://github.com/vinnovateit/latch.git
    ```
-3. Open the project in Android Studio
-4. Sync Gradle and build the project
-5. Run on a connected device or emulator
-6. Enter your VIT hostel credentials when prompted     
+2. Open the project in Android Studio
+3. Sync Gradle and build the project. The app targets `compileSdk 37`, newer than what the pinned Android Gradle Plugin (8.13.0) was tested against — if Android Studio's SDK Manager doesn't already have Android SDK Platform 37 installed, the first sync will prompt you to download it and accept its license
+4. Run on a connected device or emulator
+5. Enter your VIT hostel credentials when prompted
+
+**Desktop app**
+
+1. Clone the repository (if not already done above)
+2. Run it directly:
+
+   ```sh
+   ./gradlew :desktop:run
+   ```
+3. Or build a native package for your OS:
+
+   ```sh
+   ./gradlew :desktop:packageReleaseDeb          # .deb
+   ./gradlew :desktop:packageReleaseRpm          # .rpm
+   ./gradlew :desktop:packageReleaseAppImage     # AppImage
+   ./gradlew :desktop:packageReleaseTarGz        # .tar.gz (Linux)
+   ```
+
+   Build artifacts land in `desktop/build/distributions/`. For example, `packageReleaseTarGz` produces `latch-1.3.7-linux-x64.tar.gz`, containing a single `latch-1.3.7/` directory with `bin/Latch` (the launcher) and `lib/` (bundled JRE, app jar, and resources) — the same layout `install.sh` expects.
+
+   This module is built as part of the same Gradle project as `:app`, so the Android SDK still needs to be configured (see the Android app prerequisites above) even though the desktop app itself doesn't run on Android.
 
 
 
@@ -155,5 +207,3 @@ Latch automatically detects VIT hostel WiFi networks and logs in using the crede
 [Android-url]: https://developer.android.com/studio
 [Compose-badge]: https://img.shields.io/badge/Jetpack_Compose-4285F4?&logo=jetpackcompose&logoColor=white
 [Compose-url]: https://developer.android.com/jetpack/compose
-[Firebase-badge]: https://img.shields.io/badge/Firebase-FFCA28?&logo=firebase&logoColor=white
-[Firebase-url]: https://firebase.google.com/
