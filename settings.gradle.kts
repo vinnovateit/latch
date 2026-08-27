@@ -18,3 +18,4 @@ rootProject.name = "Latch"
 include(":core")
 include(":app")
 include(":desktop")
+include(":cli")
