@@ -10,7 +10,7 @@ package com.vinnovateit.latch.desktop.platform
  * here -- a false "installed" would auto-update a dev build, whereas a false
  * "not installed" only skips an update check a developer can trigger by hand.
  */
-internal object InstalledBuild {
+object InstalledBuild {
 
     private val validExeNames = listOf("latch.exe", "latch")
 

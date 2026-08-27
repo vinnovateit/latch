@@ -8,7 +8,7 @@ import java.io.File
  * Uses %LOCALAPPDATA% on Windows to match `perUserInstall = true` in the MSI
  * config -- both stay inside the user profile, so no elevation is ever needed.
  */
-internal object AppPaths {
+object AppPaths {
 
     val isWindows: Boolean =
         System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
