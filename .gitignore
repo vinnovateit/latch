@@ -13,6 +13,8 @@ app/build/
 app/release/
 app/debug/
 desktop/build/
+core/build/
+cli/build/
 .kotlin/
 node_modules/
 *.log
