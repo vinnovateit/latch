@@ -32,9 +32,6 @@
             android:name="android.theme.customization.adaptive_icon_background"
             android:resource="@drawable/ic_launcher_background" />
 
-        <receiver android:name=".features.wifi.background.WiFiChangeReceiver"
-            android:exported="true">
-        </receiver>
         <activity
             android:name=".features.home.MainActivity"
             android:exported="true"

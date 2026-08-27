@@ -13,7 +13,8 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.Update
-import java.util.Calendar
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import java.util.Date
 import kotlinx.coroutines.flow.Flow
 
@@ -29,14 +30,6 @@ data class Session(
   val maxTxBps: Long
 )
 
-@Entity(tableName = "daily_usage")
-data class DailyUsage(
-  @PrimaryKey
-  val date: Date,
-  val totalRxBytes: Long,
-  val totalTxBytes: Long,
-)
-
 @Dao
 interface StatsDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -48,23 +41,8 @@ interface StatsDao {
   @Query("SELECT * FROM sessions ORDER BY startTime DESC")
   fun getAllSessions(): Flow<List<Session>>
 
-  @Insert(onConflict = OnConflictStrategy.REPLACE)
-  suspend fun insertDailyUsage(dailyUsage: DailyUsage)
-
-  @Update
-  suspend fun updateDailyUsage(dailyUsage: DailyUsage)
-
-  @Query("SELECT * FROM daily_usage ORDER BY date ASC")
-  fun getDailyUsage(): Flow<List<DailyUsage>>
-
-  @Query("SELECT * FROM daily_usage WHERE date = :day")
-  suspend fun getUsageForDay(day: Date): DailyUsage?
-
   @Query("DELETE FROM sessions")
   suspend fun clearAllSessions()
-
-  @Query("DELETE FROM daily_usage")
-  suspend fun clearAllDailyUsage()
 }
 
 class Converters {
@@ -79,7 +57,7 @@ class Converters {
   }
 }
 
-@Database(entities = [Session::class, DailyUsage::class], version = 2, exportSchema = false)
+@Database(entities = [Session::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class LatchDatabase : RoomDatabase() {
 
@@ -88,6 +66,15 @@ abstract class LatchDatabase : RoomDatabase() {
   companion object {
     @Volatile
     private var INSTANCE: LatchDatabase? = null
+
+    // daily_usage was a Room entity with five DAO methods and zero callers.
+    // Dropping the table rather than the whole database: sessions is real
+    // user history and must survive this upgrade untouched.
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TABLE IF EXISTS daily_usage")
+      }
+    }
 
     fun getDatabase(context: Context): LatchDatabase {
       return INSTANCE ?: synchronized(this) {
@@ -99,6 +86,7 @@ abstract class LatchDatabase : RoomDatabase() {
           // No destructive fallback: a future version bump without a real Migration
           // should fail loudly during development instead of silently wiping every
           // user's session history on update.
+          .addMigrations(MIGRATION_2_3)
           .build()
         INSTANCE = instance
         instance
