@@ -7,7 +7,6 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.ksp)
 }
 
 // Single JVM target. Windows/Linux/macOS differences are handled at RUNTIME via
@@ -44,29 +43,22 @@ kotlin {
             implementation(libs.lifecycle.runtime.compose.mp)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
-
-            implementation(libs.room.runtime.desktop)
-            implementation(libs.sqlite.bundled)
         }
 
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
             // Required: Compose Desktop dispatches on the AWT event thread.
             implementation(libs.kotlinx.coroutines.swing)
-            // Per-interface byte counters. Brings jna transitively; jna-platform
-            // is explicit for DPAPI (credentials) + registry (autostart).
-            implementation(libs.oshi.core)
+            // Room, sqlite, OSHI and slf4j moved to :core along with the
+            // engine/platform code that uses them (Room is exposed as `api`
+            // there, so LatchDatabase is still visible here transitively).
+            // jna/jna-platform stay declared directly: WindowsBalloonNotifier
+            // and LinuxAppIndicatorTray (tray-icon integration, GUI-only,
+            // stayed in :desktop) call JNA APIs directly.
             implementation(libs.jna)
             implementation(libs.jna.platform)
-            implementation(libs.slf4j.simple)
         }
     }
-}
-
-// KSP config name derives from the target name: jvm("desktop") -> kspDesktop,
-// NOT kspJvm.
-dependencies {
-    add("kspDesktop", libs.room.compiler.desktop)
 }
 
 /**
