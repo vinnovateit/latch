@@ -228,6 +228,19 @@ class LatchEngine(
             return
         }
 
+        // DNS resolution failing outright (as opposed to resolving but the
+        // portal not answering) usually means Private DNS is blocking
+        // captive-portal detection entirely -- retrying the same probe would
+        // just fail the same way, so this is reported distinctly rather than
+        // falling into the generic login-failure path below.
+        if (code == CaptivePortalDetector.DNS_RESOLUTION_FAILED && !revalidating) {
+            logger.w(TAG, "[ConnectAnalysis] Portal host DNS resolution failed.")
+            ConnectionStatusManager.postStatus(
+                ConnectionStatus.Failed(ConnectionStatus.Reason.DnsResolutionFailed)
+            )
+            return
+        }
+
         // Just logged in: give the portal a moment to open the gates rather than
         // looping forever.
         if (revalidating) {

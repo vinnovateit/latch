@@ -44,5 +44,6 @@ fun ConnectionStatus.displayText(): String = when (this) {
         ConnectionStatus.Reason.Disconnected ->
             stringResource(Res.string.status_disconnected_message)
         ConnectionStatus.Reason.NetworkTimeoutAfterLogin -> "Network timeout after login"
+        ConnectionStatus.Reason.DnsResolutionFailed -> "DNS lookup failed (check DNS settings)"
     }
 }

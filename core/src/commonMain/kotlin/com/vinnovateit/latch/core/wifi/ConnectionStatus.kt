@@ -36,6 +36,15 @@ sealed interface ConnectionStatus {
         LogoutFailed,
         Disconnected,
         NetworkTimeoutAfterLogin,
+        /**
+         * The portal probe host couldn't be resolved at all (as opposed to
+         * resolving but timing out/refusing) -- commonly Private DNS blocking
+         * captive-portal detection. Whether to show a DNS-specific message or
+         * a generic one is a presentation-layer decision (e.g. Android can
+         * additionally check its own Private DNS setting); the engine only
+         * reports that resolution failed.
+         */
+        DnsResolutionFailed,
     }
 }
 
