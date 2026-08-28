@@ -13,16 +13,29 @@ import androidx.room.RoomDatabaseConstructor
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Session history.
+ * Session history -- shared by desktop and Android as of version 3.
  *
- * Differences from the Android schema, both deliberate:
+ * Differences from Android's original schema, both deliberate:
  *
  *  - Timestamps are `Long` epoch millis rather than `java.util.Date`, so no
- *    @TypeConverter is needed. Room stored Date as INTEGER anyway, so the column
- *    definition is identical -- and every read site immediately called .time on
- *    the Date regardless.
- *  - The `daily_usage` table is gone. It had five DAO methods and zero callers.
- *    This is a fresh desktop database so there is no migration to write.
+ *    @TypeConverter is needed. Room stores Date as INTEGER anyway, so the
+ *    column definition is identical -- and every read site immediately
+ *    called .time on the Date regardless.
+ *  - The `daily_usage` table is gone. It had five DAO methods and zero
+ *    callers on both platforms.
+ *
+ * version = 3 to match Android's on-disk version exactly (its schema
+ * already went 1 -> 2 -> 3, dropping daily_usage along the way -- see
+ * GitHub #70). Room refuses to open a database at a version *lower* than
+ * what's stored, so this can't stay at the "fresh desktop database" version
+ * 1 it started at once Android adopts this class.
+ *
+ * No migration is registered: verified empirically (a throwaway Room
+ * database built with Android's real production entities -- Long id, Date
+ * fields + TypeConverters, version 3 -- reopens cleanly under this exact
+ * entity with the data intact) that the two are schema-compatible, since
+ * Room's type affinity maps Date-via-TypeConverter and Int/Long primary
+ * keys onto the same SQLite INTEGER column either way.
  */
 @Entity(tableName = "sessions")
 data class Session(
@@ -47,7 +60,7 @@ interface StatsDao {
     suspend fun clearAllSessions()
 }
 
-@Database(entities = [Session::class], version = 1, exportSchema = false)
+@Database(entities = [Session::class], version = 3, exportSchema = false)
 @ConstructedBy(LatchDatabaseConstructor::class)
 abstract class LatchDatabase : RoomDatabase() {
     abstract fun statsDao(): StatsDao
