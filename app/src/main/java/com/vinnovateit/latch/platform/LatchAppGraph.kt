@@ -15,13 +15,17 @@ import com.vinnovateit.latch.core.stats.ThroughputMonitor
  * cold-launch check needs a working engine immediately, not after a Service
  * happens to start first.
  *
- * Not yet wired into any real behavior: ForegroundService/LatchTileService/
- * LatchWidget/MainActivity still run their own pre-migration logic. This
- * only constructs the graph so it exists and can be built on incrementally.
+ * ForegroundService drives this engine now. LatchTileService/LatchWidget/
+ * MainActivity still read Android's own ConnectionStatusManager/
+ * SessionRepository, kept in sync by ForegroundService's bridge
+ * (EngineStatusBridge.kt) until they're repointed directly at this engine.
  */
 object LatchAppGraph {
     private var _engine: LatchEngine? = null
     val engine: LatchEngine get() = checkNotNull(_engine) { "LatchAppGraph.initialize() has not run yet" }
+
+    private var _platform: AndroidPlatformServices? = null
+    val platform: AndroidPlatformServices get() = checkNotNull(_platform) { "LatchAppGraph.initialize() has not run yet" }
 
     lateinit var foregroundController: ForegroundControllerHolder
         private set
@@ -33,6 +37,7 @@ object LatchAppGraph {
         foregroundController = ForegroundControllerHolder(appContext)
         val notifier = AndroidUserNotifier(appContext, foregroundController)
         val platform = AndroidPlatformServices(appContext, notifier)
+        _platform = platform
         Platform.install(platform)
         SettingsManager.initialize(platform.settingsStore)
 
