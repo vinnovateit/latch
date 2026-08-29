@@ -8,10 +8,12 @@ import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus as LegacySta
 
 /**
  * Translates the shared engine's typed status onto Android's own
- * ConnectionStatus (which UI/notification/widget code already reads via
- * ConnectionStatusManager). Temporary: once TileService/Widget/ViewModel are
- * repointed directly at the engine's status/isLatched, this and
- * ConnectionStatusManager both go away.
+ * ConnectionStatus (still the type WiFiStatusViewModel/LatchWidgetUpdater/
+ * HomeScreen expect, since it already carries a plain display string --
+ * unlike the shared type, which deliberately doesn't resolve strings itself).
+ * The old ConnectionStatusManager singleton this used to relay through has
+ * been retired; consumers read LatchAppGraph.engine.status directly now and
+ * call this to render it.
  */
 fun SharedStatus.toLegacyStatus(context: Context): LegacyStatus = when (this) {
     is SharedStatus.Idle -> LegacyStatus.Idle

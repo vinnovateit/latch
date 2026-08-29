@@ -12,13 +12,11 @@ import com.vinnovateit.latch.core.engine.LatchCommand
 import com.vinnovateit.latch.core.wifi.ConnectionStatus as SharedConnectionStatus
 import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
-import com.vinnovateit.latch.features.wifi.manager.ConnectionStatusManager
-import com.vinnovateit.latch.features.wifi.manager.UiNotifier
+import com.vinnovateit.latch.features.wifi.widget.LatchWidgetUpdater
 import com.vinnovateit.latch.platform.AndroidNetworkHandle
 import com.vinnovateit.latch.platform.AndroidUserNotifier
 import com.vinnovateit.latch.platform.ForegroundController
 import com.vinnovateit.latch.platform.LatchAppGraph
-import com.vinnovateit.latch.platform.toLegacyStatus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
@@ -30,12 +28,10 @@ import java.util.Locale
  * health checks) lives in the shared LatchEngine (core/engine/LatchEngine.kt),
  * which this just starts and forwards Intent actions to as LatchCommands.
  *
- * bridgeEngineStateToLegacyObservers() keeps Android's own
- * ConnectionStatusManager/SessionRepository in sync with the engine's real
- * status, so LatchTileService/LatchWidget/WiFiStatusViewModel (which still
- * read those, not the engine directly) keep working unchanged. That bridge
- * and those two singletons go away once those consumers are repointed
- * directly at LatchAppGraph.engine.
+ * bridgeEngineStateToLegacyObservers() keeps Android's own SessionRepository
+ * (session/stats tracking) and the widget refreshed from the engine's real
+ * state. Status itself (WiFiStatusViewModel, LatchWidgetUpdater) is read
+ * directly from LatchAppGraph.engine.status via toLegacyStatus() now.
  */
 class ForegroundService : Service(), ForegroundController {
 
@@ -159,13 +155,19 @@ class ForegroundService : Service(), ForegroundController {
         stopForeground(STOP_FOREGROUND_DETACH)
     }
 
-    // --- Keeps Android's pre-migration UI-facing singletons in sync with the
-    // real engine, so nothing downstream of them needs to change yet. ---
+    // --- Keeps Android's own SessionRepository (session/stats tracking, a
+    // different concern from login status, kept as-is) and the widget in
+    // sync with the real engine. Status itself is now read directly from
+    // LatchAppGraph.engine.status wherever it's needed (WiFiStatusViewModel,
+    // LatchWidgetUpdater) via toLegacyStatus(), so this only needs to keep
+    // the widget refreshing on every status change -- the same side effect
+    // ConnectionStatusManager.postStatus() used to have, before it was
+    // retired for having no remaining readers. ---
 
     private fun bridgeEngineStateToLegacyObservers() {
         serviceScope.launch {
-            LatchAppGraph.engine.status.collect { status ->
-                ConnectionStatusManager.postStatus(status.toLegacyStatus(this@ForegroundService))
+            LatchAppGraph.engine.status.collect {
+                LatchWidgetUpdater.enqueueOneTimeUpdate(this@ForegroundService)
             }
         }
         serviceScope.launch {
@@ -177,7 +179,7 @@ class ForegroundService : Service(), ForegroundController {
                     val timeString = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
                     updateNotification("Latched", "Connected at $timeString")
                     startNotificationUpdates()
-                    UiNotifier.showToast(applicationContext, "Latched onto VIT WiFi at $timeString")
+                    LatchAppGraph.platform.notifier.notifyTransient("Connected", "Latched onto VIT WiFi at $timeString")
                 } else if (!latched && wasLatched) {
                     SessionRepository.stopSession()
                     notificationUpdateJob?.cancel()

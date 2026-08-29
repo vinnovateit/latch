@@ -41,6 +41,7 @@ import androidx.glance.text.TextStyle
 import com.vinnovateit.latch.features.home.MainActivity
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
+import com.vinnovateit.latch.platform.LatchAppGraph
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -192,15 +193,9 @@ class ConnectAction : ActionCallback {
         LatchWidgetState()
       }
 
-      val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-      val connectivityManager = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-      
-      val isWifiEnabled = wifiManager.isWifiEnabled
-      val activeNetwork = connectivityManager.activeNetwork
-      val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
-      val isWifiConnected = networkCapabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+      val wifi = LatchAppGraph.platform.wifi
 
-      if (!state.isConnected && (!isWifiEnabled || !isWifiConnected)) {
+      if (!state.isConnected && (!wifi.isWifiEnabled() || !wifi.isConnectedToWifi())) {
           val wifiIntent = Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).apply {
               flags = Intent.FLAG_ACTIVITY_NEW_TASK
           }

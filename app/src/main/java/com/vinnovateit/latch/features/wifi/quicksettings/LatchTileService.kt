@@ -1,7 +1,6 @@
 package com.vinnovateit.latch.features.wifi.quicksettings
 
 import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.service.quicksettings.Tile
@@ -10,6 +9,7 @@ import android.util.Log
 import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
+import com.vinnovateit.latch.platform.LatchAppGraph
 import kotlinx.coroutines.*
 
 class LatchTileService : TileService() {
@@ -57,13 +57,8 @@ class LatchTileService : TileService() {
             return
         }
 
-        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-        val connectivityManager = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        val activeNetwork = connectivityManager.activeNetwork
-        val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
-        val isWifiConnected = networkCapabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
-
-        if (!wifiManager.isWifiEnabled || !isWifiConnected) {
+        val wifi = LatchAppGraph.platform.wifi
+        if (!wifi.isWifiEnabled() || !wifi.isConnectedToWifi()) {
             Log.d(TAG, "WiFi is off or disconnected. Opening settings.")
             val intent = Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -135,13 +130,8 @@ class LatchTileService : TileService() {
                 val qsTile = qsTile ?: return@launch
                 val isConnected = SessionRepository.liveStatus.value != null
 
-                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-                val connectivityManager = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-                val activeNetwork = connectivityManager.activeNetwork
-                val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
-                val isWifiConnected = networkCapabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
-
-                val isWifiReady = wifiManager.isWifiEnabled && isWifiConnected
+                val wifi = LatchAppGraph.platform.wifi
+                val isWifiReady = wifi.isWifiEnabled() && wifi.isConnectedToWifi()
 
                 if (!isWifiReady) {
                     qsTile.state = Tile.STATE_UNAVAILABLE

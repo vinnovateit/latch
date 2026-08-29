@@ -15,7 +15,8 @@ import androidx.work.WorkerParameters
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus
-import com.vinnovateit.latch.features.wifi.manager.ConnectionStatusManager
+import com.vinnovateit.latch.platform.LatchAppGraph
+import com.vinnovateit.latch.platform.toLegacyStatus
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
@@ -70,7 +71,7 @@ class LatchWidgetUpdater(
     val accentColorVal = SettingsManager.accentColor.first()
 
     val liveSession = SessionRepository.liveStatus.firstOrNull()
-    val detailedStatus = ConnectionStatusManager.status.firstOrNull()
+    val detailedStatus = LatchAppGraph.engine.status.value.toLegacyStatus(applicationContext)
 
     val widgetState = when (detailedStatus) {
       is ConnectionStatus.Companion.Connecting -> LatchWidgetState(
