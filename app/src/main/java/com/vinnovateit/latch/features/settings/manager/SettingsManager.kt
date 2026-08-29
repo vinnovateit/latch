@@ -80,12 +80,33 @@ object SettingsManager {
     _autoLogin.value = enabled
     sharedPreferences.edit { putBoolean(KEY_AUTO_LOGIN, enabled) }
 
+    // LatchEngine reads the shared :core SettingsManager's autoLogin, a
+    // separate in-memory singleton from this one -- without this, toggling
+    // the connect button writes to this object's StateFlow (and the same
+    // "app_settings" file) but the engine never sees the change until the
+    // next process restart re-reads it from disk. Confirmed live: this was
+    // silently making every login attempt skip straight to "Login failed"
+    // whenever the two fell out of sync.
+    com.vinnovateit.latch.core.settings.SettingsManager.setAutoLogin(enabled)
+
     appContext?.let {
-      val serviceIntent = Intent(it, ForegroundService::class.java)
       if (enabled) {
-        it.startService(serviceIntent)
+        it.startService(Intent(it, ForegroundService::class.java))
       } else {
-        it.stopService(serviceIntent)
+        // NOT stopService(): that kills the service immediately, skipping
+        // the actual portal logout HTTP call and racing ahead of
+        // ForegroundService's own graceful-shutdown wait (confirmed live on
+        // the real VIT network -- stopService() destroyed the service
+        // before the logout request even fired, leaving the UI stuck
+        // showing "connected" even though the engine had logged out).
+        // Sending the same explicit intent HomeScreen/TileService already
+        // send lets the service log out through the engine, then stop
+        // itself once that's actually done.
+        it.startService(
+          Intent(it, ForegroundService::class.java).apply {
+            action = ForegroundService.ACTION_TRIGGER_LOGOUT
+          }
+        )
       }
     }
   }

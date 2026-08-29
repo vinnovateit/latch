@@ -9,7 +9,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.core.engine.LatchCommand
-import com.vinnovateit.latch.core.wifi.ConnectionStatus as SharedConnectionStatus
 import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import com.vinnovateit.latch.features.wifi.widget.LatchWidgetUpdater
@@ -100,13 +99,24 @@ class ForegroundService : Service(), ForegroundController {
             ACTION_TRIGGER_LOGOUT -> {
                 Log.d("ForegroundService", "Manual logout triggered via intent.")
                 serviceScope.launch {
+                    val wasLatched = LatchAppGraph.engine.isLatched.value
                     LatchAppGraph.engine.submit(LatchCommand.Logout)
                     // logoutNow() is async inside the engine; wait for it to
                     // actually finish before stopping the service, same as
-                    // the old logoutAndStop() did synchronously.
-                    withTimeoutOrNull(LOGOUT_TIMEOUT_MS) {
-                        LatchAppGraph.engine.status.first {
-                            it is SharedConnectionStatus.Success || it is SharedConnectionStatus.Failed
+                    // the old logoutAndStop() did synchronously. Watching
+                    // isLatched rather than status: status is a Failed(...)
+                    // data class, and a *stale* Failed/Success instance left
+                    // over from a recent prior transition (before its 2s
+                    // auto-revert-to-Idle fires) can satisfy a check like
+                    // "is Success or Failed" immediately, stopping the
+                    // service before the real logout HTTP call has even run
+                    // and before this same isLatched transition has reached
+                    // Android's own SessionRepository via the bridge below.
+                    // isLatched has only two states, so there's no stale-
+                    // instance to falsely match.
+                    if (wasLatched) {
+                        withTimeoutOrNull(LOGOUT_TIMEOUT_MS) {
+                            LatchAppGraph.engine.isLatched.first { !it }
                         }
                     }
                     stopSelf()
