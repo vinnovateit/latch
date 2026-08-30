@@ -97,6 +97,14 @@ class AutoLoginManager(
                         "http-equiv=\"refresh\"" in responseLower ||
                         "http://example.com" in responseLower
                     logDebug("Login success evaluation string match: $isSuccess")
+                    if (!isSuccess) {
+                        // Only the length was logged before, which can't distinguish
+                        // "real login failure" from a Pronto page served mid session-
+                        // teardown right after a fresh logout -- log unconditionally
+                        // (not logDebug) since this is the one signal that can confirm
+                        // that theory from a future capture instead of guessing again.
+                        logWarning("Login response didn't match any known success string. Body: ${response.take(500)}")
+                    }
 
                     if (isSuccess) LoginResult.Success else LoginResult.Failure
                 }

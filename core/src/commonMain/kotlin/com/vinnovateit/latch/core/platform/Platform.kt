@@ -112,11 +112,16 @@ interface WifiPlatform {
     fun bindProcess(handle: NetworkHandle?) {}
 
     /**
-     * Android: reportNetworkConnectivity(handle, true), which silences the
-     * "Sign in to network" nag. Windows NCSI has no equivalent API, so expect
-     * "No Internet, secured" for ~30s after login until Windows re-probes.
+     * Android: reportNetworkConnectivity(handle, ok). ok=true (on login
+     * success) silences the "Sign in to network" nag. ok=false (on logout)
+     * tells Android to re-evaluate the network immediately instead of
+     * waiting for its own periodic NetworkMonitor cycle -- without it,
+     * the status bar can take an unpredictable amount of time to notice the
+     * network no longer has internet and switch away from it. Windows NCSI
+     * has no equivalent API, so expect "No Internet, secured" for ~30s
+     * after login until Windows re-probes either way.
      */
-    fun reportConnectivityOk(handle: NetworkHandle) {}
+    fun reportConnectivity(handle: NetworkHandle, ok: Boolean) {}
 }
 
 // ---------------------------------------------------------------------------

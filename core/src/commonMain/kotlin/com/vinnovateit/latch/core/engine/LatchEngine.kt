@@ -48,7 +48,7 @@ interface LatchController {
  *    foreground-service time limit. A tray daemon has no such cap, and porting
  *    it would mean monitoring silently dies mid-day with no error and no log line.
  *  - onTimeout(). Android 15 FGS callback, no analogue.
- *  - reportNetworkConnectivity(). Behind wifi.reportConnectivityOk(), a no-op here.
+ *  - reportNetworkConnectivity(). Behind wifi.reportConnectivity(), a no-op here.
  *  - bindProcessToNetwork(). Behind wifi.bindProcess(), a no-op here.
  *  - stopSelf() on failure paths. The desktop daemon must stay alive and keep
  *    listening; failures post a status and return to Idle.
@@ -220,7 +220,7 @@ class LatchEngine(
                 return
             }
             logger.d(TAG, "[ConnectAnalysis] Network has real internet (HTTP 204). Starting session.")
-            platform.wifi.reportConnectivityOk(handle)
+            platform.wifi.reportConnectivity(handle, ok = true)
             ConnectionStatusManager.postStatus(ConnectionStatus.Success)
             _isLatched.value = true
             sessions.startSession()
@@ -395,6 +395,12 @@ class LatchEngine(
             val ok = login.attemptLogout(handle, false, platform.wifi.gatewayIp())
             _isLatched.value = false
             sessions.stopSession()
+            // Tell Android this network no longer has a live session now,
+            // rather than waiting for its own NetworkMonitor to notice on
+            // its own schedule -- regardless of whether the portal's own
+            // logout request itself succeeded, the app is no longer relying
+            // on this network being latched.
+            if (handle != null) platform.wifi.reportConnectivity(handle, ok = false)
             if (ok) {
                 logger.d(TAG, "Logout succeeded.")
                 ConnectionStatusManager.postStatus(

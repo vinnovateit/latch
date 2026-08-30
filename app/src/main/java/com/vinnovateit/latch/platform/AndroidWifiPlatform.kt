@@ -105,9 +105,9 @@ class AndroidWifiPlatform(
         connectivityManager.bindProcessToNetwork((handle as? AndroidNetworkHandle)?.network)
     }
 
-    override fun reportConnectivityOk(handle: NetworkHandle) {
+    override fun reportConnectivity(handle: NetworkHandle, ok: Boolean) {
         (handle as? AndroidNetworkHandle)?.let {
-            connectivityManager.reportNetworkConnectivity(it.network, true)
+            connectivityManager.reportNetworkConnectivity(it.network, ok)
         }
     }
 
