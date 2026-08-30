@@ -367,10 +367,23 @@ class LatchEngine(
                 }
 
                 is LoginResult.Failure -> {
-                    logger.w(TAG, "[ConnectAnalysis] Auth FAILED on both HTTP & HTTPS attempts.")
-                    ConnectionStatusManager.postStatus(
-                        ConnectionStatus.Failed(ConnectionStatus.Reason.LoginFailed)
-                    )
+                    // Pronto sometimes serves a login response our success-string
+                    // match doesn't recognize even though the portal already
+                    // granted the session server-side -- a manual "press connect
+                    // again" right after a reported failure routinely succeeds
+                    // instantly because of this. One cheap extra probe here
+                    // automates that instead of making the user do it by hand.
+                    // Real failures (bad credentials, portal down) still surface
+                    // immediately below since this doesn't retry.
+                    logger.w(TAG, "[ConnectAnalysis] Auth FAILED on both HTTP & HTTPS attempts; re-probing in case the portal already granted access...")
+                    if (portal.checkPortalStatus(handle) == 204) {
+                        logger.d(TAG, "[ConnectAnalysis] Portal already granted access despite failed login detection. Treating as success.")
+                        checkAndAct(handle, revalidating = true)
+                    } else {
+                        ConnectionStatusManager.postStatus(
+                            ConnectionStatus.Failed(ConnectionStatus.Reason.LoginFailed)
+                        )
+                    }
                 }
             }
         } catch (e: Exception) {

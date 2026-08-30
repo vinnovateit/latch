@@ -137,6 +137,14 @@ class AutoLoginManager(
             } else {
                 LoginResult.Failure
             }
+        } catch (e: javax.net.ssl.SSLException) {
+            // Some portal deployments serve HTTPS off a cert chain signed with a
+            // legacy/weak-hash CA that the platform TLS stack now hard-rejects
+            // unconditionally -- this is a permanent portal misconfiguration, not
+            // a transient app-side error, so it doesn't deserve a full stack
+            // trace at ERROR on every login attempt.
+            logWarning("HTTPS login attempt rejected at the TLS layer (portal certificate issue): ${e.message}")
+            LoginResult.Failure
         } catch (e: Exception) {
             logError("Login failed with exception: ${e.message}", e)
             LoginResult.Failure
