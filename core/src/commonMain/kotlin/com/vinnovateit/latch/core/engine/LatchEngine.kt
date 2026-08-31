@@ -10,6 +10,7 @@ import com.vinnovateit.latch.core.wifi.CaptivePortalDetector
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.core.wifi.ConnectionStatusManager
 import com.vinnovateit.latch.core.wifi.LoginResult
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.InetAddress
 
 enum class LatchCommand { CheckAndLogin, SilentCheck, Logout, Shutdown }
@@ -33,6 +35,13 @@ interface LatchController {
     val status: StateFlow<ConnectionStatus>
     val isLatched: StateFlow<Boolean>
     fun submit(command: LatchCommand)
+
+    /**
+     * Like [submit], but suspends until [command] has actually finished
+     * processing (not until some StateFlow happens to already satisfy a
+     * predicate -- that races the command itself). Returns false on timeout.
+     */
+    suspend fun submitAndAwait(command: LatchCommand, timeoutMs: Long): Boolean
 }
 
 /**
@@ -79,7 +88,13 @@ class LatchEngine(
     private val login = AutoLoginManager(platform.httpTransport, logger, platform.buildInfo)
     private val portal = CaptivePortalDetector(platform.httpTransport, logger)
 
-    private val commands = Channel<LatchCommand>(Channel.UNLIMITED)
+    /** Wraps a command with an optional per-invocation completion signal for [submitAndAwait]. */
+    private data class QueuedCommand(
+        val command: LatchCommand,
+        val done: CompletableDeferred<Unit>? = null,
+    )
+
+    private val commands = Channel<QueuedCommand>(Channel.UNLIMITED)
     private var healthCheckJob: Job? = null
     private var currentHandle: NetworkHandle? = null
     private var started = false
@@ -99,7 +114,13 @@ class LatchEngine(
     override val status: StateFlow<ConnectionStatus> = ConnectionStatusManager.status
 
     override fun submit(command: LatchCommand) {
-        commands.trySend(command)
+        commands.trySend(QueuedCommand(command))
+    }
+
+    override suspend fun submitAndAwait(command: LatchCommand, timeoutMs: Long): Boolean {
+        val done = CompletableDeferred<Unit>()
+        commands.trySend(QueuedCommand(command, done))
+        return withTimeoutOrNull(timeoutMs) { done.await() } != null
     }
 
     /** Idempotent -- the desktop engine is created once but may be re-started. */
@@ -111,7 +132,13 @@ class LatchEngine(
             platform.wifi.events.collect { event -> onWifiEvent(event) }
         }
         scope.launch {
-            for (command in commands) handle(command)
+            for (queued in commands) {
+                try {
+                    handle(queued.command)
+                } finally {
+                    queued.done?.complete(Unit)
+                }
+            }
         }
     }
 
@@ -165,7 +192,10 @@ class LatchEngine(
                 checkAndActExclusive(handle, revalidating = false, silent = true)
             }
 
-            LatchCommand.Logout -> logoutNow()
+            // Serialized against checkAndActExclusive so a logout can't run
+            // concurrently with a fresh login on the Wi-Fi-event coroutine and
+            // clobber it -- the two run on separate coroutines sharing this pool.
+            LatchCommand.Logout -> loginGate.withLock { logoutNow() }
 
             LatchCommand.Shutdown -> {
                 healthCheckJob?.cancel()

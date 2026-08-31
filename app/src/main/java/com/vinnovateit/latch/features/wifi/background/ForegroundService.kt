@@ -17,7 +17,6 @@ import com.vinnovateit.latch.platform.AndroidUserNotifier
 import com.vinnovateit.latch.platform.ForegroundController
 import com.vinnovateit.latch.platform.LatchAppGraph
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -99,26 +98,11 @@ class ForegroundService : Service(), ForegroundController {
             ACTION_TRIGGER_LOGOUT -> {
                 Log.d("ForegroundService", "Manual logout triggered via intent.")
                 serviceScope.launch {
-                    val wasLatched = LatchAppGraph.engine.isLatched.value
-                    LatchAppGraph.engine.submit(LatchCommand.Logout)
-                    // logoutNow() is async inside the engine; wait for it to
-                    // actually finish before stopping the service, same as
-                    // the old logoutAndStop() did synchronously. Watching
-                    // isLatched rather than status: status is a Failed(...)
-                    // data class, and a *stale* Failed/Success instance left
-                    // over from a recent prior transition (before its 2s
-                    // auto-revert-to-Idle fires) can satisfy a check like
-                    // "is Success or Failed" immediately, stopping the
-                    // service before the real logout HTTP call has even run
-                    // and before this same isLatched transition has reached
-                    // Android's own SessionRepository via the bridge below.
-                    // isLatched has only two states, so there's no stale-
-                    // instance to falsely match.
-                    if (wasLatched) {
-                        withTimeoutOrNull(LOGOUT_TIMEOUT_MS) {
-                            LatchAppGraph.engine.isLatched.first { !it }
-                        }
-                    }
+                    // submitAndAwait suspends until logoutNow() has actually
+                    // finished (not until some StateFlow happens to already
+                    // satisfy a predicate, which raced the command itself --
+                    // see LatchController.submitAndAwait's doc).
+                    LatchAppGraph.engine.submitAndAwait(LatchCommand.Logout, LOGOUT_TIMEOUT_MS)
                     stopSelf()
                 }
             }
