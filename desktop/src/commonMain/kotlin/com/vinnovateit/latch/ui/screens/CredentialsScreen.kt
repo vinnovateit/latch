@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -67,11 +69,14 @@ import org.jetbrains.compose.resources.stringResource
  */
 @Composable
 fun CredentialsScreen(
+    initialRegNo: String = "",
+    initialPassword: String = "",
     onSave: (String, String) -> Unit,
     onCancel: (() -> Unit)?,
 ) {
-    var regNo by remember { mutableStateOf("") }
-    var pass by remember { mutableStateOf("") }
+    var regNo by remember(initialRegNo) { mutableStateOf(initialRegNo) }
+    var pass by remember(initialPassword) { mutableStateOf(initialPassword) }
+    var passwordVisible by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val errorMessage = stringResource(Res.string.credentials_error_message)
 
@@ -149,9 +154,18 @@ fun CredentialsScreen(
                     onValueChange = { pass = it; error = null },
                     label = { Text(stringResource(Res.string.password)) },
                     leadingIcon = { Icon(LatchIcons.Lock, contentDescription = null) },
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) LatchIcons.Visibility else LatchIcons.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
                     singleLine = true,
                     shape = RoundedCornerShape(16.dp),
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     isError = error != null && pass.isBlank(),
                     modifier = Modifier.fillMaxWidth(),
