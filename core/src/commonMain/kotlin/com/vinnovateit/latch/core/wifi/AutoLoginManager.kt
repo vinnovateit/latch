@@ -98,12 +98,18 @@ class AutoLoginManager(
                         "http://example.com" in responseLower
                     logDebug("Login success evaluation string match: $isSuccess")
                     if (!isSuccess) {
-                        // Only the length was logged before, which can't distinguish
-                        // "real login failure" from a Pronto page served mid session-
-                        // teardown right after a fresh logout -- log unconditionally
-                        // (not logDebug) since this is the one signal that can confirm
-                        // that theory from a future capture instead of guessing again.
-                        logWarning("Login response didn't match any known success string. Body: ${response.take(500)}")
+                        // Only the length was logged before, which can't say
+                        // *why* the match failed -- a live capture confirmed this
+                        // response can be a real 200 the string-match just doesn't
+                        // recognize even though the portal already granted the
+                        // session (see LatchEngine's post-failure re-probe). Log
+                        // unconditionally (not logDebug), since this is the one
+                        // signal that can identify the actual response variant
+                        // from a future capture instead of guessing again. Capped
+                        // at 200 chars, not 500: enough to identify which known
+                        // Pronto page variant this is without dumping an entire
+                        // HTML document into the log on every failed match.
+                        logWarning("Login response didn't match any known success string. Body: ${response.take(200)}")
                     }
 
                     if (isSuccess) LoginResult.Success else LoginResult.Failure
