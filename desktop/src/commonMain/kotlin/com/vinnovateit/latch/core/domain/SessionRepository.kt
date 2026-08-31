@@ -87,6 +87,10 @@ class SessionRepository(
                 val next = current.liveData + LiveDataPoint(System.currentTimeMillis(), usage)
                 _liveStatus.value = current.copy(
                     liveData = if (next.size > LIVE_HISTORY_CAP) next.drop(1) else next,
+                    totalRxBytes = current.totalRxBytes + usage.rxBytes,
+                    totalTxBytes = current.totalTxBytes + usage.txBytes,
+                    maxRxBps = maxOf(current.maxRxBps, usage.rxBps),
+                    maxTxBps = maxOf(current.maxTxBps, usage.txBps),
                 )
             }
         }
@@ -101,10 +105,10 @@ class SessionRepository(
         throughput.stop()
         _liveStatus.value = null
 
-        val totalRxBytes = sessionToFinalize.liveData.sumOf { it.usage.rxBytes }
-        val totalTxBytes = sessionToFinalize.liveData.sumOf { it.usage.txBytes }
-        val maxRxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.rxBps } ?: 0L
-        val maxTxBps = sessionToFinalize.liveData.maxOfOrNull { it.usage.txBps } ?: 0L
+        val totalRxBytes = sessionToFinalize.totalRxBytes
+        val totalTxBytes = sessionToFinalize.totalTxBytes
+        val maxRxBps = sessionToFinalize.maxRxBps
+        val maxTxBps = sessionToFinalize.maxTxBps
 
         // Discard trivial sessions so the history isn't polluted by a connect
         // that carried no traffic. Threshold matches Android.

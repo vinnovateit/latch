@@ -55,7 +55,7 @@ internal fun ThroughputChart(
             history = history,
             width = size.width,
             height = size.height,
-            maxRate = animatedPeak.toLong(),
+            maxRate = animatedPeak,
         )
 
         if (!isAmoled) {
