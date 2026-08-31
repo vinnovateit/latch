@@ -60,13 +60,15 @@ class LinuxCredentialStore(
     }
 
     override fun save(userId: String, password: String) {
+        val creds = StoredCreds(userId, password)
+        cache = creds
         try {
-            if (secretToolAvailable && saveSecretTool(userId, password)) {
-                cache = StoredCreds(userId, password)
-                return
+            val plainJson = json.encodeToString(creds)
+            if (secretToolAvailable) {
+                saveSecretTool(plainJson)
             }
 
-            val plain = json.encodeToString(StoredCreds(userId, password)).toByteArray(Charsets.UTF_8)
+            val plain = plainJson.toByteArray(Charsets.UTF_8)
             val iv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, deriveKey(), GCMParameterSpec(GCM_TAG_LENGTH, iv))
@@ -81,8 +83,6 @@ class LinuxCredentialStore(
                 val perms = setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
                 Files.setPosixFilePermissions(file.toPath(), perms)
             }
-
-            cache = StoredCreds(userId, password)
         } catch (e: Throwable) {
             logger.e(TAG, "Failed to save credentials", e)
         }
@@ -134,12 +134,12 @@ class LinuxCredentialStore(
 
     // --- Secret Tool helpers ---
 
-    private fun saveSecretTool(userId: String, pass: String): Boolean = try {
-        val process = ProcessBuilder("secret-tool", "store", "--label=Latch Credentials", "service", "Latch", "account", userId)
+    private fun saveSecretTool(payload: String): Boolean = try {
+        val process = ProcessBuilder("secret-tool", "store", "--label=Latch Credentials", "service", "Latch")
             .redirectErrorStream(true)
             .start()
         process.outputStream.bufferedWriter().use {
-            it.write(pass)
+            it.write(payload)
             it.flush()
         }
         process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0
@@ -152,9 +152,13 @@ class LinuxCredentialStore(
             .redirectErrorStream(true)
             .start()
         process.outputStream.close()
-        val pass = process.inputStream.bufferedReader().use { it.readText() }.trim()
-        if (process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0 && pass.isNotEmpty()) {
-            StoredCreds(userId = "latched_user", password = pass)
+        val text = process.inputStream.bufferedReader().use { it.readText() }.trim()
+        if (process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0 && text.isNotEmpty()) {
+            try {
+                json.decodeFromString<StoredCreds>(text)
+            } catch (_: Throwable) {
+                StoredCreds(userId = "", password = text)
+            }
         } else null
     } catch (e: Throwable) {
         null

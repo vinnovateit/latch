@@ -148,6 +148,8 @@ fun LatchRoot(
                     when (rootScreen) {
                         "Credentials" -> {
                             CredentialsScreen(
+                                initialRegNo = platform.credentials.userId().orEmpty(),
+                                initialPassword = platform.credentials.password().orEmpty(),
                                 onSave = { userId, password ->
                                     platform.credentials.save(userId, password)
                                     hasCredentials = true
