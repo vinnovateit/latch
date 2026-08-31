@@ -210,7 +210,7 @@ class LinuxWifiPlatform(private val logger: Logger) : WifiPlatform {
         val apList = mutableListOf<com.vinnovateit.latch.core.platform.WifiAccessPoint>()
         if (scanOut != null) {
             for (line in scanOut.lines()) {
-                val parts = line.split(":")
+                val parts = line.split("(?<!\\\\):".toRegex())
                 if (parts.size >= 3) {
                     val ssid = parts[0].replace("\\:", ":").trim()
                     val bssid = parts[1].replace("\\:", ":").trim()
