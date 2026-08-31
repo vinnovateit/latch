@@ -30,7 +30,9 @@ private fun configureWindowsAppUserModelId() {
 
 fun main(args: Array<String>) {
     var onActivateWindow: (() -> Unit)? = null
-    if (!SingleInstance.acquire { onActivateWindow?.invoke() }) return
+    if (!SingleInstance.acquire { onActivateWindow?.invoke() }) {
+        kotlin.system.exitProcess(0)
+    }
 
     val startHidden = "--hidden" in args
     val app = LatchApp.create(echoLogsToStdout = System.console() != null || !startHidden)
