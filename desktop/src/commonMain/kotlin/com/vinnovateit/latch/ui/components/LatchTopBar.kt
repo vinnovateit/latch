@@ -42,7 +42,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.PopupProperties
 import com.vinnovateit.latch.desktop.LatchMark
 import com.vinnovateit.latch.desktop.resources.Res
 import com.vinnovateit.latch.desktop.resources.home_status_connected
@@ -181,7 +180,6 @@ internal fun LatchHomeTopBar(
                     shape = RoundedCornerShape(12.dp),
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     modifier = Modifier.width(200.dp),
-                    properties = PopupProperties(clippingEnabled = false),
                 ) {
                     if (showNavigationItems) {
                         DropdownMenuItem(
