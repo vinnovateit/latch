@@ -140,13 +140,6 @@ fun OnboardingScreen(
         }
     }
 
-    // credentialsHandled state should be checked if we return from credentials
-    LaunchedEffect(Unit) {
-        if (StoredCredentials.credentialsExist(context)) {
-            credentialsHandled = true
-        }
-    }
-
     if (isLandscape) {
         // --- NEW LANDSCAPE-ONLY UI ---
         Surface(
