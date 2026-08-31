@@ -83,18 +83,15 @@ class LatchTileService : TileService() {
                 isProcessing = true
                 updateTileState()
 
-                val autoLoginEnabled = SettingsManager.autoLogin.value
                 val isConnected = SessionRepository.liveStatus.value != null
 
                 if (isConnected) {
                     Log.d(TAG, "Currently connected. Triggering logout...")
-                    val intent = Intent(this@LatchTileService, ForegroundService::class.java).apply {
-                        action = ForegroundService.ACTION_TRIGGER_LOGOUT
-                    }
-                    startService(intent)
-                    if (autoLoginEnabled) {
-                        SettingsManager.setAutoLogin(false)
-                    }
+                    // setAutoLogin(false) dispatches ACTION_TRIGGER_LOGOUT itself --
+                    // sending it manually here too used to fire the portal logout
+                    // twice. Always call it (not just when auto-login was on) since
+                    // it's the sole path to the logout dispatch now.
+                    SettingsManager.setAutoLogin(false)
                 } else {
                     Log.d(TAG, "Currently disconnected and auto-login disabled. Triggering login check...")
                     val intent = Intent(this@LatchTileService, ForegroundService::class.java).apply {

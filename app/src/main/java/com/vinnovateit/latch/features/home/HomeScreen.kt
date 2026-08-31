@@ -126,10 +126,8 @@ fun HomeScreen(
             }
             context.startActivity(panelIntent)
         } else if (isConnected) {
-            val intent = Intent(context, ForegroundService::class.java).apply {
-                action = ForegroundService.ACTION_TRIGGER_LOGOUT
-            }
-            context.startService(intent)
+            // setAutoLogin(false) dispatches ACTION_TRIGGER_LOGOUT itself --
+            // sending it manually here too used to fire the portal logout twice.
             SettingsManager.setAutoLogin(false)
         } else {
             val intent = Intent(context, ForegroundService::class.java).apply {
