@@ -5,6 +5,8 @@ import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -42,7 +44,7 @@ import com.vinnovateit.latch.features.home.MainActivity
 import com.vinnovateit.latch.ui.theme.LatchTheme
 import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 
-
+private val REG_NO_REGEX = Regex("^[0-9]{2}[A-Z]{3}[0-9]{4}$")
 
 @Composable
 fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
@@ -51,16 +53,61 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
     var regNo by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var regNoError by remember { mutableStateOf<String?>(null) }
-    var passwordError by remember { mutableStateOf<String?>(null) }
+    val shakeOffset = remember { Animatable(0f) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     LaunchedEffect(editMode) {
         if (editMode) {
-            regNo = StoredCredentials.getUserId(context) ?: ""
+            regNo = StoredCredentials.getUserId(context)?.uppercase() ?: ""
             password = StoredCredentials.getPassword(context) ?: ""
+        }
+    }
+
+    val triggerError: (String) -> Unit = { msg ->
+        scope.launch {
+            shakeOffset.snapTo(0f)
+            shakeOffset.animateTo(
+                targetValue = 0f,
+                animationSpec = keyframes {
+                    durationMillis = 400
+                    0f at 0
+                    (-12f) at 50
+                    12f at 100
+                    (-8f) at 150
+                    8f at 200
+                    (-4f) at 250
+                    4f at 300
+                    0f at 400
+                },
+            )
+        }
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(msg)
+        }
+    }
+
+    val handleSubmit: () -> Unit = {
+        val trimmedRegNo = regNo.trim().uppercase()
+        when {
+            trimmedRegNo.isBlank() || password.isBlank() -> {
+                triggerError(context.getString(R.string.credentials_error_message))
+            }
+            !REG_NO_REGEX.matches(trimmedRegNo) -> {
+                triggerError("Invalid Registration Number")
+            }
+            else -> {
+                scope.launch {
+                    if (StoredCredentials.saveCredentials(context, trimmedRegNo, password)) {
+                        onCredentialsSaved()
+                    } else {
+                        triggerError("Couldn't save credentials securely. Please try again.")
+                    }
+                }
+            }
         }
     }
 
@@ -115,41 +162,22 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
+                        .offset(x = shakeOffset.value.dp)
                         .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     CredentialFormInputs(
                         regNo = regNo,
-                        onRegNoChange = { regNo = it.uppercase(); regNoError = null },
+                        onRegNoChange = { regNo = it.uppercase().filter { char -> char.isLetterOrDigit() }.take(9) },
                         password = password,
-                        onPasswordChange = { password = it; passwordError = null },
+                        onPasswordChange = { password = it },
                         passwordVisible = passwordVisible,
                         onPasswordVisibilityChange = { passwordVisible = !passwordVisible },
-                        regNoError = regNoError,
-                        passwordError = passwordError
                     )
 
                     Button(
-                        onClick = {
-                            if (regNo.isNotBlank() && password.isNotBlank()) {
-                                val regNoRegex = Regex("^[0-9]{2}[A-Za-z]{3}[0-9]{4}$")
-                                if (!regNoRegex.matches(regNo)) {
-                                    regNoError = "Invalid format (e.g. 23BCE1234)"
-                                } else {
-                                    scope.launch {
-                                        if (StoredCredentials.saveCredentials(context, regNo, password)) {
-                                            onCredentialsSaved()
-                                        } else {
-                                            passwordError = "Couldn't save credentials securely. Please try again."
-                                        }
-                                    }
-                                }
-                            } else {
-                                if (regNo.isBlank()) regNoError = context.getString(R.string.credentials_error_message)
-                                if (password.isBlank()) passwordError = context.getString(R.string.credentials_error_message)
-                            }
-                        },
+                        onClick = { handleSubmit() },
                         modifier = Modifier
                             .height(50.dp),
                         shape = RoundedCornerShape(24.dp),
@@ -170,8 +198,6 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
             }
         } else {
             // --- Portrait Layout ---
-            // CRITICAL FIX: Changed from .align(Alignment.Center) to .fillMaxSize() + Arrangement.Center
-            // to stop infinite height constraint crashes while allowing vertical scrolling.
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -202,39 +228,26 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(48.dp))
 
-                CredentialFormInputs(
-                    regNo = regNo,
-                    onRegNoChange = { regNo = it.uppercase(); regNoError = null },
-                    password = password,
-                    onPasswordChange = { password = it; passwordError = null },
-                    passwordVisible = passwordVisible,
-                    onPasswordVisibilityChange = { passwordVisible = !passwordVisible },
-                    regNoError = regNoError,
-                    passwordError = passwordError
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = shakeOffset.value.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CredentialFormInputs(
+                        regNo = regNo,
+                        onRegNoChange = { regNo = it.uppercase().filter { char -> char.isLetterOrDigit() }.take(9) },
+                        password = password,
+                        onPasswordChange = { password = it },
+                        passwordVisible = passwordVisible,
+                        onPasswordVisibilityChange = { passwordVisible = !passwordVisible },
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Button(
-                    onClick = {
-                        if (regNo.isNotBlank() && password.isNotBlank()) {
-                            val regNoRegex = Regex("^[0-9]{2}[A-Za-z]{3}[0-9]{4}$")
-                            if (!regNoRegex.matches(regNo)) {
-                                regNoError = "Invalid format (e.g. 23BCE1234)"
-                            } else {
-                                scope.launch {
-                                    if (StoredCredentials.saveCredentials(context, regNo, password)) {
-                                        onCredentialsSaved()
-                                    } else {
-                                        passwordError = "Couldn't save credentials securely. Please try again."
-                                    }
-                                }
-                            }
-                        } else {
-                            if (regNo.isBlank()) regNoError = context.getString(R.string.credentials_error_message)
-                            if (password.isBlank()) passwordError = context.getString(R.string.credentials_error_message)
-                        }
-                    },
+                    onClick = { handleSubmit() },
                     modifier = Modifier
                         .height(50.dp),
                     shape = RoundedCornerShape(24.dp),
@@ -253,6 +266,21 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
+        ) { data ->
+            Snackbar(
+                snackbarData = data,
+                shape = RoundedCornerShape(16.dp),
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
     }
 }
 
@@ -264,16 +292,12 @@ private fun CredentialFormInputs(
     onPasswordChange: (String) -> Unit,
     passwordVisible: Boolean,
     onPasswordVisibilityChange: () -> Unit,
-    regNoError: String?,
-    passwordError: String?
 ) {
     OutlinedTextField(
         value = regNo,
         onValueChange = onRegNoChange,
         label = { Text(stringResource(id = R.string.registration_number)) },
         singleLine = true,
-        isError = regNoError != null,
-        supportingText = { if (regNoError != null) Text(regNoError) },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         textStyle = TextStyle(
             fontSize = 16.sp,
@@ -297,8 +321,6 @@ private fun CredentialFormInputs(
             label = { Text(stringResource(id = R.string.password)) },
             singleLine = true,
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            isError = passwordError != null,
-            supportingText = { if (passwordError != null) Text(passwordError) },
             modifier = Modifier.weight(1f),
             textStyle = TextStyle(
                 fontSize = 16.sp,
