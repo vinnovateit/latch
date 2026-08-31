@@ -7,21 +7,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/**
- * Settings, ported from the Android app with its API shape preserved: still an
- * object, still a StateFlow plus an imperative setter per setting, still storing
- * display strings ("System Default", "Red", "bps") rather than enums so the keys
- * and values stay compatible.
- *
- * Two Android couplings are deliberately gone:
- *  - setAutoLogin no longer starts/stops a Service via Intent. The desktop
- *    daemon is always running; autoLogin is consulted by the engine instead.
- *  - sendSettingsChangedBroadcast() existed only to nudge the Glance widget.
- *    Replaced by [settingsChanged] for anything that needs to react.
- */
 object SettingsManager {
 
-    // Keys -- must match the Android app's SharedPreferences keys.
+    // Keys
     private const val KEY_AUTO_LOGIN = "auto_login"
     private const val KEY_SPEED_UNITS = "speed_units"
     private const val KEY_THEME = "theme"
@@ -29,20 +17,9 @@ object SettingsManager {
     private const val KEY_USE_PURE_BLACK = "use_pure_black"
     private const val KEY_USE_MONOCHROME = "use_monochrome"
     private const val KEY_ACCENT_COLOR = "accent_color"
-    // Desktop-only additions.
     private const val KEY_ALLOWED_SSIDS = "allowed_ssids"
     private const val KEY_HAS_SEEN_ONBOARDING = "hasSeenOnboarding"
-
-    /**
-     * Whether we have already applied the default "start at login" behaviour.
-     *
-     * Note this tracks only that the *default was applied once* -- the actual
-     * autostart state always comes from the registry, so a user who turns it off
-     * does not get it silently re-enabled on next launch.
-     */
     private const val KEY_AUTOSTART_DEFAULT_APPLIED = "autostart_default_applied"
-
-    /** Epoch day (UTC) of the last automatic update check, so it runs once per calendar day rather than on every launch. */
     private const val KEY_LAST_UPDATE_CHECK_EPOCH_DAY = "last_update_check_epoch_day"
 
     private const val DEFAULT_AUTO_LOGIN = true
@@ -53,16 +30,6 @@ object SettingsManager {
     private const val DEFAULT_USE_MONOCHROME = false
     private const val DEFAULT_ACCENT_COLOR = "Red"
 
-    /**
-     * SSID fragments Latch is allowed to authenticate against, matched as
-     * case-insensitive substrings (see LatchEngine.isTargetNetwork).
-     *
-     * Substring rather than exact match, because exact matching proved fragile in
-     * testing: the saved WLAN profile was "G-VIT" while the live network name
-     * reported by Windows was "G-VIT 5". Observed campus names include G-VIT,
-     * G-VIT 5, E-VIT, VIT5 and VIT2.4 -- the single fragment "VIT" covers all of
-     * them, and the portal-host DNS check is the real discriminator anyway.
-     */
     val DEFAULT_ALLOWED_SSIDS: Set<String> = setOf("VIT")
 
     private var store: KeyValueStore = InMemoryKeyValueStore()
@@ -168,10 +135,6 @@ object SettingsManager {
         get() = store.getBoolean(KEY_AUTOSTART_DEFAULT_APPLIED, false)
         set(value) = store.putBoolean(KEY_AUTOSTART_DEFAULT_APPLIED, value)
 
-    /**
-     * Stored as a string (epoch day) rather than adding a Long to [KeyValueStore]
-     * -- this is the only caller that needs one, and it round-trips cleanly.
-     */
     var lastUpdateCheckEpochDay: Long?
         get() = store.getString(KEY_LAST_UPDATE_CHECK_EPOCH_DAY, "").toLongOrNull()
         set(value) = store.putString(KEY_LAST_UPDATE_CHECK_EPOCH_DAY, value?.toString() ?: "")

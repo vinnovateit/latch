@@ -5,12 +5,6 @@ import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.NetworkHandle
 import java.net.URL
 
-/**
- * Probes a known no-content endpoint to decide whether a captive portal is in the way.
- *
- * @return 204 when the network has real internet, another HTTP code when a portal
- *   is intercepting, or -1 on exception. Contract matches the Android app exactly.
- */
 class CaptivePortalDetector(
     private val transport: HttpTransport,
     private val logger: Logger,

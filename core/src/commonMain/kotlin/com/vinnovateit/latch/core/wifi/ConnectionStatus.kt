@@ -9,15 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Typed status, replacing the Android version which carried pre-resolved
- * user-facing strings.
- *
- * Two reasons for the change: the engine has no Compose context to resolve
- * strings in, and the tray needs plain English while the window needs localised
- * resources. The UI maps Step/Reason onto the existing status_* string resources.
- *
- * Also flattens `Connecting` out of the companion object, which in the Android
- * app produced the awkward `ConnectionStatus.Companion.Connecting`.
+ * Typed connection status shared across platforms.
  */
 sealed interface ConnectionStatus {
     data object Idle : ConnectionStatus
@@ -39,13 +31,6 @@ sealed interface ConnectionStatus {
     }
 }
 
-/**
- * Holds the current status and auto-resets to Idle 2s after a terminal state,
- * matching the Android behaviour.
- *
- * The Android version also enqueued a WorkManager job on every status change to
- * refresh the Glance widget; that is gone.
- */
 object ConnectionStatusManager {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 

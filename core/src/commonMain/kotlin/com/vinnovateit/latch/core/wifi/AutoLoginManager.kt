@@ -13,19 +13,6 @@ sealed class LoginResult {
     object Failure : LoginResult()
 }
 
-/**
- * Ported from the Android app. The HTTP behaviour is intentionally byte-identical:
- * same endpoints, same POST body, same User-Agent, same 10s timeouts, same
- * redirect handling, same HTML success heuristics, same gateway-IP retry on DNS
- * failure. Only three things changed:
- *
- *   android.net.Network       -> NetworkHandle
- *   network.openConnection()  -> transport.open()
- *   android.util.Log / BuildConfig.DEBUG -> Logger / BuildInfo
- *
- * Do not "improve" the success detection. Matching on response HTML is ugly but
- * it is the only signal Pronto's portal gives us.
- */
 class AutoLoginManager(
     private val transport: HttpTransport,
     private val logger: Logger,
@@ -48,9 +35,6 @@ class AutoLoginManager(
         if (buildInfo.isDebug) logger.d(TAG, message)
     }
 
-    // Unlike Android, warnings and errors are logged unconditionally: a tray app
-    // that starts hidden at login has no console, so the log file is the only
-    // support channel there is.
     private fun logWarning(message: String) = logger.w(TAG, message)
     private fun logError(message: String, throwable: Throwable? = null) =
         logger.e(TAG, message, throwable)
@@ -156,7 +140,6 @@ class AutoLoginManager(
             val code = connection.responseCode
             logDebug("Logout returned response code: $code")
 
-            // Drain the stream so the connection can be reused/closed cleanly.
             try {
                 (if (code >= 400) connection.errorStream else connection.inputStream)
                     ?.buffered()?.use { it.readBytes() }
