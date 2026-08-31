@@ -109,12 +109,10 @@ fun HomeScreenGraph(
 
   LaunchedEffect(lastInteraction) {
     if (lastInteraction == 0L) return@LaunchedEffect
-
-    if (System.currentTimeMillis() - lastInteraction >= 5000L) {
-      if (scale != initialScale) {
-        animate(initialValue = scale, targetValue = initialScale) { value, _ ->
-          scale = value
-        }
+    delay(5000L)
+    if (scale != initialScale) {
+      animate(initialValue = scale, targetValue = initialScale) { value, _ ->
+        scale = value
       }
     }
   }

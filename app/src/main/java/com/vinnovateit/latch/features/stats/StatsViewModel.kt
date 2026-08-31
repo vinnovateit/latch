@@ -119,7 +119,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
         val currentMonth = currentCal.get(Calendar.MONTH)
         if (lastMonth != -1 && currentMonth != lastMonth) {
-          items.add(HistoryChartItem.MonthSeparator(formatDate(today.timeInMillis, "MMM")))
+          items.add(HistoryChartItem.MonthSeparator(formatDate(dayTimestamp, "MMM")))
         }
         lastMonth = currentMonth
 

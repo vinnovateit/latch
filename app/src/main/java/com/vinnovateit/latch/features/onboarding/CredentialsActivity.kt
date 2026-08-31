@@ -137,16 +137,11 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                                 if (!regNoRegex.matches(regNo)) {
                                     regNoError = "Invalid format (e.g. 23BCE1234)"
                                 } else {
-                                    val year = regNo.substring(0, 2).toIntOrNull() ?: 99
-                                    if (year <= 22) {
-                                        regNoError = "Your college life is over... go find a job! 🎓"
-                                    } else {
-                                        scope.launch {
-                                            if (StoredCredentials.saveCredentials(context, regNo, password)) {
-                                                onCredentialsSaved()
-                                            } else {
-                                                passwordError = "Couldn't save credentials securely. Please try again."
-                                            }
+                                    scope.launch {
+                                        if (StoredCredentials.saveCredentials(context, regNo, password)) {
+                                            onCredentialsSaved()
+                                        } else {
+                                            passwordError = "Couldn't save credentials securely. Please try again."
                                         }
                                     }
                                 }
@@ -227,16 +222,11 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                             if (!regNoRegex.matches(regNo)) {
                                 regNoError = "Invalid format (e.g. 23BCE1234)"
                             } else {
-                                val year = regNo.substring(0, 2).toIntOrNull() ?: 99
-                                if (year <= 22) {
-                                    regNoError = "Your college life is over... go find a job! 🎓"
-                                } else {
-                                    scope.launch {
-                                        if (StoredCredentials.saveCredentials(context, regNo, password)) {
-                                            onCredentialsSaved()
-                                        } else {
-                                            passwordError = "Couldn't save credentials securely. Please try again."
-                                        }
+                                scope.launch {
+                                    if (StoredCredentials.saveCredentials(context, regNo, password)) {
+                                        onCredentialsSaved()
+                                    } else {
+                                        passwordError = "Couldn't save credentials securely. Please try again."
                                     }
                                 }
                             }

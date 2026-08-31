@@ -1,13 +1,11 @@
 package com.vinnovateit.latch.common.util
 
-import android.util.SparseArray
 import androidx.compose.ui.graphics.Path
 import com.vinnovateit.latch.domain.model.LiveDataPoint
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
-import androidx.core.util.size
 
 enum class DisplayMode { TOTAL, DOWNLOAD, UPLOAD }
 
@@ -107,10 +105,8 @@ fun createGraphPaths(
     val lineRx = Path()
     val fillTx = Path().apply { moveTo(0f, height) }
     val lineTx = Path()
-    val sparseHistory = SparseArray<LiveDataPoint>(history.size)
-    history.forEachIndexed { i, p -> sparseHistory.put(i, p) }
-    for (i in 0 until sparseHistory.size) {
-        val p = sparseHistory.get(i)
+    for (i in history.indices) {
+        val p = history[i]
         val xp = x(p.timestamp)
         val yTotal = y(p.usage.rxBps + p.usage.txBps)
         val yRx = y(p.usage.rxBps)
@@ -124,7 +120,7 @@ fun createGraphPaths(
             lineTx.moveTo(xp, yTx)
             fillTx.lineTo(xp, yTx)
         } else {
-            val prevPoint = sparseHistory.get(i - 1)
+            val prevPoint = history[i - 1]
             val prevX = x(prevPoint.timestamp)
             val prevYTotal = y(prevPoint.usage.rxBps + prevPoint.usage.txBps)
             val prevYRx = y(prevPoint.usage.rxBps)
