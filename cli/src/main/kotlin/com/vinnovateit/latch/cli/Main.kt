@@ -10,9 +10,7 @@ import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.ThroughputMonitor
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.desktop.platform.DesktopPlatformServices
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 
 /** How long a one-shot command waits for the engine to reach Success/Failed. */
 private const val COMMAND_TIMEOUT_MS = 20_000L
@@ -73,9 +71,9 @@ fun main(args: Array<String>) = runBlocking {
             }
         }
 
-        "--status" -> awaitResult(engine) { it.submit(LatchCommand.SilentCheck) }
-        "--login" -> awaitResult(engine) { it.submit(LatchCommand.CheckAndLogin) }
-        "--logout" -> awaitResult(engine) { it.submit(LatchCommand.Logout) }
+        "--status" -> awaitResult(engine, LatchCommand.SilentCheck)
+        "--login" -> awaitResult(engine, LatchCommand.CheckAndLogin)
+        "--logout" -> awaitResult(engine, LatchCommand.Logout)
         else -> usage()
     }
 
@@ -83,16 +81,22 @@ fun main(args: Array<String>) = runBlocking {
 }
 
 /**
- * submit() only enqueues onto a channel the engine's own coroutine drains;
- * reading status.value right after would just show whatever it was before.
- * Waits for a terminal Success/Failed instead, or reports a timeout -- which
- * is the real outcome when there's no Wi-Fi to act on at all (SilentCheck and
- * CheckAndLogin both return early without posting a status in that case).
+ * Waits for [command] to actually finish processing (submitAndAwait suspends
+ * on the engine's own completion signal, not a status-flow guess that could
+ * match a stale value left over from before the command even ran), then reads
+ * status.value directly. Safe here because this process only ever runs one
+ * command: status starts at Idle and nothing else touches it first, so if the
+ * command timed out (submitAndAwait -> false) or returned early without
+ * posting anything (e.g. SilentCheck/CheckAndLogin with no Wi-Fi to act on),
+ * status.value is still Idle and correctly falls through to "no result".
  */
-private suspend fun awaitResult(engine: LatchEngine, submit: (LatchEngine) -> Unit) {
-    submit(engine)
-    val result = withTimeoutOrNull(COMMAND_TIMEOUT_MS) {
-        engine.status.first { it is ConnectionStatus.Success || it is ConnectionStatus.Failed }
+private suspend fun awaitResult(engine: LatchEngine, command: LatchCommand) {
+    val completed = engine.submitAndAwait(command, COMMAND_TIMEOUT_MS)
+    val result = engine.status.value
+    val message = if (completed && (result is ConnectionStatus.Success || result is ConnectionStatus.Failed)) {
+        "status: $result"
+    } else {
+        "no result after ${COMMAND_TIMEOUT_MS / 1000}s (is Wi-Fi connected?)"
     }
-    println(result?.let { "status: $it" } ?: "no result after ${COMMAND_TIMEOUT_MS / 1000}s (is Wi-Fi connected?)")
+    println(message)
 }
