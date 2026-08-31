@@ -1,5 +1,7 @@
 package com.vinnovateit.latch.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +24,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +60,10 @@ import com.vinnovateit.latch.ui.components.LatchDetailHeader
 import com.vinnovateit.latch.ui.components.LatchIcons
 import com.vinnovateit.latch.ui.components.LeafOverlay
 import com.vinnovateit.latch.ui.theme.modernizFontFamily
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+
+private val REG_NO_REGEX = "^[0-9]{2}[A-Z]{3}[0-9]{4}$".toRegex()
 
 /**
  * Credential entry, dressed like the Android onboarding account page: leaf
@@ -74,17 +84,50 @@ fun CredentialsScreen(
     onSave: (String, String) -> Unit,
     onCancel: (() -> Unit)?,
 ) {
-    var regNo by remember(initialRegNo) { mutableStateOf(initialRegNo) }
+    var regNo by remember(initialRegNo) { mutableStateOf(initialRegNo.uppercase().trim()) }
     var pass by remember(initialPassword) { mutableStateOf(initialPassword) }
     var passwordVisible by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val shakeOffset = remember { Animatable(0f) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val errorMessage = stringResource(Res.string.credentials_error_message)
 
+    fun triggerError(msg: String) {
+        scope.launch {
+            shakeOffset.snapTo(0f)
+            shakeOffset.animateTo(
+                targetValue = 0f,
+                animationSpec = keyframes {
+                    durationMillis = 400
+                    0f at 0
+                    (-12f) at 50
+                    12f at 100
+                    (-8f) at 150
+                    8f at 200
+                    (-4f) at 250
+                    4f at 300
+                    0f at 400
+                },
+            )
+        }
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(msg)
+        }
+    }
+
     val submit = {
-        if (regNo.isBlank() || pass.isBlank()) {
-            error = errorMessage
-        } else {
-            onSave(regNo.trim(), pass)
+        val trimmedRegNo = regNo.trim().uppercase()
+        when {
+            trimmedRegNo.isBlank() || pass.isBlank() -> {
+                triggerError(errorMessage)
+            }
+            !REG_NO_REGEX.matches(trimmedRegNo) -> {
+                triggerError("Invalid Registration Number")
+            }
+            else -> {
+                onSave(trimmedRegNo, pass)
+            }
         }
     }
 
@@ -137,46 +180,44 @@ fun CredentialsScreen(
 
                 Spacer(Modifier.height(32.dp))
 
-                OutlinedTextField(
-                    value = regNo,
-                    onValueChange = { regNo = it; error = null },
-                    label = { Text(stringResource(Res.string.registration_number)) },
-                    leadingIcon = { Icon(LatchIcons.Person, contentDescription = null) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                    isError = error != null && regNo.isBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(16.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = shakeOffset.value.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    OutlinedTextField(
+                        value = regNo,
+                        onValueChange = {
+                            regNo = it.uppercase().filter { char -> char.isLetterOrDigit() }.take(9)
+                        },
+                        label = { Text(stringResource(Res.string.registration_number)) },
+                        leadingIcon = { Icon(LatchIcons.Person, contentDescription = null) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(16.dp))
 
-                OutlinedTextField(
-                    value = pass,
-                    onValueChange = { pass = it; error = null },
-                    label = { Text(stringResource(Res.string.password)) },
-                    leadingIcon = { Icon(LatchIcons.Lock, contentDescription = null) },
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector = if (passwordVisible) LatchIcons.Visibility else LatchIcons.VisibilityOff,
-                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    isError = error != null && pass.isBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                error?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                    OutlinedTextField(
+                        value = pass,
+                        onValueChange = { pass = it },
+                        label = { Text(stringResource(Res.string.password)) },
+                        leadingIcon = { Icon(LatchIcons.Lock, contentDescription = null) },
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    imageVector = if (passwordVisible) LatchIcons.Visibility else LatchIcons.VisibilityOff,
+                                    contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
 
@@ -230,6 +271,20 @@ fun CredentialsScreen(
                     }
                 }
             }
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp),
+        ) { data ->
+            Snackbar(
+                snackbarData = data,
+                shape = RoundedCornerShape(16.dp),
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            )
         }
     }
 }
