@@ -443,6 +443,12 @@ class LatchEngine(
             // its own schedule -- regardless of whether the portal's own
             // logout request itself succeeded, the app is no longer relying
             // on this network being latched.
+            //
+            // Deliberately unconditional on `ok`: this is a hint asking
+            // Android to re-validate the network, not an acknowledgment that
+            // logout succeeded, so it's correct to fire it either way -- if
+            // the portal's own logout call failed, that's still surfaced
+            // separately below via ConnectionStatus.Reason.LogoutFailed.
             if (handle != null) platform.wifi.reportConnectivity(handle, ok = false)
             if (ok) {
                 logger.d(TAG, "Logout succeeded.")
