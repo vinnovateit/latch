@@ -27,8 +27,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vinnovateit.latch.R
-import com.vinnovateit.latch.domain.model.LiveDataPoint
-import com.vinnovateit.latch.domain.model.SessionSummary
+import com.vinnovateit.latch.core.model.LiveDataPoint
+import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus
 import com.vinnovateit.latch.ui.theme.ModernizFontFamily
 import com.vinnovateit.latch.features.settings.manager.SettingsManager

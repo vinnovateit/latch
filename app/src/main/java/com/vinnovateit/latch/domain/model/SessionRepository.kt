@@ -22,6 +22,10 @@ import kotlinx.coroutines.launch
 import java.util.Date
 import java.util.Calendar
 import kotlin.random.Random
+import com.vinnovateit.latch.core.model.DataUsage
+import com.vinnovateit.latch.core.model.LiveConnectionStatus
+import com.vinnovateit.latch.core.model.LiveDataPoint
+import com.vinnovateit.latch.core.model.SessionSummary
 
 object SessionRepository {
   // Bounds the in-memory per-point history kept for the live speed graph. At the ~2s poll

@@ -1,7 +1,7 @@
 package com.vinnovateit.latch.features.wifi.manager
 
 import android.net.TrafficStats
-import com.vinnovateit.latch.domain.model.DataUsage
+import com.vinnovateit.latch.core.model.DataUsage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

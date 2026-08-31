@@ -43,9 +43,9 @@ import com.vinnovateit.latch.common.util.createGraphPaths
 import com.vinnovateit.latch.common.util.formatBitsPerSecond
 import com.vinnovateit.latch.common.util.formatBytes
 import com.vinnovateit.latch.common.util.formatDurationDynamic
-import com.vinnovateit.latch.domain.model.DataUsage
-import com.vinnovateit.latch.domain.model.LiveDataPoint
-import com.vinnovateit.latch.domain.model.SessionSummary
+import com.vinnovateit.latch.core.model.DataUsage
+import com.vinnovateit.latch.core.model.LiveDataPoint
+import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.features.home.components.GRAPH_HEIGHT_SCALE
 import com.vinnovateit.latch.features.home.components.POINTS_IN_30_SECONDS
 import com.vinnovateit.latch.ui.theme.ColorGraphDownload

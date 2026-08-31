@@ -42,8 +42,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.R
-import com.vinnovateit.latch.domain.model.LiveConnectionStatus
-import com.vinnovateit.latch.domain.model.SessionSummary
+import com.vinnovateit.latch.core.model.LiveConnectionStatus
+import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.features.stats.StatsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)

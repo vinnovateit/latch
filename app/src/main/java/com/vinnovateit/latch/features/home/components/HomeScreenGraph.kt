@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vinnovateit.latch.common.util.createGraphPaths
 import com.vinnovateit.latch.common.util.formatBitsPerSecond
-import com.vinnovateit.latch.domain.model.LiveDataPoint
+import com.vinnovateit.latch.core.model.LiveDataPoint
 import com.vinnovateit.latch.ui.theme.ColorGraphDownload
 import com.vinnovateit.latch.ui.theme.ColorGraphUpload
 import com.vinnovateit.latch.ui.theme.ColorTransparent

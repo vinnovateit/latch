@@ -1,6 +1,6 @@
 package com.vinnovateit.latch.common.util
 
-import com.vinnovateit.latch.domain.model.SessionSummary
+import com.vinnovateit.latch.core.model.SessionSummary
 import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date

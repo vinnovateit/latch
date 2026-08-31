@@ -4,9 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vinnovateit.latch.common.util.formatDate
-import com.vinnovateit.latch.domain.model.DataUsage
+import com.vinnovateit.latch.core.model.DataUsage
+import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.domain.model.SessionRepository
-import com.vinnovateit.latch.domain.model.SessionSummary
 import com.vinnovateit.latch.features.stats.components.HistoryChartItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
