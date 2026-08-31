@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -92,7 +93,7 @@ object SettingsManager {
     appContext?.let {
       if (enabled) {
         it.startService(Intent(it, ForegroundService::class.java))
-      } else {
+      } else if (SessionRepository.liveStatus.value != null) {
         // NOT stopService(): that kills the service immediately, skipping
         // the actual portal logout HTTP call and racing ahead of
         // ForegroundService's own graceful-shutdown wait (confirmed live on
@@ -102,6 +103,12 @@ object SettingsManager {
         // Sending the same explicit intent HomeScreen/TileService already
         // send lets the service log out through the engine, then stop
         // itself once that's actually done.
+        //
+        // Guarded on liveStatus (same signal LatchTileService already uses
+        // for "is anything connected"): without it, disabling auto-login
+        // from Settings with nothing connected still cold-started the
+        // service just to have it immediately log out of a session that
+        // never existed.
         it.startService(
           Intent(it, ForegroundService::class.java).apply {
             action = ForegroundService.ACTION_TRIGGER_LOGOUT
