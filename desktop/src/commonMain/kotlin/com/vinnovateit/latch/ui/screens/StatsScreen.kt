@@ -104,12 +104,7 @@ fun StatsScreen(
         ) {
             liveStatus?.let { live ->
                 item {
-                    val usage = live.liveData.fold(DataUsage(0, 0)) { acc, point ->
-                        DataUsage(
-                            rxBytes = acc.rxBytes + point.usage.rxBytes,
-                            txBytes = acc.txBytes + point.usage.txBytes,
-                        )
-                    }
+                    val usage = DataUsage(live.totalRxBytes, live.totalTxBytes)
                     LiveSessionCard(
                         startTimeMillis = live.startTimeMillis,
                         usage = usage,

@@ -20,13 +20,13 @@ internal fun buildGraphPaths(
     history: List<LiveDataPoint>,
     width: Float,
     height: Float,
-    maxRate: Long,
+    maxRate: Float,
     graphHeightScale: Float = 0.70f,
 ): GraphPaths {
     val area = Path()
     val line = Path()
 
-    if (history.size < 2 || maxRate <= 0L) return GraphPaths(area, line)
+    if (history.size < 2 || maxRate <= 0f) return GraphPaths(area, line)
 
     val graphH = height * graphHeightScale
     val stepX = width / (history.size - 1).coerceAtLeast(1)
