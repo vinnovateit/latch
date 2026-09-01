@@ -18,7 +18,14 @@ data class DataUsage(
 
 data class LiveDataPoint(val timestamp: Long, val usage: DataUsage)
 
-data class LiveConnectionStatus(val startTimeMillis: Long, val liveData: List<LiveDataPoint>)
+data class LiveConnectionStatus(
+    val startTimeMillis: Long,
+    val liveData: List<LiveDataPoint>,
+    val totalRxBytes: Long = 0L,
+    val totalTxBytes: Long = 0L,
+    val maxRxBps: Long = 0L,
+    val maxTxBps: Long = 0L,
+)
 
 data class SessionSummary(
     val startTimestamp: Long,
