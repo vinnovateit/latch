@@ -207,11 +207,10 @@ class CliRunnerTest {
     }
 
     @Test
-    fun `successful login logout and daemon use stable output`() = runBlocking {
+    fun `successful login and logout use stable output`() = runBlocking {
         val cases = mapOf(
             CliCommand.Login to "Login completed.\n",
             CliCommand.Logout to "Logout completed.\n",
-            CliCommand.Daemon to "",
         )
 
         cases.forEach { (command, expectedOutput) ->
@@ -220,6 +219,18 @@ class CliRunnerTest {
             assertEquals(0, exitCode, command.toString())
             assertEquals(expectedOutput, terminal.output, command.toString())
         }
+    }
+
+    @Test
+    fun `splash runs only before daemon mode`() = runBlocking {
+        var splashCount = 0
+        val splash: suspend (TerminalIO) -> Unit = { splashCount++ }
+
+        CliRunner(RecordingTerminal(), { FakeBackend() }, splash = splash).run(CliCommand.Status)
+        assertEquals(0, splashCount)
+
+        CliRunner(RecordingTerminal(), { FakeBackend() }, splash = splash).run(CliCommand.Daemon)
+        assertEquals(1, splashCount)
     }
 }
 

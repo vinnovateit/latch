@@ -25,6 +25,9 @@ class CliRunner(
     private val terminal: TerminalIO,
     private val backendFactory: suspend () -> CliBackend,
     private val version: String = LatchCore.VERSION,
+    private val splash: suspend (TerminalIO) -> Unit = { output ->
+        showSplash(output, detectSplashCapabilities(output))
+    },
 ) {
     suspend fun run(command: CliCommand): Int {
         when (command) {
@@ -57,7 +60,10 @@ class CliRunner(
     }
 
     private suspend fun runWithBackend(command: CliCommand, backend: CliBackend): Int = when (command) {
-        CliCommand.Daemon -> report(backend.runDaemon())
+        CliCommand.Daemon -> {
+            splash(terminal)
+            report(backend.runDaemon())
+        }
         CliCommand.Status -> report(backend.status(), CliOutput::status)
         CliCommand.Login -> report(backend.login(), successMessage = "Login completed.")
         CliCommand.Logout -> report(backend.logout(), successMessage = "Logout completed.")
