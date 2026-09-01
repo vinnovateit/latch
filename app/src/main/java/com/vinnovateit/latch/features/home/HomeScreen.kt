@@ -587,10 +587,6 @@ fun HowItWorksBottomSheet(onDismiss: () -> Unit) {
                     text = "Once connected, you can watch your real-time stats and data usage."
                 )
                 HowItWorksRow(
-                    icon = Icons.Rounded.Speed,
-                    text = "The 20 mbps cap will not be bypassable."
-                )
-                HowItWorksRow(
                     icon = Icons.Rounded.PowerSettingsNew,
                     text = "If you do not wish this to work, disable auto-connect from settings or press the disconnect button (which also disables auto-connect)."
                 )
