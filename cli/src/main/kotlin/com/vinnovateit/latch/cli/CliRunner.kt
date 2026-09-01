@@ -11,9 +11,9 @@ suspend fun runCli(
     args: Array<String>,
     terminal: TerminalIO,
     version: String = LatchCore.VERSION,
-    backendFactory: suspend () -> CliBackend,
+    backendFactory: suspend (CliCommand) -> CliBackend,
 ): Int = when (val parsed = parseCommand(args)) {
-    is ParseResult.Success -> CliRunner(terminal, backendFactory, version).run(parsed.command)
+    is ParseResult.Success -> CliRunner(terminal, { backendFactory(parsed.command) }, version).run(parsed.command)
     is ParseResult.Failure -> {
         terminal.println("error: ${parsed.message}")
         terminal.println(CliOutput.help)

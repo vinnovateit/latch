@@ -6,8 +6,8 @@ import kotlin.system.exitProcess
 fun main(args: Array<String>) {
     val terminal = SystemTerminal
     val exitCode = runBlocking {
-        runCli(args, terminal) {
-            createLocalCliBackend(terminal)
+        runCli(args, terminal) { command ->
+            createCoordinatedCliBackend(command, terminal)
         }
     }
     if (exitCode != EXIT_SUCCESS) exitProcess(exitCode)

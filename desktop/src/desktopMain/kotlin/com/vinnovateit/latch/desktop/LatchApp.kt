@@ -1,17 +1,10 @@
 package com.vinnovateit.latch.desktop
 
-import com.vinnovateit.latch.core.data.LatchDatabase
-import com.vinnovateit.latch.core.data.buildDatabase
-import com.vinnovateit.latch.core.domain.SessionRepository
 import com.vinnovateit.latch.core.engine.LatchCommand
-import com.vinnovateit.latch.core.engine.LatchEngine
-import com.vinnovateit.latch.core.platform.Platform
-import com.vinnovateit.latch.core.platform.PlatformServices
+import com.vinnovateit.latch.core.runtime.DesktopEngineRuntime
 import com.vinnovateit.latch.core.settings.SettingsManager
-import com.vinnovateit.latch.core.stats.ThroughputMonitor
 import com.vinnovateit.latch.core.stats.formatBitsPerSecond
 import com.vinnovateit.latch.core.stats.formatClockTime
-import com.vinnovateit.latch.desktop.platform.DesktopPlatformServices
 import com.vinnovateit.latch.desktop.platform.TrayNotifier
 import com.vinnovateit.latch.desktop.platform.windows.WindowsBalloonNotifier
 import com.vinnovateit.latch.desktop.updater.GithubUpdater
@@ -20,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val APP_DISPLAY_NAME = "LATCH by VinnovateIT"
@@ -34,36 +28,27 @@ private const val LATCH_WAIT_BEFORE_UPDATE_CHECK_MS = 60_000L
  * component happened to run first.
  */
 class LatchApp private constructor(
-    val platform: PlatformServices,
+    internal val runtime: DesktopEngineRuntime,
     val notifier: TrayNotifier,
-    val sessions: SessionRepository,
-    val engine: LatchEngine,
-    private val database: LatchDatabase,
     val updater: GithubUpdater,
 ) {
+    val platform get() = runtime.platform
+    val sessions get() = runtime.sessions
+    val engine get() = runtime.engine
+
     companion object {
         fun create(echoLogsToStdout: Boolean): LatchApp {
             val notifier = TrayNotifier()
-            val platform = DesktopPlatformServices(
-                echoLogsToStdout = echoLogsToStdout,
-                notifier = notifier,
-            )
-            Platform.install(platform)
-            SettingsManager.initialize(platform.settingsStore)
-
-            val database = buildDatabase()
-            val throughput = ThroughputMonitor(platform.counters)
-            val sessions = SessionRepository(database.statsDao(), throughput)
-            sessions.initialize()
-
-            val engine = LatchEngine(platform, sessions)
+            val runtime = runBlocking {
+                DesktopEngineRuntime.create(notifier, echoLogsToStdout)
+            }
 
             val updater = GithubUpdater(
-                buildInfo = platform.buildInfo,
-                logger = platform.logger,
+                buildInfo = runtime.platform.buildInfo,
+                logger = runtime.platform.logger,
             )
 
-            return LatchApp(platform, notifier, sessions, engine, database, updater)
+            return LatchApp(runtime, notifier, updater)
         }
     }
 
@@ -72,7 +57,7 @@ class LatchApp private constructor(
     fun start() {
         if (AppPaths.isWindows) WindowsBalloonNotifier.start(platform.logger)
         applyAutostartDefault()
-        engine.start()
+        runtime.start()
 
         // Drive the tray tooltip from live session data. This is the 2-second
         // update path, so it must stay on showOngoing (tooltip) and never become
@@ -176,9 +161,7 @@ class LatchApp private constructor(
     }
 
     fun shutdown() {
-        runCatching {
-            engine.submit(LatchCommand.Shutdown)
-        }
+        runCatching { runBlocking { runtime.close() } }
     }
 
     /**
