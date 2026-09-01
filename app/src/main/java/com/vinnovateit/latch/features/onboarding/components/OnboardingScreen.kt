@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.vinnovateit.latch.R
-import com.vinnovateit.latch.data.StoredCredentials
+import com.vinnovateit.latch.core.platform.android.StoredCredentials
 import com.vinnovateit.latch.features.onboarding.pages.*
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch

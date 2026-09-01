@@ -36,16 +36,24 @@ kotlin {
             api(libs.room.runtime.desktop)
         }
 
-        val desktopMain by getting
+        val androidMain by getting {
+            dependencies {
+                implementation(libs.androidx.core.ktx)
+                implementation(libs.androidx.security.crypto)
+                implementation(libs.androidx.preference.ktx)
+            }
+        }
 
-        desktopMain.dependencies {
-            // JVM has no built-in SQLite; Android does, so this stays desktop-only.
-            api(libs.sqlite.bundled)
+        val desktopMain by getting {
+            dependencies {
+                // JVM has no built-in SQLite; Android does, so this stays desktop-only.
+                api(libs.sqlite.bundled)
 
-            implementation(libs.oshi.core)
-            implementation(libs.jna)
-            implementation(libs.jna.platform)
-            implementation(libs.slf4j.simple)
+                implementation(libs.oshi.core)
+                implementation(libs.jna)
+                implementation(libs.jna.platform)
+                implementation(libs.slf4j.simple)
+            }
         }
     }
 }

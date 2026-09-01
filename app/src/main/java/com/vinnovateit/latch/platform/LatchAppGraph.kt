@@ -4,6 +4,8 @@ import android.content.Context
 import com.vinnovateit.latch.core.domain.SessionRepository
 import com.vinnovateit.latch.core.engine.LatchEngine
 import com.vinnovateit.latch.core.platform.Platform
+import com.vinnovateit.latch.core.platform.android.AndroidPlatformServices
+import com.vinnovateit.latch.core.platform.android.buildDatabase
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.ThroughputMonitor
 

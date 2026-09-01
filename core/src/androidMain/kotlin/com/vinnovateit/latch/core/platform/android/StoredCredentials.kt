@@ -1,4 +1,4 @@
-package com.vinnovateit.latch.data
+package com.vinnovateit.latch.core.platform.android
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences

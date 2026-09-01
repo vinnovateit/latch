@@ -12,7 +12,7 @@ import com.vinnovateit.latch.core.engine.LatchCommand
 import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import com.vinnovateit.latch.features.wifi.widget.LatchWidgetUpdater
-import com.vinnovateit.latch.platform.AndroidNetworkHandle
+import com.vinnovateit.latch.core.platform.android.AndroidNetworkHandle
 import com.vinnovateit.latch.platform.AndroidUserNotifier
 import com.vinnovateit.latch.platform.ForegroundController
 import com.vinnovateit.latch.platform.LatchAppGraph

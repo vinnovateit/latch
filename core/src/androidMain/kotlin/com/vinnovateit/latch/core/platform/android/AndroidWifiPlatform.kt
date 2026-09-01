@@ -1,4 +1,4 @@
-package com.vinnovateit.latch.platform
+package com.vinnovateit.latch.core.platform.android
 
 import android.content.Context
 import android.net.ConnectivityManager
