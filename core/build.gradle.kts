@@ -21,6 +21,8 @@ kotlin {
     }
 
     sourceSets {
+        val desktopMain by getting
+
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
@@ -36,7 +38,11 @@ kotlin {
             api(libs.room.runtime.desktop)
         }
 
-        val desktopMain by getting
+        androidMain.dependencies {
+            implementation(libs.androidx.core.ktx)
+            implementation(libs.androidx.security.crypto)
+            implementation(libs.androidx.preference.ktx)
+        }
 
         desktopMain.dependencies {
             // JVM has no built-in SQLite; Android does, so this stays desktop-only.

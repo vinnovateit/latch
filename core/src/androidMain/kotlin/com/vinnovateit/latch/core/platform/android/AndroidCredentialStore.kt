@@ -1,8 +1,7 @@
-package com.vinnovateit.latch.platform
+package com.vinnovateit.latch.core.platform.android
 
 import android.content.Context
 import com.vinnovateit.latch.core.platform.CredentialStore
-import com.vinnovateit.latch.data.StoredCredentials
 
 /**
  * Thin adapter over StoredCredentials -- kept as the real implementation

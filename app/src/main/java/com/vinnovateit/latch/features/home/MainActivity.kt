@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
 
         val startDest = when {
             !hasSeenOnboarding -> com.vinnovateit.latch.navigation.LatchRoutes.ONBOARDING
-            com.vinnovateit.latch.data.StoredCredentials.credentialsExist(this) -> com.vinnovateit.latch.navigation.LatchRoutes.HOME
+            com.vinnovateit.latch.core.platform.android.StoredCredentials.credentialsExist(this) -> com.vinnovateit.latch.navigation.LatchRoutes.HOME
             else -> com.vinnovateit.latch.navigation.LatchRoutes.credentials(editMode = false)
         }
 

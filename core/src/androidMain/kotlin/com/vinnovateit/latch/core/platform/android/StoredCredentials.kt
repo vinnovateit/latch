@@ -1,11 +1,10 @@
-package com.vinnovateit.latch.data
+package com.vinnovateit.latch.core.platform.android
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.io.IOException
 import java.security.GeneralSecurityException
-import androidx.core.content.edit
 
 object StoredCredentials {
 
@@ -38,7 +37,7 @@ object StoredCredentials {
     }
 
     private fun clearCorruptedPreferences(context: Context) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit { clear() }
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     fun saveCredentials(context: Context, userId: String, password: String): Boolean {

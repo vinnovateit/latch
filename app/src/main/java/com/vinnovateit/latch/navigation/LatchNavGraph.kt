@@ -24,7 +24,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.vinnovateit.latch.common.util.formatBitsPerSecond
 import com.vinnovateit.latch.common.util.generateHtmlReport
-import com.vinnovateit.latch.data.StoredCredentials
+import com.vinnovateit.latch.core.platform.android.StoredCredentials
 import com.vinnovateit.latch.features.about.MeetTheTeamPage
 import com.vinnovateit.latch.features.home.HomeScreen
 import com.vinnovateit.latch.features.onboarding.CredentialsScreen

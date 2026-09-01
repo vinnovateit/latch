@@ -1,4 +1,4 @@
-package com.vinnovateit.latch.platform
+package com.vinnovateit.latch.core.platform.android
 
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.NetworkHandle

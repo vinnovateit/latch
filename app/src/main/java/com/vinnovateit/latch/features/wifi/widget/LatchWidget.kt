@@ -56,11 +56,7 @@ import androidx.glance.LocalSize
 import androidx.compose.ui.graphics.Color
 import com.materialkolor.dynamicColorScheme
 
-// Configurable constants for easy customization
 private const val WIDGET_CORNER_RADIUS = 28
-private const val WIDGET_PADDING = 16
-private val STATUS_FONT_SIZE = 24.sp
-private val BUTTON_FONT_SIZE = 18.sp
 
 @Serializable
 data class LatchWidgetState(

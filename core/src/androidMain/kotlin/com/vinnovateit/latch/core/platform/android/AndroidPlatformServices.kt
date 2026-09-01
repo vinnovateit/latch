@@ -1,4 +1,4 @@
-package com.vinnovateit.latch.platform
+package com.vinnovateit.latch.core.platform.android
 
 import android.content.Context
 import com.vinnovateit.latch.core.platform.BuildInfo
@@ -26,7 +26,7 @@ class AndroidPlatformServices(
     private val appContext = context.applicationContext
 
     override val logger: Logger = AndroidLogger()
-    override val buildInfo: BuildInfo = AndroidBuildInfo()
+    override val buildInfo: BuildInfo = AndroidBuildInfo(appContext)
     override val capabilities: PlatformCapabilities = AndroidCapabilities
     override val settingsStore: KeyValueStore = AndroidKeyValueStore(appContext)
     override val credentials: CredentialStore = AndroidCredentialStore(appContext)
