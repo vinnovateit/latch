@@ -1,7 +1,6 @@
 package com.vinnovateit.latch.core.platform.android
 
 import android.content.Context
-import androidx.core.content.edit
 import com.vinnovateit.latch.core.platform.KeyValueStore
 
 /**
@@ -18,9 +17,15 @@ class AndroidKeyValueStore(context: Context) : KeyValueStore {
     override fun getStringSet(key: String, default: Set<String>): Set<String> =
         prefs.getStringSet(key, default) ?: default
 
-    override fun putString(key: String, value: String) = prefs.edit { putString(key, value) }
+    override fun putString(key: String, value: String) {
+        prefs.edit().putString(key, value).apply()
+    }
 
-    override fun putBoolean(key: String, value: Boolean) = prefs.edit { putBoolean(key, value) }
+    override fun putBoolean(key: String, value: Boolean) {
+        prefs.edit().putBoolean(key, value).apply()
+    }
 
-    override fun putStringSet(key: String, value: Set<String>) = prefs.edit { putStringSet(key, value) }
+    override fun putStringSet(key: String, value: Set<String>) {
+        prefs.edit().putStringSet(key, value).apply()
+    }
 }
