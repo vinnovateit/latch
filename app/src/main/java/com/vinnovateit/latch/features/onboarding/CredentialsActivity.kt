@@ -10,17 +10,21 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -53,11 +57,17 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
     var regNo by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    val regNoFocusRequester = remember { FocusRequester() }
+    val passwordFocusRequester = remember { FocusRequester() }
     val shakeOffset = remember { Animatable(0f) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    LaunchedEffect(Unit) {
+        regNoFocusRequester.requestFocus()
+    }
 
     LaunchedEffect(editMode) {
         if (editMode) {
@@ -174,12 +184,19 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                         onPasswordChange = { password = it },
                         passwordVisible = passwordVisible,
                         onPasswordVisibilityChange = { passwordVisible = !passwordVisible },
+                        regNoFocusRequester = regNoFocusRequester,
+                        passwordFocusRequester = passwordFocusRequester,
+                        onSubmit = handleSubmit,
                     )
+
+                    Spacer(modifier = Modifier.height(24.dp))
 
                     Button(
                         onClick = { handleSubmit() },
                         modifier = Modifier
-                            .height(50.dp),
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                            .height(54.dp),
                         shape = RoundedCornerShape(24.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -241,6 +258,9 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                         onPasswordChange = { password = it },
                         passwordVisible = passwordVisible,
                         onPasswordVisibilityChange = { passwordVisible = !passwordVisible },
+                        regNoFocusRequester = regNoFocusRequester,
+                        passwordFocusRequester = passwordFocusRequester,
+                        onSubmit = handleSubmit,
                     )
                 }
 
@@ -249,7 +269,9 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                 Button(
                     onClick = { handleSubmit() },
                     modifier = Modifier
-                        .height(50.dp),
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .height(54.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -292,20 +314,32 @@ private fun CredentialFormInputs(
     onPasswordChange: (String) -> Unit,
     passwordVisible: Boolean,
     onPasswordVisibilityChange: () -> Unit,
+    regNoFocusRequester: FocusRequester,
+    passwordFocusRequester: FocusRequester,
+    onSubmit: () -> Unit,
 ) {
     OutlinedTextField(
         value = regNo,
         onValueChange = onRegNoChange,
         label = { Text(stringResource(id = R.string.registration_number)) },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .focusRequester(regNoFocusRequester),
         textStyle = TextStyle(
             fontSize = 16.sp,
             fontFamily = SatoshiFontFamily
         ),
         keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Text,
+            capitalization = KeyboardCapitalization.Characters,
+            autoCorrectEnabled = false,
+            keyboardType = KeyboardType.Ascii,
             imeAction = ImeAction.Next
+        ),
+        keyboardActions = KeyboardActions(
+            onNext = { passwordFocusRequester.requestFocus() }
         ),
     )
 
@@ -320,8 +354,11 @@ private fun CredentialFormInputs(
             onValueChange = onPasswordChange,
             label = { Text(stringResource(id = R.string.password)) },
             singleLine = true,
+            shape = RoundedCornerShape(16.dp),
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(passwordFocusRequester),
             textStyle = TextStyle(
                 fontSize = 16.sp,
                 fontFamily = SatoshiFontFamily
@@ -329,6 +366,9 @@ private fun CredentialFormInputs(
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { onSubmit() }
             ),
         )
         Spacer(modifier = Modifier.width(8.dp))
