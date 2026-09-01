@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -125,7 +126,7 @@ class LatchEngine(
 
     override suspend fun submitAndAwait(command: LatchCommand, timeoutMs: Long): Boolean {
         val done = CompletableDeferred<Unit>()
-        commands.trySend(QueuedCommand(command, done))
+        if (commands.trySend(QueuedCommand(command, done)).isFailure) return false
         return withTimeoutOrNull(timeoutMs) { done.await() } != null
     }
 
@@ -215,7 +216,10 @@ class LatchEngine(
                 activeActionJob?.cancel()
                 activeActionJob = null
                 healthCheckJob?.cancel()
-                unlatch()
+                _isLatched.value = false
+                sessions.stopSessionAndAwait()
+                commands.close()
+                scope.coroutineContext.cancelChildren()
             }
         }
     }
