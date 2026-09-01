@@ -18,21 +18,25 @@ object AppPaths {
 
     val isLinux: Boolean = !isWindows && !isMac
 
-    val dataDir: File by lazy {
-        val base = when {
-            isWindows -> System.getenv("LOCALAPPDATA")
-                ?: System.getProperty("user.home") + "\\AppData\\Local"
+    val dataDir: File
+        get() {
+            System.getProperty("latch.dataDir")?.takeIf(String::isNotBlank)?.let { override ->
+                return File(override).apply { mkdirs() }
+            }
+            val base = when {
+                isWindows -> System.getenv("LOCALAPPDATA")
+                    ?: System.getProperty("user.home") + "\\AppData\\Local"
 
-            isMac -> System.getProperty("user.home") + "/Library/Application Support"
+                isMac -> System.getProperty("user.home") + "/Library/Application Support"
 
-            // Linux / other: honour XDG if set.
-            else -> System.getenv("XDG_DATA_HOME")
-                ?: (System.getProperty("user.home") + "/.local/share")
+                // Linux / other: honour XDG if set.
+                else -> System.getenv("XDG_DATA_HOME")
+                    ?: (System.getProperty("user.home") + "/.local/share")
+            }
+            return File(base, "Latch").apply { mkdirs() }
         }
-        File(base, "Latch").apply { mkdirs() }
-    }
 
-    val logsDir: File by lazy { File(dataDir, "logs").apply { mkdirs() } }
+    val logsDir: File get() = File(dataDir, "logs").apply { mkdirs() }
 
     /**
      * Downloaded update MSIs. Deliberately not a temp file: the JVM exits
@@ -40,7 +44,7 @@ object AppPaths {
      * shutdown would be racing the installer that still needs to read it.
      * Swept on startup instead -- see GithubUpdater.cleanStaleDownloads.
      */
-    val updatesDir: File by lazy { File(dataDir, "updates").apply { mkdirs() } }
+    val updatesDir: File get() = File(dataDir, "updates").apply { mkdirs() }
 
     /** DPAPI-encrypted credential blob. */
     val credentialsFile: File get() = File(dataDir, "credentials.bin")
