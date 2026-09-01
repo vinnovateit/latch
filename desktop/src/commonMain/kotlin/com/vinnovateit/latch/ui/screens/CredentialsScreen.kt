@@ -284,6 +284,7 @@ fun CredentialsScreen(
                 ) {
                     Text(
                         text = stringResource(Res.string.save_credentials),
+                        style = MaterialTheme.typography.titleMedium,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                     )
