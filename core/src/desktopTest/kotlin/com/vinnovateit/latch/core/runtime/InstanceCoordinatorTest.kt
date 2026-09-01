@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 
@@ -97,6 +98,30 @@ class InstanceCoordinatorTest {
             assertTrue(response.ok)
             assertEquals("OK", response.code)
             assertEquals("hello", response.data["message"])
+        } finally {
+            acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `client waits beyond the handshake timeout for a runtime response`() = runBlocking {
+        val directory = createTempDirectory("latch-slow-command-").toFile()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP) { request ->
+                delay(2_100)
+                echo(request)
+            },
+        )
+        try {
+            val existing = assertIs<AcquireResult.Existing>(
+                InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+            )
+
+            val response = existing.client.send(RuntimeCommand.LOGIN)
+
+            assertTrue(response.ok)
+            assertEquals("OK", response.code)
         } finally {
             acquired.coordinator.close()
             directory.deleteRecursively()

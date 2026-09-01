@@ -1,4 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.language.jvm.tasks.ProcessResources
+
+val latchVersion = providers.gradleProperty("latchVersion").get()
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -73,4 +76,3 @@ dependencies {
     add("kspDesktop", libs.room.compiler.desktop)
     add("kspAndroid", libs.room.compiler.desktop)
 }
-

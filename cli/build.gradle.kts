@@ -133,7 +133,11 @@ fun registerLinuxPackageTask(taskName: String, packageType: String) = tasks.regi
     doFirst {
         cliDistributionsDir.get().asFile.mkdirs()
         cliDistributionsDir.get().asFile.listFiles()
-            ?.filter { it.name.startsWith("latch-cli_$latchVersion") && it.extension == packageType }
+            ?.filter {
+                it.name.startsWith("latch-cli") &&
+                    it.name.contains(latchVersion) &&
+                    it.extension == packageType
+            }
             ?.forEach(File::delete)
     }
 

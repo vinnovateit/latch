@@ -90,6 +90,10 @@ private class OwnedCliBackend(
     )
 }) {
     private val closed = AtomicBoolean(false)
+    private val shutdownHook = Thread(
+        { close(fromShutdownHook = true) },
+        "LatchCliShutdown",
+    ).also(Runtime.getRuntime()::addShutdownHook)
 
     override suspend fun runDaemon(): OperationResult<Unit> {
         check(ownerKind == OwnerKind.CLI_DAEMON)
@@ -97,8 +101,11 @@ private class OwnedCliBackend(
         return OperationResult(Unit)
     }
 
-    override fun close() {
+    override fun close() = close(fromShutdownHook = false)
+
+    private fun close(fromShutdownHook: Boolean) {
         if (!closed.compareAndSet(false, true)) return
+        if (!fromShutdownHook) runCatching { Runtime.getRuntime().removeShutdownHook(shutdownHook) }
         runBlocking { runtime.close() }
         coordinator.close()
     }

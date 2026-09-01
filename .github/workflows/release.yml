@@ -69,9 +69,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes fakeroot rpm
 
-      - name: Build Desktop and CLI packages
+      - name: Verify shared runtime and CLI
         run: |
           chmod +x gradlew
+          ./gradlew :core:desktopTest :cli:test :desktop:smoke
+
+      - name: Build Desktop and CLI packages
+        run: |
           ./gradlew \
             :desktop:packageReleaseTarGz \
             :cli:packageCliTarGz \

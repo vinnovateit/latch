@@ -68,6 +68,8 @@ sudo apt install ./latch-cli_1.3.8_amd64.deb
 
 RPM-based distributions can install the release package with `sudo dnf install ./latch-cli-*.rpm`. Arch users can install the `latch-cli-bin` AUR package after its release metadata is submitted. The portable `latch-cli-1.3.8-linux-x64.tar.gz` works without package-manager installation.
 
+A hosted APT repository can be added later; the initial `.deb` is installed directly with `apt`. Flatpak is intentionally outside the CLI release scope because its sandbox and desktop-first distribution model do not fit a host-network command-line daemon.
+
 On Windows, install `VinnovateIT.LatchCLI` with winget after its manifest is accepted, or download and extract `latch-cli-1.3.8-windows-x64.zip`. The executable works directly from PowerShell:
 
 ```powershell

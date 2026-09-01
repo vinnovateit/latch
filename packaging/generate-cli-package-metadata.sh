@@ -48,6 +48,9 @@ arch=('x86_64')
 url='https://github.com/vinnovateit/latch'
 license=('MIT')
 depends=('networkmanager')
+optdepends=('libsecret: Secret Service credential storage'
+            'rfkill: Wi-Fi radio fallback'
+            'wireless_tools: SSID detection fallback')
 provides=('latch-cli')
 conflicts=('latch-cli')
 options=('!strip')
@@ -70,6 +73,9 @@ pkgbase = latch-cli-bin
 	arch = x86_64
 	license = MIT
 	depends = networkmanager
+	optdepends = libsecret: Secret Service credential storage
+	optdepends = rfkill: Wi-Fi radio fallback
+	optdepends = wireless_tools: SSID detection fallback
 	provides = latch-cli
 	conflicts = latch-cli
 	options = !strip

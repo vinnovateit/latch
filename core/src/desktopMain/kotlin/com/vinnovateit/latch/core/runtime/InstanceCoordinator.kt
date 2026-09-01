@@ -18,7 +18,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
-private const val HANDSHAKE_TIMEOUT_MS = 2_000
+private const val CONNECT_TIMEOUT_MS = 2_000
+private const val REQUEST_READ_TIMEOUT_MS = 2_000
+private const val RESPONSE_READ_TIMEOUT_MS = 25_000
 
 sealed interface AcquireResult {
     data class Owner(val coordinator: InstanceCoordinator) : AcquireResult
@@ -57,7 +59,7 @@ class InstanceCoordinator private constructor(
 
     private fun handle(socket: Socket) {
         socket.use { client ->
-            client.soTimeout = HANDSHAKE_TIMEOUT_MS
+            client.soTimeout = REQUEST_READ_TIMEOUT_MS
             val response = try {
                 when (val payload = readPayload(client)) {
                     is PayloadResult.TooLarge -> failure("", "PAYLOAD_TOO_LARGE", "Request exceeds 64 KiB.")
@@ -180,8 +182,8 @@ class InstanceClient(
         }.getOrDefault("")
         try {
             Socket().use { socket ->
-                socket.connect(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), HANDSHAKE_TIMEOUT_MS)
-                socket.soTimeout = HANDSHAKE_TIMEOUT_MS
+                socket.connect(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), CONNECT_TIMEOUT_MS)
+                socket.soTimeout = RESPONSE_READ_TIMEOUT_MS
                 socket.getOutputStream().apply {
                     write(payload.toByteArray(Charsets.UTF_8))
                     write('\n'.code)
