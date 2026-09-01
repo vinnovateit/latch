@@ -15,6 +15,7 @@ app/debug/
 desktop/build/
 core/build/
 cli/build/
+gradle/gradle-daemon-jvm.properties
 .kotlin/
 node_modules/
 *.log
