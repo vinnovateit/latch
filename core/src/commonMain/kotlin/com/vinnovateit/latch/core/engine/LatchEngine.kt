@@ -258,7 +258,9 @@ class LatchEngine(
             ConnectionStatus.Connecting(ConnectionStatus.Step.CheckingInternet)
         )
 
-        val code = portal.checkPortalStatus(handle)
+        val code = withTimeoutOrNull(3500L) {
+            portal.checkPortalStatus(handle)
+        } ?: -1
         logger.d(TAG, "[ConnectAnalysis] Step 2/4: Portal Probe Response Code: $code (204 = Direct Internet, 200/302 = Captive Portal, -1 = Network Error)")
 
         if (code == 204) {
@@ -343,22 +345,21 @@ class LatchEngine(
             logger.w(TAG, "[ConnectAnalysis] SSID '$ssid' failed VIT campus match; refusing login.")
             return@withContext false
         }
-        if (ssid == null) {
-            logger.w(TAG, "[ConnectAnalysis] SSID unreadable; checking portal host resolution alone.")
+        if (isVitCampusSsid(ssid) && !ssid.isNullOrEmpty()) {
+            return@withContext true
         }
-        
-        var resolves = runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess
-        if (!resolves) {
-            logger.w(TAG, "[ConnectAnalysis] Portal host '$PORTAL_HOST' DNS failed on 1st try. Retrying after 300ms...")
-            delay(300)
-            resolves = runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess
-        }
+
+        var resolves = withTimeoutOrNull(1500L) {
+            runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess
+        } ?: false
 
         if (!resolves) {
             val gatewayIp = platform.wifi.gatewayIp()
             if (gatewayIp != null) {
                 logger.d(TAG, "[ConnectAnalysis] Checking fallback gateway IP reachable: $gatewayIp")
-                resolves = runCatching { InetAddress.getByName(gatewayIp) }.isSuccess
+                resolves = withTimeoutOrNull(1500L) {
+                    runCatching { InetAddress.getByName(gatewayIp) }.isSuccess
+                } ?: false
             }
         }
 
@@ -443,11 +444,7 @@ class LatchEngine(
         val wasLatched = _isLatched.value
         if (handle != null && wasLatched) platform.wifi.bindProcess(handle)
         try {
-<<<<<<< HEAD
-            val ok = login.attemptLogout(handle, false, platform.wifi.gatewayIp())
-=======
             val ok = if (wasLatched) login.attemptLogout(handle, false, platform.wifi.gatewayIp()) else true
->>>>>>> 9be3903 (fix(desktop): fix metaspace crash, portal login evaluation, and tray connect synchronization)
             unlatch()
             // Tell Android this network no longer has a live session now,
             // rather than waiting for its own NetworkMonitor to notice on
@@ -489,13 +486,9 @@ class LatchEngine(
                     logger.d(TAG, "Detected resume from sleep (drift ${drift}ms); re-checking.")
                 }
 
-                val code = portal.checkPortalStatus(handle)
-<<<<<<< HEAD
-                if (code != 204) {
-                    logger.w(TAG, "Health check failed (status $code); session may have expired.")
-                    unlatch()
-                    checkAndActExclusive(handle, revalidating = false)
-=======
+                val code = withTimeoutOrNull(3500L) {
+                    portal.checkPortalStatus(handle)
+                } ?: -1
                 if (code == 204) {
                     failCount = 0
                 } else {
@@ -504,10 +497,9 @@ class LatchEngine(
                     if (failCount >= 3) {
                         logger.w(TAG, "Health check failed 3 consecutive times; session may have expired.")
                         failCount = 0
-                        _isLatched.value = false
+                        unlatch()
                         checkAndActExclusive(handle, revalidating = false)
                     }
->>>>>>> 9be3903 (fix(desktop): fix metaspace crash, portal login evaluation, and tray connect synchronization)
                 }
             }
         }

@@ -226,7 +226,7 @@ internal fun SettingsSelectionDialog(
                         .clip(RoundedCornerShape(12.dp))
                         .clickable {
                             onSelect(option.label)
-                            onDismiss()
+                            dismiss()
                         }
                         .padding(horizontal = 12.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -272,7 +272,7 @@ internal fun SettingsSelectionDialog(
             }
             Spacer(Modifier.height(12.dp))
             TextButton(
-                onClick = onDismiss,
+                onClick = { dismiss() },
                 modifier = Modifier.align(Alignment.End),
             ) {
                 Text("Cancel", fontFamily = satoshiFontFamily())
@@ -314,11 +314,14 @@ internal fun SettingsActionDialog(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                TextButton(onClick = onDismiss) {
+                TextButton(onClick = { dismiss() }) {
                     Text(cancelText, fontFamily = satoshiFontFamily())
                 }
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = onConfirm) {
+                TextButton(onClick = {
+                    onConfirm()
+                    dismiss()
+                }) {
                     Text(confirmText, color = MaterialTheme.colorScheme.error, fontFamily = satoshiFontFamily())
                 }
             }

@@ -152,13 +152,7 @@ internal fun LatchWindow(
                 shape = RoundedCornerShape(WindowCornerRadius),
                 color = MaterialTheme.colorScheme.background,
             ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    WindowDraggableArea(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .align(androidx.compose.ui.Alignment.TopStart),
-                    )
+                WindowDraggableArea(modifier = Modifier.fillMaxSize()) {
                     content(
                         { state.isMinimized = true },
                         onCloseRequest,
