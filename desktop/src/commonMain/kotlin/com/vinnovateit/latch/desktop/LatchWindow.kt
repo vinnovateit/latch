@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material3.MaterialTheme
@@ -12,6 +13,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -150,16 +152,17 @@ internal fun LatchWindow(
                 shape = RoundedCornerShape(WindowCornerRadius),
                 color = MaterialTheme.colorScheme.background,
             ) {
-                // WindowDraggableArea wraps everything so the top bar (which
-                // lives in commonMain and cannot call it directly) is draggable.
-                // Clicks pass through to children; only drag gestures are consumed.
-                WindowDraggableArea(modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        content(
-                            { state.isMinimized = true },
-                            onCloseRequest,
-                        )
-                    }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    WindowDraggableArea(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .align(androidx.compose.ui.Alignment.TopStart),
+                    )
+                    content(
+                        { state.isMinimized = true },
+                        onCloseRequest,
+                    )
                 }
             }
         }
