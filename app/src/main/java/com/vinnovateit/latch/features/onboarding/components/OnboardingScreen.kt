@@ -47,7 +47,6 @@ fun OnboardingScreen(
     val context = LocalContext.current
     var credentialsHandled by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    var showCredentialsAlert by remember { mutableStateOf(false) }
     var permissionGranted by remember { mutableStateOf(false) }
     val hapticFeedback = LocalHapticFeedback.current
     val offsetX = remember { Animatable(0f) }
@@ -261,18 +260,5 @@ fun OnboardingScreen(
                     }
             }
         }
-    }
-
-    if (showCredentialsAlert) {
-        AlertDialog(
-            onDismissRequest = { showCredentialsAlert = false },
-            title = { Text("Enter Credentials") },
-            text = { Text("Please enter your credentials before proceeding.") },
-            confirmButton = {
-                TextButton(onClick = { showCredentialsAlert = false }) {
-                    Text("OK")
-                }
-            }
-        )
     }
 }
