@@ -46,6 +46,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.SpanStyle
@@ -216,8 +217,8 @@ fun CredentialsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(regNoFocusRequester)
-                            .onKeyEvent { event ->
-                                if (event.key == Key.Enter && event.type == KeyEventType.KeyDown) {
+                            .onPreviewKeyEvent { event ->
+                                if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.type == KeyEventType.KeyDown) {
                                     passwordFocusRequester.requestFocus()
                                     true
                                 } else {
@@ -256,8 +257,8 @@ fun CredentialsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(passwordFocusRequester)
-                            .onKeyEvent { event ->
-                                if (event.key == Key.Enter && event.type == KeyEventType.KeyDown) {
+                            .onPreviewKeyEvent { event ->
+                                if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.type == KeyEventType.KeyDown) {
                                     submit()
                                     true
                                 } else {
