@@ -27,6 +27,9 @@ object LatchAppGraph {
     private var _platform: AndroidPlatformServices? = null
     val platform: AndroidPlatformServices get() = checkNotNull(_platform) { "LatchAppGraph.initialize() has not run yet" }
 
+    private var _sessions: SessionRepository? = null
+    val sessions: SessionRepository get() = checkNotNull(_sessions) { "LatchAppGraph.initialize() has not run yet" }
+
     lateinit var foregroundController: ForegroundControllerHolder
         private set
 
@@ -45,6 +48,7 @@ object LatchAppGraph {
         val throughput = ThroughputMonitor(platform.counters)
         val sessions = SessionRepository(database.statsDao(), throughput)
         sessions.initialize()
+        _sessions = sessions
 
         _engine = LatchEngine(platform, sessions)
     }

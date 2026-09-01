@@ -444,11 +444,7 @@ class LatchEngine(
         val wasLatched = _isLatched.value
         if (handle != null && wasLatched) platform.wifi.bindProcess(handle)
         try {
-<<<<<<< HEAD
-            val ok = login.attemptLogout(handle, false, platform.wifi.gatewayIp())
-=======
             val ok = if (wasLatched) login.attemptLogout(handle, false, platform.wifi.gatewayIp()) else true
->>>>>>> 9be3903 (fix(desktop): fix metaspace crash, portal login evaluation, and tray connect synchronization)
             unlatch()
             // Tell Android this network no longer has a live session now,
             // rather than waiting for its own NetworkMonitor to notice on
@@ -490,13 +486,9 @@ class LatchEngine(
                     logger.d(TAG, "Detected resume from sleep (drift ${drift}ms); re-checking.")
                 }
 
-                val code = portal.checkPortalStatus(handle)
-<<<<<<< HEAD
-                if (code != 204) {
-                    logger.w(TAG, "Health check failed (status $code); session may have expired.")
-                    unlatch()
-                    checkAndActExclusive(handle, revalidating = false)
-=======
+                val code = withTimeoutOrNull(3500L) {
+                    portal.checkPortalStatus(handle)
+                } ?: -1
                 if (code == 204) {
                     failCount = 0
                 } else {
@@ -505,10 +497,9 @@ class LatchEngine(
                     if (failCount >= 3) {
                         logger.w(TAG, "Health check failed 3 consecutive times; session may have expired.")
                         failCount = 0
-                        _isLatched.value = false
+                        unlatch()
                         checkAndActExclusive(handle, revalidating = false)
                     }
->>>>>>> 9be3903 (fix(desktop): fix metaspace crash, portal login evaluation, and tray connect synchronization)
                 }
             }
         }

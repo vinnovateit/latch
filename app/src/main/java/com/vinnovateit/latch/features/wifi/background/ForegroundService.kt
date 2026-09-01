@@ -168,14 +168,11 @@ class ForegroundService : Service(), ForegroundController {
             var wasLatched = false
             LatchAppGraph.engine.isLatched.collect { latched ->
                 if (latched && !wasLatched) {
-                    val network = (LatchAppGraph.platform.wifi.activeHandle() as? AndroidNetworkHandle)?.network
-                    if (network != null) SessionRepository.startSession(network)
                     val timeString = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
                     updateNotification("Latched", "Connected at $timeString")
                     startNotificationUpdates()
                     LatchAppGraph.platform.notifier.notifyTransient("Connected", "Latched onto VIT WiFi at $timeString")
                 } else if (!latched && wasLatched) {
-                    SessionRepository.stopSession()
                     notificationUpdateJob?.cancel()
                 }
                 wasLatched = latched
