@@ -346,9 +346,13 @@ class GithubUpdater(
         conn.requestMethod = "GET"
         conn.setRequestProperty("Accept", "application/vnd.github+json")
         val code = conn.responseCode
+        if (code == 403 || code == 429) {
+            logger.d("GithubUpdater", "GitHub API rate limit exceeded ($code)")
+            throw java.io.IOException("GitHub API rate limit exceeded ($code)")
+        }
         if (code != 200) {
             val body = conn.errorStream?.bufferedReader()?.readText() ?: ""
-            throw RuntimeException("GitHub API returned $code: $body")
+            throw java.io.IOException("GitHub API returned $code: $body")
         }
         return json.decodeFromString(conn.inputStream.bufferedReader().readText())
     }

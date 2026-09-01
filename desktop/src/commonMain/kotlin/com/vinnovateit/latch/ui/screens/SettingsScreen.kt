@@ -1,6 +1,7 @@
 package com.vinnovateit.latch.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -100,226 +101,228 @@ fun SettingsScreen(
         mutableStateOf(platform.systemActions.isAutostartEnabled())
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        LatchDetailHeader(
-            title = "Settings",
-            onBack = onBack,
-        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            LatchDetailHeader(
+                title = "Settings",
+                onBack = onBack,
+            )
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
             Column(
-                modifier = Modifier.widthIn(max = ContentMaxWidth).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // -------------------------------------------------------------
-                // Account
-                // -------------------------------------------------------------
-                SettingsSection(title = "Account") {
-                    SettingsItem(
-                        title = "Auto-login",
-                        subtitle = "Login automatically when a VIT WIFI is available nearby",
-                        leadingIcon = LatchIcons.Login,
-                        trailingContent = {
-                            Switch(
-                                checked = autoLogin,
-                                onCheckedChange = { SettingsManager.setAutoLogin(it) },
-                            )
-                        },
-                    )
-                    SettingsRowGap()
-                    SettingsItem(
-                        title = stringResource(Res.string.update_credentials),
-                        subtitle = "Change the registration number or password Latch uses",
-                        leadingIcon = LatchIcons.Autorenew,
-                        onClick = onNavigateToCredentials,
-                    )
-                }
-
-                // -------------------------------------------------------------
-                // Appearance
-                // -------------------------------------------------------------
-                SettingsSection(title = "Appearance") {
-                    SettingsItem(
-                        title = "Theme",
-                        subtitle = theme,
-                        leadingIcon = when (theme) {
-                            "Light" -> LatchIcons.LightMode
-                            "Dark" -> LatchIcons.DarkMode
-                            else -> LatchIcons.DesktopWindows
-                        },
-                        onClick = { showThemeDialog = true },
-                    )
-                    SettingsRowGap()
-                    SettingsItem(
-                        title = "Accent colour",
-                        subtitle = when {
-                            useMonochrome -> "Monochrome"
-                            AccentSeeds.parseHexOrNull(accentColor) != null -> "Custom ($accentColor)"
-                            else -> accentColor
-                        },
-                        leadingIcon = LatchIcons.InvertColors,
-                        onClick = { showAccentDialog = true },
-                        trailingContent = {
-                            AccentSwatch(
-                                accentColor = AccentSeeds.forName(accentColor),
-                                useMonochrome = useMonochrome,
-                            )
-                        },
-                    )
-                }
-
-                // -------------------------------------------------------------
-                // Data Management
-                // -------------------------------------------------------------
-                SettingsSection(title = "Data Management") {
-                    SettingsItem(
-                        title = "Speed units",
-                        subtitle = speedUnits,
-                        leadingIcon = LatchIcons.BarChart,
-                        onClick = { showUnitsDialog = true },
-                    )
-                    SettingsRowGap()
-                    SettingsItem(
-                        title = "Clear session history",
-                        subtitle = "Delete all recorded sessions and usage totals",
-                        leadingIcon = LatchIcons.Restore,
-                        onClick = { showClearStatsDialog = true },
-                    )
-                }
-
-                // -------------------------------------------------------------
-                // System (only where autostart is actually supported)
-                // -------------------------------------------------------------
-                if (platform.capabilities.supportsAutostart) {
-                    SettingsSection(title = "System") {
+                Column(
+                    modifier = Modifier.widthIn(max = ContentMaxWidth).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    // -------------------------------------------------------------
+                    // Account
+                    // -------------------------------------------------------------
+                    SettingsSection(title = "Account") {
                         SettingsItem(
-                            title = "Run at startup",
-                            subtitle = "Launch Latch automatically when you sign in",
-                            leadingIcon = LatchIcons.DesktopWindows,
+                            title = "Auto-login",
+                            subtitle = "Login automatically when a VIT WIFI is available nearby",
+                            leadingIcon = LatchIcons.Login,
                             trailingContent = {
                                 Switch(
-                                    checked = autostartEnabled,
-                                    onCheckedChange = { enabled ->
-                                        platform.systemActions.setAutostart(enabled)
-                                        // Read back rather than trusting the write:
-                                        // the registry key can fail silently.
-                                        autostartEnabled =
-                                            platform.systemActions.isAutostartEnabled()
-                                    },
+                                    checked = autoLogin,
+                                    onCheckedChange = { SettingsManager.setAutoLogin(it) },
+                                )
+                            },
+                        )
+                        SettingsRowGap()
+                        SettingsItem(
+                            title = stringResource(Res.string.update_credentials),
+                            subtitle = "Change the registration number or password Latch uses",
+                            leadingIcon = LatchIcons.Autorenew,
+                            onClick = onNavigateToCredentials,
+                        )
+                    }
+
+                    // -------------------------------------------------------------
+                    // Appearance
+                    // -------------------------------------------------------------
+                    SettingsSection(title = "Appearance") {
+                        SettingsItem(
+                            title = "Theme",
+                            subtitle = theme,
+                            leadingIcon = when (theme) {
+                                "Light" -> LatchIcons.LightMode
+                                "Dark" -> LatchIcons.DarkMode
+                                else -> LatchIcons.DesktopWindows
+                            },
+                            onClick = { showThemeDialog = true },
+                        )
+                        SettingsRowGap()
+                        SettingsItem(
+                            title = "Accent colour",
+                            subtitle = when {
+                                useMonochrome -> "Monochrome"
+                                AccentSeeds.parseHexOrNull(accentColor) != null -> "Custom ($accentColor)"
+                                else -> accentColor
+                            },
+                            leadingIcon = LatchIcons.InvertColors,
+                            onClick = { showAccentDialog = true },
+                            trailingContent = {
+                                AccentSwatch(
+                                    accentColor = AccentSeeds.forName(accentColor),
+                                    useMonochrome = useMonochrome,
                                 )
                             },
                         )
                     }
-                }
 
-                Spacer(Modifier.height(32.dp))
-            }
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Dialogs
-    // -----------------------------------------------------------------------
-
-    if (showThemeDialog) {
-        SettingsSelectionDialog(
-            title = "Theme",
-            options = listOf(
-                SelectionOption("System Default", LatchIcons.DesktopWindows),
-                SelectionOption("Light", LatchIcons.LightMode),
-                SelectionOption("Dark", LatchIcons.DarkMode),
-            ),
-            selected = theme,
-            onSelect = { SettingsManager.setTheme(it) },
-            onDismiss = { showThemeDialog = false },
-            bottomContent = {
-                // Pure black only means anything in a dark scheme, so it is
-                // disabled (and visibly dimmed) whenever the app is light.
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Pure black",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (isDark) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            },
+                    // -------------------------------------------------------------
+                    // Data Management
+                    // -------------------------------------------------------------
+                    SettingsSection(title = "Data Management") {
+                        SettingsItem(
+                            title = "Speed units",
+                            subtitle = speedUnits,
+                            leadingIcon = LatchIcons.BarChart,
+                            onClick = { showUnitsDialog = true },
                         )
-                        Text(
-                            text = "AMOLED-friendly true black background",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                alpha = if (isDark) 1f else 0.38f,
-                            ),
+                        SettingsRowGap()
+                        SettingsItem(
+                            title = "Clear session history",
+                            subtitle = "Delete all recorded sessions and usage totals",
+                            leadingIcon = LatchIcons.Restore,
+                            onClick = { showClearStatsDialog = true },
                         )
                     }
-                    Switch(
-                        checked = usePureBlack,
-                        enabled = isDark,
-                        onCheckedChange = { SettingsManager.setUsePureBlack(it) },
-                    )
+
+                    // -------------------------------------------------------------
+                    // System (only where autostart is actually supported)
+                    // -------------------------------------------------------------
+                    if (platform.capabilities.supportsAutostart) {
+                        SettingsSection(title = "System") {
+                            SettingsItem(
+                                title = "Run at startup",
+                                subtitle = "Launch Latch automatically when you sign in",
+                                leadingIcon = LatchIcons.DesktopWindows,
+                                trailingContent = {
+                                    Switch(
+                                        checked = autostartEnabled,
+                                        onCheckedChange = { enabled ->
+                                            platform.systemActions.setAutostart(enabled)
+                                            // Read back rather than trusting the write:
+                                            // the registry key can fail silently.
+                                            autostartEnabled =
+                                                platform.systemActions.isAutostartEnabled()
+                                        },
+                                    )
+                                },
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(32.dp))
                 }
-            },
-        )
-    }
+            }
+        }
 
-    if (showAccentDialog) {
-        SettingsSelectionDialog(
-            title = "Accent colour",
-            description = "Pick the seed colour the whole scheme is generated from.",
-            options = emptyList(),
-            selected = accentColor,
-            onSelect = { SettingsManager.setAccentColor(it) },
-            onDismiss = { showAccentDialog = false },
-            bottomContent = {
-                AccentColorPicker(
-                    selectedColorName = accentColor,
-                    useMonochrome = useMonochrome,
-                    onColorSelected = { SettingsManager.setAccentColor(it) },
-                    onMonochromeToggle = { SettingsManager.setUseMonochrome(it) },
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                )
-            },
-        )
-    }
+        // -----------------------------------------------------------------------
+        // Dialogs
+        // -----------------------------------------------------------------------
 
-    if (showUnitsDialog) {
-        SettingsSelectionDialog(
-            title = "Speed units",
-            description = "How live and recorded transfer rates are displayed.",
-            options = listOf(
-                SelectionOption("bps", displayLabel = "Bits per second (bps)"),
-                SelectionOption("Bps", displayLabel = "Bytes per second (Bps)"),
-            ),
-            selected = speedUnits,
-            onSelect = { SettingsManager.setSpeedUnits(it) },
-            onDismiss = { showUnitsDialog = false },
-        )
-    }
+        if (showThemeDialog) {
+            SettingsSelectionDialog(
+                title = "Theme",
+                options = listOf(
+                    SelectionOption("System Default", LatchIcons.DesktopWindows),
+                    SelectionOption("Light", LatchIcons.LightMode),
+                    SelectionOption("Dark", LatchIcons.DarkMode),
+                ),
+                selected = theme,
+                onSelect = { SettingsManager.setTheme(it) },
+                onDismiss = { showThemeDialog = false },
+                bottomContent = {
+                    // Pure black only means anything in a dark scheme, so it is
+                    // disabled (and visibly dimmed) whenever the app is light.
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Pure black",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (isDark) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                },
+                            )
+                            Text(
+                                text = "AMOLED-friendly true black background",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                    alpha = if (isDark) 1f else 0.38f,
+                                ),
+                            )
+                        }
+                        Switch(
+                            checked = usePureBlack,
+                            enabled = isDark,
+                            onCheckedChange = { SettingsManager.setUsePureBlack(it) },
+                        )
+                    }
+                },
+            )
+        }
 
-    if (showClearStatsDialog) {
-        SettingsActionDialog(
-            title = stringResource(Res.string.stats_reset_dialog_title),
-            description = stringResource(Res.string.stats_reset_dialog_message),
-            confirmText = stringResource(Res.string.stats_reset_dialog_confirm),
-            cancelText = stringResource(Res.string.stats_reset_dialog_cancel),
-            onConfirm = {
-                onClearStats()
-                showClearStatsDialog = false
-            },
-            onDismiss = { showClearStatsDialog = false },
-        )
+        if (showAccentDialog) {
+            SettingsSelectionDialog(
+                title = "Accent colour",
+                description = "Pick the seed colour the whole scheme is generated from.",
+                options = emptyList(),
+                selected = accentColor,
+                onSelect = { SettingsManager.setAccentColor(it) },
+                onDismiss = { showAccentDialog = false },
+                bottomContent = {
+                    AccentColorPicker(
+                        selectedColorName = accentColor,
+                        useMonochrome = useMonochrome,
+                        onColorSelected = { SettingsManager.setAccentColor(it) },
+                        onMonochromeToggle = { SettingsManager.setUseMonochrome(it) },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                },
+            )
+        }
+
+        if (showUnitsDialog) {
+            SettingsSelectionDialog(
+                title = "Speed units",
+                description = "How live and recorded transfer rates are displayed.",
+                options = listOf(
+                    SelectionOption("bps", displayLabel = "Bits per second (bps)"),
+                    SelectionOption("Bps", displayLabel = "Bytes per second (Bps)"),
+                ),
+                selected = speedUnits,
+                onSelect = { SettingsManager.setSpeedUnits(it) },
+                onDismiss = { showUnitsDialog = false },
+            )
+        }
+
+        if (showClearStatsDialog) {
+            SettingsActionDialog(
+                title = stringResource(Res.string.stats_reset_dialog_title),
+                description = stringResource(Res.string.stats_reset_dialog_message),
+                confirmText = stringResource(Res.string.stats_reset_dialog_confirm),
+                cancelText = stringResource(Res.string.stats_reset_dialog_cancel),
+                onConfirm = {
+                    onClearStats()
+                    showClearStatsDialog = false
+                },
+                onDismiss = { showClearStatsDialog = false },
+            )
+        }
     }
 }
 

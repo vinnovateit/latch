@@ -28,14 +28,14 @@ class FileLogger(
         java.util.logging.Logger.getLogger("latch").apply {
             useParentHandlers = false
             level = Level.ALL
-            // 1MB x 3 files, append.
+            // 5MB x 5 files, append.
             val fileHandler =
-                FileHandler(File(logsDir, "latch.%g.log").absolutePath, 1_000_000, 3, true)
+                FileHandler(File(logsDir, "latch.%g.log").absolutePath, 5_000_000, 5, true)
             fileHandler.level = Level.ALL
             fileHandler.formatter = object : JulFormatter() {
                 private val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
                 override fun format(record: LogRecord): String =
-                    "${stamp.format(Date(record.millis))} ${record.level.name.take(1)} ${record.message}\n"
+                    "${stamp.format(Date(record.millis))} [${record.level.name.take(1)}] [${Thread.currentThread().name}] ${record.message}\n"
             }
             // Replace any handler left over from a previous FileLogger in the same
             // JVM (e.g. a test) so lines are not written twice.
@@ -57,7 +57,8 @@ class FileLogger(
         // is empty exactly when it is needed for support.
         runCatching { handler?.flush() }
         if (echoToStdout) {
-            println("${level.name.take(1)} $line")
+            val now = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+            println("$now [${level.name.take(1)}] [${Thread.currentThread().name}] $line")
             throwable?.printStackTrace()
         }
     }

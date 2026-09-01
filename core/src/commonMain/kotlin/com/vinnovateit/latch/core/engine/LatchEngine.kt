@@ -96,6 +96,7 @@ class LatchEngine(
 
     private val commands = Channel<QueuedCommand>(Channel.UNLIMITED)
     private var healthCheckJob: Job? = null
+    private var activeActionJob: Job? = null
     private var currentHandle: NetworkHandle? = null
     private var started = false
 
@@ -163,6 +164,8 @@ class LatchEngine(
             is WifiEvent.Lost -> {
                 logger.d(TAG, "Wi-Fi lost")
                 currentHandle = null
+                activeActionJob?.cancel()
+                activeActionJob = null
                 healthCheckJob?.cancel()
                 unlatch()
             }
@@ -201,9 +204,16 @@ class LatchEngine(
             // Serialized against checkAndActExclusive so a logout can't run
             // concurrently with a fresh login on the Wi-Fi-event coroutine and
             // clobber it -- the two run on separate coroutines sharing this pool.
-            LatchCommand.Logout -> loginGate.withLock { logoutNow() }
+            LatchCommand.Logout -> {
+                activeActionJob?.cancel()
+                activeActionJob = null
+                healthCheckJob?.cancel()
+                loginGate.withLock { logoutNow() }
+            }
 
             LatchCommand.Shutdown -> {
+                activeActionJob?.cancel()
+                activeActionJob = null
                 healthCheckJob?.cancel()
                 unlatch()
             }
@@ -223,9 +233,14 @@ class LatchEngine(
         retry: Int = 0,
         silent: Boolean = false,
     ) {
-        loginGate.withLock {
-            checkAndAct(handle, revalidating, retry, silent)
+        val job = scope.launch {
+            loginGate.withLock {
+                if (!isActive) return@withLock
+                checkAndAct(handle, revalidating, retry, silent)
+            }
         }
+        activeActionJob = job
+        job.join()
     }
 
     private suspend fun checkAndAct(
@@ -383,7 +398,7 @@ class LatchEngine(
                 )
                 return
             }
-            logger.d(TAG, "[ConnectAnalysis] Attempting Portal Login 1 (HTTP)...")
+            logger.d(TAG, "[ConnectAnalysis] Attempting Portal Login (HTTP)...")
             var result = login.attemptLogin(
                 userId = user,
                 password = pass,
@@ -392,43 +407,21 @@ class LatchEngine(
                 fallbackIp = platform.wifi.gatewayIp(),
             )
             if (result is LoginResult.Failure) {
-                logger.w(TAG, "[ConnectAnalysis] Attempt 1 (HTTP) Failed; Retrying Attempt 2 (HTTPS) in 1s...")
-                delay(1000)
-                result = login.attemptLogin(
-                    userId = user,
-                    password = pass,
-                    handle = handle,
-                    useAlternate = true,
-                    fallbackIp = platform.wifi.gatewayIp(),
-                )
-            }
-            when (result) {
-                is LoginResult.Success -> {
-                    logger.d(TAG, "[ConnectAnalysis] Auth SUCCESS! Revalidating network access...")
-                    checkAndAct(handle, revalidating = true)
+                val gw = platform.wifi.gatewayIp()
+                if (gw != null) {
+                    logger.d(TAG, "[ConnectAnalysis] Retrying HTTP login with direct Gateway IP ($gw)...")
+                    result = login.attemptLogin(
+                        userId = user,
+                        password = pass,
+                        handle = handle,
+                        useAlternate = false,
+                        fallbackIp = gw,
+                    )
                 }
+            }
 
-                is LoginResult.Failure -> {
-                    // Pronto sometimes serves a login response our success-string
-                    // match doesn't recognize even though the portal already
-                    // granted the session server-side -- a manual "press connect
-                    // again" right after a reported failure routinely succeeds
-                    // instantly because of this. One cheap extra probe here
-                    // automates that instead of making the user do it by hand.
-                    // Real failures (bad credentials, portal down) still surface
-                    // immediately below since this doesn't retry.
-                    logger.w(TAG, "[ConnectAnalysis] Auth FAILED on both HTTP & HTTPS attempts; re-probing in case the portal already granted access...")
-                    if (portal.checkPortalStatus(handle) == 204) {
-                        logger.d(TAG, "[ConnectAnalysis] Portal already granted access despite failed login detection. Treating as success.")
-                        checkAndAct(handle, revalidating = true)
-                    } else {
-                        unlatch()
-                        ConnectionStatusManager.postStatus(
-                            ConnectionStatus.Failed(ConnectionStatus.Reason.LoginFailed)
-                        )
-                    }
-                }
-            }
+            logger.d(TAG, "[ConnectAnalysis] Login request submitted (result=$result). Revalidating network access...")
+            checkAndAct(handle, revalidating = true)
         } catch (e: Exception) {
             logger.e(TAG, "[ConnectAnalysis] Exception during handleCaptivePortal: ${e.message}", e)
             unlatch()
@@ -447,22 +440,21 @@ class LatchEngine(
         healthCheckJob?.cancel()
 
         val handle = currentHandle ?: platform.wifi.activeHandle()
-        platform.wifi.bindProcess(handle)
+        val wasLatched = _isLatched.value
+        if (handle != null && wasLatched) platform.wifi.bindProcess(handle)
         try {
+<<<<<<< HEAD
             val ok = login.attemptLogout(handle, false, platform.wifi.gatewayIp())
+=======
+            val ok = if (wasLatched) login.attemptLogout(handle, false, platform.wifi.gatewayIp()) else true
+>>>>>>> 9be3903 (fix(desktop): fix metaspace crash, portal login evaluation, and tray connect synchronization)
             unlatch()
             // Tell Android this network no longer has a live session now,
             // rather than waiting for its own NetworkMonitor to notice on
             // its own schedule -- regardless of whether the portal's own
             // logout request itself succeeded, the app is no longer relying
             // on this network being latched.
-            //
-            // Deliberately unconditional on `ok`: this is a hint asking
-            // Android to re-validate the network, not an acknowledgment that
-            // logout succeeded, so it's correct to fire it either way -- if
-            // the portal's own logout call failed, that's still surfaced
-            // separately below via ConnectionStatus.Reason.LogoutFailed.
-            if (handle != null) platform.wifi.reportConnectivity(handle, ok = false)
+            if (handle != null && wasLatched) platform.wifi.reportConnectivity(handle, ok = false)
             if (ok) {
                 logger.d(TAG, "Logout succeeded.")
                 ConnectionStatusManager.postStatus(
@@ -475,7 +467,7 @@ class LatchEngine(
                 )
             }
         } finally {
-            platform.wifi.bindProcess(null)
+            if (handle != null && wasLatched) platform.wifi.bindProcess(null)
         }
     }
 
@@ -483,6 +475,7 @@ class LatchEngine(
         healthCheckJob?.cancel()
         healthCheckJob = scope.launch {
             var lastTick = System.currentTimeMillis()
+            var failCount = 0
             while (isActive) {
                 delay(HEALTH_CHECK_INTERVAL_MS)
 
@@ -497,10 +490,24 @@ class LatchEngine(
                 }
 
                 val code = portal.checkPortalStatus(handle)
+<<<<<<< HEAD
                 if (code != 204) {
                     logger.w(TAG, "Health check failed (status $code); session may have expired.")
                     unlatch()
                     checkAndActExclusive(handle, revalidating = false)
+=======
+                if (code == 204) {
+                    failCount = 0
+                } else {
+                    failCount++
+                    logger.w(TAG, "Health check probe failed ($failCount/3, status $code).")
+                    if (failCount >= 3) {
+                        logger.w(TAG, "Health check failed 3 consecutive times; session may have expired.")
+                        failCount = 0
+                        _isLatched.value = false
+                        checkAndActExclusive(handle, revalidating = false)
+                    }
+>>>>>>> 9be3903 (fix(desktop): fix metaspace crash, portal login evaluation, and tray connect synchronization)
                 }
             }
         }

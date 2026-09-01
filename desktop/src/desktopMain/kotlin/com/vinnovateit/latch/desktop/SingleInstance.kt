@@ -82,7 +82,10 @@ internal object SingleInstance {
             // Active instance exists; self-terminate
             return false
         } catch (_: Throwable) {
-            // Fallback for odd filesystems
+            val existingPid = readExistingPid()
+            if (existingPid != null && isProcessAlive(existingPid)) {
+                return false
+            }
             return true
         }
     }
@@ -116,7 +119,9 @@ internal object SingleInstance {
                         client.use {
                             val msg = it.getInputStream().bufferedReader().readLine()
                             if (msg == "SHOW") {
-                                onActivate()
+                                java.awt.EventQueue.invokeLater {
+                                    onActivate()
+                                }
                             }
                         }
                     } catch (_: Throwable) {

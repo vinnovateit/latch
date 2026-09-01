@@ -66,8 +66,9 @@ class AutoLoginManager(
         val targetUrlStr = if (useAlternate) SECURE_LOGIN_URL else LOGIN_URL
 
         fun doAttempt(urlStr: String): LoginResult {
+            val start = System.currentTimeMillis()
             val loginUrl = URL(urlStr)
-            logDebug("Preparing POST request to: $urlStr")
+            logDebug("Preparing POST request to: $urlStr (user=$userId)")
 
             val connection = transport.open(loginUrl, handle)
             connection.requestMethod = "POST"
@@ -76,8 +77,8 @@ class AutoLoginManager(
 
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
+            connection.connectTimeout = 4000
+            connection.readTimeout = 4000
 
             val postData = "userId=${URLEncoder.encode(userId, "UTF-8")}" +
                 "&password=${URLEncoder.encode(password, "UTF-8")}" +
@@ -85,43 +86,53 @@ class AutoLoginManager(
 
             connection.outputStream.bufferedWriter().use { it.write(postData) }
 
-            logDebug("Awaiting response from portal...")
-            return when (val responseCode = connection.responseCode) {
+            logDebug("Awaiting response from portal at $urlStr...")
+            val responseCode = connection.responseCode
+            val elapsed = System.currentTimeMillis() - start
+            return when (responseCode) {
                 HttpURLConnection.HTTP_OK -> {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    logDebug("Response body length: ${response.length} chars")
+                    logDebug("Portal responded in ${elapsed}ms: HTTP 200 (Body: ${response.length} chars)")
                     val responseLower = response.lowercase()
-                    val isSuccess = "access granted" in responseLower ||
-                        "you have successfully connected" in responseLower ||
+                    val hasExplicitError = "invalid" in responseLower ||
+                        "incorrect" in responseLower ||
+                        "wrong password" in responseLower ||
+                        "authentication failed" in responseLower ||
+                        "user not found" in responseLower ||
+                        "account expired" in responseLower ||
+                        "session limit" in responseLower ||
+                        "max session" in responseLower ||
+                        "login failed" in responseLower
+
+                    val hasSuccessToken = "access granted" in responseLower ||
+                        "successfully" in responseLower ||
+                        "logged in" in responseLower ||
                         "already logged in" in responseLower ||
+                        "welcome" in responseLower ||
+                        "success" in responseLower ||
                         "http-equiv=\"refresh\"" in responseLower ||
-                        "http://example.com" in responseLower
-                    logDebug("Login success evaluation string match: $isSuccess")
+                        "location.href" in responseLower ||
+                        "window.location" in responseLower ||
+                        "http://example.com" in responseLower ||
+                        !hasExplicitError
+
+                    val isSuccess = !hasExplicitError && hasSuccessToken
+                    logDebug("Login evaluation: isSuccess=$isSuccess (hasExplicitError=$hasExplicitError)")
                     if (!isSuccess) {
-                        // Only the length was logged before, which can't say
-                        // *why* the match failed -- a live capture confirmed this
-                        // response can be a real 200 the string-match just doesn't
-                        // recognize even though the portal already granted the
-                        // session (see LatchEngine's post-failure re-probe). Log
-                        // unconditionally (not logDebug), since this is the one
-                        // signal that can identify the actual response variant
-                        // from a future capture instead of guessing again. Capped
-                        // at 200 chars, not 500: enough to identify which known
-                        // Pronto page variant this is without dumping an entire
-                        // HTML document into the log on every failed match.
-                        logWarning("Login response didn't match any known success string. Body: ${response.take(200)}")
+                        logWarning("Login response indicated failure in ${elapsed}ms. Snippet: ${response.take(300).replace("\n", " ")}")
                     }
 
                     if (isSuccess) LoginResult.Success else LoginResult.Failure
                 }
 
                 HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP -> {
-                    logWarning("Login resulted in a redirect ($responseCode). Treating as success.")
+                    val location = connection.getHeaderField("Location")
+                    logWarning("Login resulted in a redirect in ${elapsed}ms (HTTP $responseCode -> $location). Treating as success.")
                     LoginResult.Success
                 }
 
                 else -> {
-                    logWarning("Login failed with unexpected response code: $responseCode")
+                    logWarning("Login failed in ${elapsed}ms with unexpected HTTP code: $responseCode")
                     LoginResult.Failure
                 }
             }
@@ -170,8 +181,8 @@ class AutoLoginManager(
             val connection = transport.open(url, handle)
             connection.requestMethod = "GET"
             connection.instanceFollowRedirects = false
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
+            connection.connectTimeout = 3000
+            connection.readTimeout = 3000
 
             connection.connect()
 

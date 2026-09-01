@@ -38,6 +38,7 @@ class LinuxWifiPlatform(private val logger: Logger) : WifiPlatform {
     private var cached: WifiSnapshot? = null
     private var cachedAt: Long = 0
     private var lastFingerprint: String? = null
+    private var lastLoggedState: WifiSnapshot? = null
 
     private fun invalidate() {
         cached = null
@@ -95,6 +96,11 @@ class LinuxWifiPlatform(private val logger: Logger) : WifiPlatform {
             ssid = ssid?.takeIf { it.isNotEmpty() },
             gateway = gateway?.takeIf { it.isNotEmpty() },
         )
+
+        if (lastLoggedState?.ssid != snap.ssid || lastLoggedState?.connected != snap.connected || lastLoggedState?.gateway != snap.gateway) {
+            logger.d(TAG, "Network state changed: interface=${snap.interfaceName}, enabled=${snap.wifiEnabled}, connected=${snap.connected}, ssid='${snap.ssid}', gateway='${snap.gateway}'")
+            lastLoggedState = snap
+        }
 
         cached = snap
         cachedAt = now

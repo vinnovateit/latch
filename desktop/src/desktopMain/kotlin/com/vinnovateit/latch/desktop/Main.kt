@@ -17,6 +17,8 @@ import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import com.vinnovateit.latch.core.engine.LatchCommand
+import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.ui.LatchRoot
 
 private const val APP_DISPLAY_NAME = "LATCH by VinnovateIT"
@@ -51,6 +53,7 @@ fun main(args: Array<String>) {
 
         val trayState = rememberTrayState()
         val isLatched by app.engine.isLatched.collectAsState()
+        val status by app.engine.status.collectAsState()
         val tooltip by app.notifier.tooltip.collectAsState()
         val updateState by app.updater.state.collectAsState()
 
@@ -59,22 +62,32 @@ fun main(args: Array<String>) {
         val isLinux = remember { System.getProperty("os.name").contains("Linux", ignoreCase = true) }
         val useLinuxTray = remember { isLinux && com.vinnovateit.latch.desktop.platform.linux.LinuxAppIndicatorTray.isSupported() }
 
-        LaunchedEffect(isLatched) {
+        val toggleConnect: () -> Unit = {
+            val currentStatus = app.engine.status.value
+            val latched = app.engine.isLatched.value
+            if (latched || currentStatus is ConnectionStatus.Connecting) {
+                app.engine.submit(LatchCommand.Logout)
+                SettingsManager.setAutoLogin(false)
+            } else {
+                SettingsManager.setAutoLogin(true)
+                app.engine.submit(LatchCommand.CheckAndLogin)
+            }
+        }
+
+        LaunchedEffect(isLatched, status) {
+            val shouldShowDisconnect = isLatched || status is ConnectionStatus.Connecting
             if (useLinuxTray) {
                 com.vinnovateit.latch.desktop.platform.linux.LinuxAppIndicatorTray.init(
                     isLatched = isLatched,
                     onOpenLatch = openLatch,
-                    onToggleConnect = {
-                        if (isLatched) app.engine.submit(LatchCommand.Logout)
-                        else app.engine.submit(LatchCommand.CheckAndLogin)
-                    },
+                    onToggleConnect = toggleConnect,
                     onExitLatch = {
                         com.vinnovateit.latch.desktop.platform.linux.LinuxAppIndicatorTray.stop()
                         app.shutdown()
                         kotlin.system.exitProcess(0)
                     },
                 )
-                com.vinnovateit.latch.desktop.platform.linux.LinuxAppIndicatorTray.updateStatus(isLatched)
+                com.vinnovateit.latch.desktop.platform.linux.LinuxAppIndicatorTray.updateStatus(shouldShowDisconnect)
             } else if (isLinux) {
                 kotlinx.coroutines.delay(200)
                 runCatching { patchLinuxTrayIconAlpha(isLatched, openLatch) }
@@ -90,10 +103,10 @@ fun main(args: Array<String>) {
                 menu = {
                     Item("Open Latch", onClick = openLatch)
                     Separator()
-                    if (isLatched) {
-                        Item("Disconnect", onClick = { app.engine.submit(LatchCommand.Logout) })
+                    if (isLatched || status is ConnectionStatus.Connecting) {
+                        Item("Disconnect", onClick = toggleConnect)
                     } else {
-                        Item("Connect", onClick = { app.engine.submit(LatchCommand.CheckAndLogin) })
+                        Item("Connect", onClick = toggleConnect)
                     }
                     Separator()
                     Item("Exit Latch", onClick = {

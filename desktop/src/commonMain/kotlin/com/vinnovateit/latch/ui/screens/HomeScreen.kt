@@ -103,20 +103,13 @@ fun HomeScreen(
      * also writes auto-login, so an explicit disconnect is not undone by the next
      * network event.
      */
-    val coroutineScope = rememberCoroutineScope()
-
     val onPowerClick: () -> Unit = {
-        if (isLatched) {
+        if (isLatched || status is ConnectionStatus.Connecting) {
             controller.submit(LatchCommand.Logout)
             SettingsManager.setAutoLogin(false)
         } else {
-            coroutineScope.launch(Dispatchers.IO) {
-                if (!platform.wifi.isConnectedToWifi() || platform.wifi.currentSsid()?.contains("VIT", ignoreCase = true) != true) {
-                    platform.wifi.connectToBestVitNetwork()
-                }
-                controller.submit(LatchCommand.CheckAndLogin)
-                SettingsManager.setAutoLogin(true)
-            }
+            SettingsManager.setAutoLogin(true)
+            controller.submit(LatchCommand.CheckAndLogin)
         }
     }
 

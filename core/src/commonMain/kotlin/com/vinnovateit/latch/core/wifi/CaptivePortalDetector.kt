@@ -25,22 +25,30 @@ class CaptivePortalDetector(
     }
 
     fun checkPortalStatus(handle: NetworkHandle? = null): Int {
+        val start = System.currentTimeMillis()
+        logger.d(TAG, "Probing portal endpoint: $PROBE_URL (handle=${handle?.id ?: "default"})")
         return try {
             val connection = transport.open(URL(PROBE_URL), handle)
             connection.instanceFollowRedirects = false
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
+            connection.connectTimeout = 3000
+            connection.readTimeout = 3000
             connection.useCaches = false
             connection.connect()
 
             val responseCode = connection.responseCode
+            val elapsed = System.currentTimeMillis() - start
+            val location = connection.getHeaderField("Location")
             connection.disconnect()
+
+            logger.d(TAG, "Portal probe completed in ${elapsed}ms: HTTP $responseCode ${if (location != null) "(Location: $location)" else ""}")
             responseCode
         } catch (e: UnknownHostException) {
-            logger.e(TAG, "Portal check failed: DNS resolution failed", e)
+            val elapsed = System.currentTimeMillis() - start
+            logger.e(TAG, "Portal check failed after ${elapsed}ms: DNS resolution failed for $PROBE_URL (${e.message})")
             DNS_RESOLUTION_FAILED
         } catch (e: Exception) {
-            logger.e(TAG, "Portal check failed with exception", e)
+            val elapsed = System.currentTimeMillis() - start
+            logger.e(TAG, "Portal check failed after ${elapsed}ms with exception: ${e::class.simpleName}: ${e.message}")
             -1
         }
     }
