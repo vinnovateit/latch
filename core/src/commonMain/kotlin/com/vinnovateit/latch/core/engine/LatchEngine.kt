@@ -258,7 +258,9 @@ class LatchEngine(
             ConnectionStatus.Connecting(ConnectionStatus.Step.CheckingInternet)
         )
 
-        val code = portal.checkPortalStatus(handle)
+        val code = withTimeoutOrNull(3500L) {
+            portal.checkPortalStatus(handle)
+        } ?: -1
         logger.d(TAG, "[ConnectAnalysis] Step 2/4: Portal Probe Response Code: $code (204 = Direct Internet, 200/302 = Captive Portal, -1 = Network Error)")
 
         if (code == 204) {
@@ -343,22 +345,21 @@ class LatchEngine(
             logger.w(TAG, "[ConnectAnalysis] SSID '$ssid' failed VIT campus match; refusing login.")
             return@withContext false
         }
-        if (ssid == null) {
-            logger.w(TAG, "[ConnectAnalysis] SSID unreadable; checking portal host resolution alone.")
+        if (isVitCampusSsid(ssid) && !ssid.isNullOrEmpty()) {
+            return@withContext true
         }
-        
-        var resolves = runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess
-        if (!resolves) {
-            logger.w(TAG, "[ConnectAnalysis] Portal host '$PORTAL_HOST' DNS failed on 1st try. Retrying after 300ms...")
-            delay(300)
-            resolves = runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess
-        }
+
+        var resolves = withTimeoutOrNull(1500L) {
+            runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess
+        } ?: false
 
         if (!resolves) {
             val gatewayIp = platform.wifi.gatewayIp()
             if (gatewayIp != null) {
                 logger.d(TAG, "[ConnectAnalysis] Checking fallback gateway IP reachable: $gatewayIp")
-                resolves = runCatching { InetAddress.getByName(gatewayIp) }.isSuccess
+                resolves = withTimeoutOrNull(1500L) {
+                    runCatching { InetAddress.getByName(gatewayIp) }.isSuccess
+                } ?: false
             }
         }
 

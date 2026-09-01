@@ -28,15 +28,20 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
+/** Scope provided to LatchBottomSheet content, enabling smooth animated dismissals. */
+internal interface LatchBottomSheetScope {
+    fun dismiss()
+}
+
 /**
  * Reusable Bottom Sheet overlay component for Desktop, providing a consistent
- * spring slide-up bottom sheet UI matching the Android app design across all popups and pickers.
+ * non-overshooting slide-up and slide-down bottom sheet UI matching the Android app design.
  */
 @Composable
 internal fun LatchBottomSheet(
     visible: Boolean = true,
     onDismissRequest: () -> Unit,
-    content: @Composable () -> Unit,
+    content: @Composable LatchBottomSheetScope.() -> Unit,
 ) {
     val anim = remember { Animatable(1f) }
     val coroutineScope = rememberCoroutineScope()
@@ -45,7 +50,7 @@ internal fun LatchBottomSheet(
         anim.animateTo(
             targetValue = 0f,
             animationSpec = spring(
-                dampingRatio = Spring.DampingRatioLowBouncy,
+                dampingRatio = Spring.DampingRatioNoBouncy,
                 stiffness = Spring.StiffnessMediumLow,
             ),
         )
@@ -64,12 +69,18 @@ internal fun LatchBottomSheet(
         }
     }
 
+    val scope = remember(dismissWithAnimation) {
+        object : LatchBottomSheetScope {
+            override fun dismiss() = dismissWithAnimation()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Dark Scrim Overlay Backdrop
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = ((1f - anim.value) * 0.5f).coerceIn(0f, 0.5f)))
+                .background(Color.Black.copy(alpha = ((1f - anim.value.coerceIn(0f, 1f)) * 0.5f)))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -77,7 +88,7 @@ internal fun LatchBottomSheet(
                 ),
         )
 
-        // Bottom Sheet Content Panel
+        // Bottom Sheet Content Panel (Strictly clamped to prevent bottom edge lifting)
         Surface(
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -87,7 +98,7 @@ internal fun LatchBottomSheet(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .graphicsLayer {
-                    translationY = anim.value * (size.height.takeIf { it > 0 } ?: 1000f)
+                    translationY = anim.value.coerceAtLeast(0f) * (size.height.takeIf { it > 0 } ?: 1000f)
                 }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -112,7 +123,7 @@ internal fun LatchBottomSheet(
                 ) {}
                 Spacer(Modifier.height(16.dp))
 
-                content()
+                scope.content()
             }
         }
     }

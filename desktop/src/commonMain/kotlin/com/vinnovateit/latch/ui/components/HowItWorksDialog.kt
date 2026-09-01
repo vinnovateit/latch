@@ -59,7 +59,7 @@ internal fun HowItWorksDialog(onDismiss: () -> Unit) {
             )
             Spacer(Modifier.height(20.dp))
             TextButton(
-                onClick = onDismiss,
+                onClick = { dismiss() },
                 modifier = Modifier.align(Alignment.End),
             ) {
                 Text("Got it", fontFamily = com.vinnovateit.latch.ui.theme.satoshiFontFamily())
