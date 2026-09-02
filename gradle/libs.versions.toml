@@ -43,7 +43,7 @@ animationCore = "1.9.3"
 # --- :desktop (Compose Multiplatform / JVM) ---
 # Kept separate from the Android versions above: the desktop module resolves the
 # multiplatform artifact variants, which are versioned independently.
-composeMultiplatform = "1.9.3"
+composeMultiplatform = "1.12.0"
 # Explicitly NOT compose.material3 (which tracks composeMultiplatform). The
 # desktop UI uses expressive APIs -- LoadingIndicator, ExperimentalMaterial3-
 # ExpressiveApi -- that only exist in the alpha line.
