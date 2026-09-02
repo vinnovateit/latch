@@ -6,10 +6,21 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "06:00"
-    labels: ["dependencies", "gradle"]
     commit-message:
       prefix: "deps(gradle)"
     open-pull-requests-limit: 10
+    groups:
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "com.google.devtools.ksp*"
+          - "org.jetbrains.compose*"
+      androidx:
+        patterns:
+          - "androidx.*"
+    ignore:
+      - dependency-name: "org.jetbrains.kotlin*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -17,7 +28,6 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "06:00"
-    labels: ["dependencies", "github-actions"]
     commit-message:
       prefix: "deps(actions)"
     open-pull-requests-limit: 5
