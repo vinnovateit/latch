@@ -44,13 +44,16 @@ class ThroughputMonitor(
     fun start() {
         if (loggingJob?.isActive == true) return
 
-        val baseline = source.sample() ?: return
-
-        lastRxBytes = baseline.rxBytes
-        lastTxBytes = baseline.txBytes
-        lastSmoothedRxBps = 0L
-        lastSmoothedTxBps = 0L
-        lastPollTimeMs = clock()
+        var hasBaseline = false
+        val baseline = source.sample()
+        if (baseline != null) {
+            lastRxBytes = baseline.rxBytes
+            lastTxBytes = baseline.txBytes
+            lastSmoothedRxBps = 0L
+            lastSmoothedTxBps = 0L
+            lastPollTimeMs = clock()
+            hasBaseline = true
+        }
 
         loggingJob = scope.launch {
             while (isActive) {
@@ -58,6 +61,16 @@ class ThroughputMonitor(
 
                 val current = source.sample() ?: continue
                 val currentTimeMs = clock()
+
+                if (!hasBaseline) {
+                    lastRxBytes = current.rxBytes
+                    lastTxBytes = current.txBytes
+                    lastSmoothedRxBps = 0L
+                    lastSmoothedTxBps = 0L
+                    lastPollTimeMs = currentTimeMs
+                    hasBaseline = true
+                    continue
+                }
 
                 val intervalRx = (current.rxBytes - lastRxBytes).coerceAtLeast(0)
                 val intervalTx = (current.txBytes - lastTxBytes).coerceAtLeast(0)

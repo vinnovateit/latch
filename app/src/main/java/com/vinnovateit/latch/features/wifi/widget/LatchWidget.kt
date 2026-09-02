@@ -62,8 +62,8 @@ private const val WIDGET_CORNER_RADIUS = 28
 data class LatchWidgetState(
   val status: String = "Disconnected",
   val connectedDuration: String = "-",
+  val connectedAt: Long = 0L,
   val isConnected: Boolean = false,
-  val isLightTheme: Boolean = true,  // Flag for theme mode
   val useDynamicColors: Boolean = true,
   val accentColor: String = "Red"
 )
@@ -143,9 +143,19 @@ private fun LatchWidgetContent(state: LatchWidgetState) {
         Spacer(modifier = GlanceModifier.height(16.dp))
 
         if (state.isConnected) {
+          val displayDuration = if (state.connectedAt > 0L) {
+            val durationMillis = System.currentTimeMillis() - state.connectedAt
+            when {
+              durationMillis < 60_000 -> "Just now"
+              durationMillis < 3_600_000 -> "${java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(durationMillis)}m"
+              else -> "${java.util.concurrent.TimeUnit.MILLISECONDS.toHours(durationMillis)}h"
+            }
+          } else {
+            state.connectedDuration
+          }
           Box(modifier = GlanceModifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Box(modifier = GlanceModifier.background(GlanceTheme.colors.primary).cornerRadius(10.dp).padding(horizontal = 12.dp, vertical = 6.dp)) {
-              Text(text = state.connectedDuration, style = TextStyle(color = GlanceTheme.colors.onPrimary, fontSize = durationFontSize))
+              Text(text = displayDuration, style = TextStyle(color = GlanceTheme.colors.onPrimary, fontSize = durationFontSize))
             }
           }
         }

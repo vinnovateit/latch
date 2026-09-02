@@ -47,6 +47,21 @@ class LinuxCredentialStore(
         }
     }
 
+    private fun getOrCreateSalt(): ByteArray {
+        val saltFile = File(file.parentFile, ".creds_salt")
+        if (saltFile.exists() && saltFile.length() >= 16) {
+            return runCatching { saltFile.readBytes() }.getOrNull() ?: SALT.toByteArray(Charsets.UTF_8)
+        }
+        val randomSalt = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        runCatching {
+            saltFile.parentFile?.mkdirs()
+            saltFile.writeBytes(randomSalt)
+            val perms = setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+            Files.setPosixFilePermissions(saltFile.toPath(), perms)
+        }
+        return randomSalt
+    }
+
     private fun deriveKey(): SecretKey {
         val machineId = runCatching {
             File("/etc/machine-id").takeIf { it.exists() }?.readText()?.trim()
@@ -54,8 +69,9 @@ class LinuxCredentialStore(
         }.getOrNull() ?: (System.getProperty("user.name") + SALT)
 
         val user = System.getProperty("user.name").orEmpty()
-        val rawKey = "$machineId:$user:$SALT"
-        val sha256 = MessageDigest.getInstance("SHA-256").digest(rawKey.toByteArray(Charsets.UTF_8))
+        val salt = getOrCreateSalt()
+        val rawPrefix = "$machineId:$user:".toByteArray(Charsets.UTF_8)
+        val sha256 = MessageDigest.getInstance("SHA-256").digest(rawPrefix + salt)
         return SecretKeySpec(sha256, "AES")
     }
 

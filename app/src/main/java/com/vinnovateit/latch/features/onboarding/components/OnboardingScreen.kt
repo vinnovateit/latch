@@ -50,9 +50,6 @@ fun OnboardingScreen(
     var permissionGranted by remember { mutableStateOf(false) }
     val hapticFeedback = LocalHapticFeedback.current
     val offsetX = remember { Animatable(0f) }
-    val intent = (context as? Activity)?.intent
-    val startFromStepOne = intent?.getBooleanExtra("start_from_step_one", false) ?: false
-
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -128,9 +125,7 @@ fun OnboardingScreen(
         )
     }
 
-    val pagerState = rememberPagerState(initialPage = if (startFromStepOne) 1 else 0, pageCount = { slides.size })
-
-    LaunchedEffect(pagerState.targetPage) { if (startFromStepOne && pagerState.targetPage == 0) { pagerState.scrollToPage(1) } }
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { slides.size })
 
     LaunchedEffect(pagerState.isScrollInProgress, credentialsHandled, permissionGranted) {
         if (pagerState.isScrollInProgress) {

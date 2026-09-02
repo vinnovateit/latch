@@ -27,18 +27,19 @@ class CaptivePortalDetector(
     fun checkPortalStatus(handle: NetworkHandle? = null): Int {
         val start = System.currentTimeMillis()
         logger.d(TAG, "Probing portal endpoint: $PROBE_URL (handle=${handle?.id ?: "default"})")
+        var connection: java.net.HttpURLConnection? = null
         return try {
-            val connection = transport.open(URL(PROBE_URL), handle)
-            connection.instanceFollowRedirects = false
-            connection.connectTimeout = 3000
-            connection.readTimeout = 3000
-            connection.useCaches = false
-            connection.connect()
+            val conn = transport.open(URL(PROBE_URL), handle)
+            connection = conn
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = 3000
+            conn.readTimeout = 3000
+            conn.useCaches = false
+            conn.connect()
 
-            val responseCode = connection.responseCode
+            val responseCode = conn.responseCode
             val elapsed = System.currentTimeMillis() - start
-            val location = connection.getHeaderField("Location")
-            connection.disconnect()
+            val location = conn.getHeaderField("Location")
 
             logger.d(TAG, "Portal probe completed in ${elapsed}ms: HTTP $responseCode ${if (location != null) "(Location: $location)" else ""}")
             responseCode
@@ -50,6 +51,10 @@ class CaptivePortalDetector(
             val elapsed = System.currentTimeMillis() - start
             logger.e(TAG, "Portal check failed after ${elapsed}ms with exception: ${e::class.simpleName}: ${e.message}")
             -1
+        } finally {
+            try {
+                connection?.disconnect()
+            } catch (_: Throwable) {}
         }
     }
 }

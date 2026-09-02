@@ -43,7 +43,6 @@ import kotlin.math.log10
 import kotlin.math.pow
 
 const val GRAPH_HEIGHT_SCALE = 0.70f
-val Y_AXIS_WIDTH = 70.dp
 const val POINTS_IN_30_SECONDS = 20
 
 fun calculateNiceMaxSpeed(maxSpeed: Float): Float {
@@ -144,7 +143,7 @@ fun HomeScreenGraph(
           maxSpeed = if (visiblePoints.isEmpty()) {
             1L
           } else {
-            val maxSpeedCombined = visiblePoints.maxOfOrNull { it.usage.rxBytes + it.usage.txBytes } ?: 0L
+            val maxSpeedCombined = visiblePoints.maxOfOrNull { it.usage.rxBps + it.usage.txBps } ?: 0L
             maxSpeedCombined.coerceAtLeast(1L)
           }
         }

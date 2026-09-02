@@ -38,6 +38,7 @@ object StoredCredentials {
 
     private fun clearCorruptedPreferences(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE).edit().putBoolean("has_credentials", false).apply()
     }
 
     fun saveCredentials(context: Context, userId: String, password: String): Boolean {

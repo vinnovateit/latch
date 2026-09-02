@@ -1,6 +1,5 @@
 package com.vinnovateit.latch.features.wifi.widget
 
-import android.app.UiModeManager
 import android.content.Context
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.appwidget.GlanceAppWidgetManager
@@ -64,8 +63,6 @@ class LatchWidgetUpdater(
 
     SettingsManager.initialize(applicationContext)
 
-    val uiModeManager = applicationContext.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
-    val isDarkMode = uiModeManager.nightMode == UiModeManager.MODE_NIGHT_YES
     val useDynamic = SettingsManager.useDynamicColors.first()
     val accentColorVal = SettingsManager.accentColor.first()
 
@@ -77,7 +74,6 @@ class LatchWidgetUpdater(
         status = detailedStatus.message,
         connectedDuration = "...",
         isConnected = false,
-        isLightTheme = !isDarkMode,
         useDynamicColors = useDynamic,
         accentColor = accentColorVal
       )
@@ -85,7 +81,6 @@ class LatchWidgetUpdater(
         status = detailedStatus.message,
         connectedDuration = "-",
         isConnected = false,
-        isLightTheme = !isDarkMode,
         useDynamicColors = useDynamic,
         accentColor = accentColorVal
       )
@@ -102,8 +97,8 @@ class LatchWidgetUpdater(
           LatchWidgetState(
             status = applicationContext.getString(R.string.widget_status_connected),
             connectedDuration = durationString,
+            connectedAt = connectedAt,
             isConnected = true,
-            isLightTheme = !isDarkMode,
             useDynamicColors = useDynamic,
             accentColor = accentColorVal
           )
@@ -111,8 +106,8 @@ class LatchWidgetUpdater(
           LatchWidgetState(
             status = applicationContext.getString(R.string.widget_status_disconnected),
             connectedDuration = "-",
+            connectedAt = 0L,
             isConnected = false,
-            isLightTheme = !isDarkMode,
             useDynamicColors = useDynamic,
             accentColor = accentColorVal
           )

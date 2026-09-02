@@ -122,14 +122,38 @@ class LinuxWifiPlatform(private val logger: Logger) : WifiPlatform {
             return !softBlocked && !hardBlocked
         }
 
-        // Option 3: Check wireless interface presence in sysfs
-        val netDir = File("/sys/class/net")
-        if (netDir.exists()) {
-            val hasWireless = netDir.listFiles()?.any { File(it, "wireless").exists() || File(it, "phy80211").exists() } == true
-            if (hasWireless) return true
+        // Option 3: Check rfkill directly via sysfs
+        val rfkillDir = File("/sys/class/rfkill")
+        if (rfkillDir.exists()) {
+            val wifiRfkills = rfkillDir.listFiles()?.filter {
+                File(it, "type").takeIf { f -> f.exists() }?.readText()?.trim() == "wlan"
+            }
+            if (!wifiRfkills.isNullOrEmpty()) {
+                val anyBlocked = wifiRfkills.any {
+                    val soft = File(it, "soft").takeIf { f -> f.exists() }?.readText()?.trim()
+                    val hard = File(it, "hard").takeIf { f -> f.exists() }?.readText()?.trim()
+                    soft == "1" || hard == "1"
+                }
+                return !anyBlocked
+            }
         }
 
-        return true
+        // Option 4: Check wireless interface presence and operstate in sysfs
+        val netDir = File("/sys/class/net")
+        if (netDir.exists()) {
+            val wirelessInterfaces = netDir.listFiles()?.filter {
+                File(it, "wireless").exists() || File(it, "phy80211").exists()
+            } ?: emptyList()
+            if (wirelessInterfaces.isNotEmpty()) {
+                val anyUp = wirelessInterfaces.any {
+                    val oper = File(it, "operstate").takeIf { f -> f.exists() }?.readText()?.trim()
+                    oper != "down" && oper != "dormant"
+                }
+                return anyUp
+            }
+        }
+
+        return false
     }
 
     private fun resolveConnectedWifi(): Pair<String?, String?> {
