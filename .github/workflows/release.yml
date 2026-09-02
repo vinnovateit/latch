@@ -36,7 +36,7 @@ jobs:
         run: ./gradlew :desktop:packageReleaseTarGz
 
       - name: Upload Linux Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-tarball
           path: desktop/build/distributions/*.tar.gz
@@ -59,7 +59,7 @@ jobs:
         run: .\gradlew.bat :desktop:packageReleaseMsi
 
       - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-msi
           path: desktop/build/compose/binaries/main-release/msi/*.msi
