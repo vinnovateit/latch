@@ -54,7 +54,7 @@ kotlinxCoroutines = "1.10.2"
 roomKmp = "2.8.4"
 sqliteBundled = "2.7.0"
 oshi = "6.12.0"
-jna = "5.18.1"
+jna = "5.19.1"
 slf4jSimple = "2.0.16"
 
 [plugins]
