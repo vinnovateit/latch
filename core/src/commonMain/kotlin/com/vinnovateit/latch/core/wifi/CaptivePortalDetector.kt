@@ -32,8 +32,8 @@ class CaptivePortalDetector(
             val conn = transport.open(URL(PROBE_URL), handle)
             connection = conn
             conn.instanceFollowRedirects = false
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
+            conn.connectTimeout = 1500
+            conn.readTimeout = 1500
             conn.useCaches = false
             conn.connect()
 

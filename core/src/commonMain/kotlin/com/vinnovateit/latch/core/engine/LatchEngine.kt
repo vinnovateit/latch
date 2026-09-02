@@ -435,36 +435,32 @@ class LatchEngine(
     }
 
     private suspend fun logoutNow() {
-        ConnectionStatusManager.postStatus(
-            ConnectionStatus.Connecting(ConnectionStatus.Step.LoggingOut)
-        )
         healthCheckJob?.cancel()
 
         val handle = currentHandle ?: platform.wifi.activeHandle()
         val wasLatched = _isLatched.value
-        if (handle != null && wasLatched) platform.wifi.bindProcess(handle)
-        try {
-            val ok = if (wasLatched) login.attemptLogout(handle, false, platform.wifi.gatewayIp()) else true
-            unlatch()
-            // Tell Android this network no longer has a live session now,
-            // rather than waiting for its own NetworkMonitor to notice on
-            // its own schedule -- regardless of whether the portal's own
-            // logout request itself succeeded, the app is no longer relying
-            // on this network being latched.
-            if (handle != null && wasLatched) platform.wifi.reportConnectivity(handle, ok = false)
-            if (ok) {
-                logger.d(TAG, "Logout succeeded.")
-                ConnectionStatusManager.postStatus(
-                    ConnectionStatus.Failed(ConnectionStatus.Reason.Disconnected)
-                )
-            } else {
-                logger.w(TAG, "Logout failed.")
-                ConnectionStatusManager.postStatus(
-                    ConnectionStatus.Failed(ConnectionStatus.Reason.LogoutFailed)
-                )
+
+        unlatch()
+        ConnectionStatusManager.postStatus(
+            ConnectionStatus.Failed(ConnectionStatus.Reason.Disconnected)
+        )
+
+        if (handle != null && wasLatched) {
+            platform.wifi.bindProcess(handle)
+            try {
+                val ok = withTimeoutOrNull(2000L) {
+                    login.attemptLogout(handle, false, platform.wifi.gatewayIp())
+                } ?: false
+
+                platform.wifi.reportConnectivity(handle, ok = false)
+                if (ok) {
+                    logger.d(TAG, "Remote portal logout succeeded.")
+                } else {
+                    logger.w(TAG, "Remote portal logout timed out or failed (locally disconnected).")
+                }
+            } finally {
+                platform.wifi.bindProcess(null)
             }
-        } finally {
-            if (handle != null && wasLatched) platform.wifi.bindProcess(null)
         }
     }
 

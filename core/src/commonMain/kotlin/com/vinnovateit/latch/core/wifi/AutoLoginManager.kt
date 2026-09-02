@@ -77,8 +77,8 @@ class AutoLoginManager(
 
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
-            connection.connectTimeout = 4000
-            connection.readTimeout = 4000
+            connection.connectTimeout = 2000
+            connection.readTimeout = 2000
 
             val postData = "userId=${URLEncoder.encode(userId, "UTF-8")}" +
                 "&password=${URLEncoder.encode(password, "UTF-8")}" +
@@ -181,24 +181,28 @@ class AutoLoginManager(
             val connection = transport.open(url, handle)
             connection.requestMethod = "GET"
             connection.instanceFollowRedirects = false
-            connection.connectTimeout = 3000
-            connection.readTimeout = 3000
+            connection.connectTimeout = 1500
+            connection.readTimeout = 1500
 
-            connection.connect()
+            return try {
+                connection.connect()
 
-            val code = connection.responseCode
-            logDebug("Logout returned response code: $code")
+                val code = connection.responseCode
+                logDebug("Logout returned response code: $code")
 
-            // Drain the stream so the connection can be reused/closed cleanly.
-            try {
-                (if (code >= 400) connection.errorStream else connection.inputStream)
-                    ?.buffered()?.use { it.readBytes() }
-            } catch (e: Exception) {
-                logDebug("Stream drain exception (ignored): ${e.message}")
+                // Drain the stream so the connection can be reused/closed cleanly.
+                try {
+                    (if (code >= 400) connection.errorStream else connection.inputStream)
+                        ?.buffered()?.use { it.readBytes() }
+                } catch (e: Exception) {
+                    logDebug("Stream drain exception (ignored): ${e.message}")
+                }
+                code in 200..399
+            } finally {
+                try {
+                    connection.disconnect()
+                } catch (_: Throwable) {}
             }
-
-            connection.disconnect()
-            return code in 200..399
         }
 
         return try {
