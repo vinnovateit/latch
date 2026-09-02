@@ -23,7 +23,7 @@ import com.materialkolor.dynamicColorScheme
 // Removed hardcoded schemes to use dynamic seed generation
 
 val LocalIsDarkTheme = compositionLocalOf { false }
-
+ 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LatchTheme(

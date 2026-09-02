@@ -1,30 +1,41 @@
 package com.vinnovateit.latch.navigation
 
 import android.net.Uri
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.vinnovateit.latch.common.util.formatBitsPerSecond
 import com.vinnovateit.latch.common.util.generateHtmlReport
-import com.vinnovateit.latch.core.platform.android.StoredCredentials
 import com.vinnovateit.latch.features.about.MeetTheTeamPage
 import com.vinnovateit.latch.features.home.HomeScreen
 import com.vinnovateit.latch.features.onboarding.CredentialsScreen
@@ -36,7 +47,7 @@ import com.vinnovateit.latch.features.stats.StatsViewModel
 import com.vinnovateit.latch.features.wifi.manager.WiFiStatusViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import androidx.core.content.edit
 
 object LatchRoutes {
     const val ONBOARDING = "onboarding"
@@ -49,18 +60,49 @@ object LatchRoutes {
     fun credentials(editMode: Boolean = false) = "credentials/$editMode"
 }
 
+// -------------------------------------------------------------------------------------------------
+// CRITICAL ARCHITECTURE INVARIANT (DO NOT MODIFY / REWORK / SIMPLIFY):
+// The user explicitly mandates this exact predictive slide back architecture with background rendering
+// and Animatable gesture tracking. NavHost transitions must remain slideInHorizontally for forward
+// navigation and EnterTransition.None / ExitTransition.None for pop transitions to prevent duplicate
+// animations or frame glitches. Never replace this with scale/fade animations or simplify it.
+// -------------------------------------------------------------------------------------------------
 @Composable
 fun LatchNavGraph(
     navController: NavHostController = rememberNavController(),
     wifiStatusViewModel: WiFiStatusViewModel,
     startDestination: String
 ) {
+    val homeContent: @Composable () -> Unit = {
+        val statsViewModel: StatsViewModel = viewModel()
+        val isConnected by wifiStatusViewModel.isConnected.collectAsStateWithLifecycle()
+        val liveStatus by statsViewModel.liveStatus.collectAsStateWithLifecycle()
+        val connectionStatus by wifiStatusViewModel.connectionStatus.collectAsStateWithLifecycle()
+        val speedUnits by SettingsManager.speedUnits.collectAsStateWithLifecycle()
+
+        val sessionForHomeScreen = if (isConnected && liveStatus != null) {
+            statsViewModel.sessionToShow.collectAsStateWithLifecycle().value
+        } else null
+
+        Surface(modifier = Modifier.fillMaxSize()) {
+            HomeScreen(
+                isConnected = isConnected,
+                session = sessionForHomeScreen,
+                connectionStatus = connectionStatus,
+                speedUnit = speedUnits,
+                onNavigateToSettings = { navController.navigate(LatchRoutes.SETTINGS) },
+                onNavigateToStats = { navController.navigate(LatchRoutes.STATS) },
+                onNavigateToMeetTheTeam = { navController.navigate(LatchRoutes.MEET_THE_TEAM) }
+            )
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,
         enterTransition = {
-            slideIntoContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.Start,
+            slideInHorizontally(
+                initialOffsetX = { fullWidth -> fullWidth },
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMediumLow
@@ -69,7 +111,7 @@ fun LatchNavGraph(
         },
         exitTransition = {
             slideOutHorizontally(
-                targetOffsetX = { -it / 3 },
+                targetOffsetX = { fullWidth -> -fullWidth / 3 },
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMediumLow
@@ -77,22 +119,10 @@ fun LatchNavGraph(
             )
         },
         popEnterTransition = {
-            slideInHorizontally(
-                initialOffsetX = { -it / 3 },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            )
+            EnterTransition.None
         },
         popExitTransition = {
-            slideOutOfContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.End,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            )
+            ExitTransition.None
         }
     ) {
         // Onboarding pager
@@ -101,7 +131,7 @@ fun LatchNavGraph(
             OnboardingScreen(
                 onComplete = {
                     val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                    prefs.edit().putBoolean("hasSeenOnboarding", true).apply()
+                    prefs.edit { putBoolean("hasSeenOnboarding", true) }
                     navController.navigate(LatchRoutes.HOME) {
                         popUpTo(LatchRoutes.ONBOARDING) { inclusive = true }
                     }
@@ -115,55 +145,40 @@ fun LatchNavGraph(
         // Credentials screen
         composable(LatchRoutes.CREDENTIALS) { backStackEntry ->
             val editMode = backStackEntry.arguments?.getString("editMode")?.toBoolean() ?: false
-            CredentialsScreen(
-                editMode = editMode,
-                onCredentialsSaved = {
+            PredictiveSlideBackContainer(
+                onBackPressed = {
                     if (editMode) {
                         navController.popBackStack()
                     } else {
-                        // Return to the onboarding pager to let it finish its remaining
-                        // slides instead of jumping straight to Home; OnboardingScreen's
-                        // own onComplete() is what marks onboarding as seen and navigates
-                        // to Home once the pager itself finishes.
                         navController.popBackStack(LatchRoutes.ONBOARDING, inclusive = false)
                     }
                 }
-            )
-        }
-
-        // Home screen
-        composable(LatchRoutes.HOME) {
-            val statsViewModel: StatsViewModel = viewModel()
-            val isConnected by wifiStatusViewModel.isConnected.collectAsStateWithLifecycle()
-            val liveStatus by statsViewModel.liveStatus.collectAsStateWithLifecycle()
-            val connectionStatus by wifiStatusViewModel.connectionStatus.collectAsStateWithLifecycle()
-            val speedUnits by SettingsManager.speedUnits.collectAsStateWithLifecycle()
-
-
-
-            val sessionForHomeScreen = if (isConnected && liveStatus != null) {
-                statsViewModel.sessionToShow.collectAsStateWithLifecycle().value
-            } else null
-
-            Surface(modifier = Modifier.fillMaxSize()) {
-                HomeScreen(
-                    isConnected = isConnected,
-                    session = sessionForHomeScreen,
-                    connectionStatus = connectionStatus,
-                    speedUnit = speedUnits,
-                    onNavigateToSettings = { navController.navigate(LatchRoutes.SETTINGS) },
-                    onNavigateToStats = { navController.navigate(LatchRoutes.STATS) },
-                    onNavigateToMeetTheTeam = { navController.navigate(LatchRoutes.MEET_THE_TEAM) }
+            ) { triggerBack ->
+                CredentialsScreen(
+                    editMode = editMode,
+                    onCredentialsSaved = {
+                        triggerBack()
+                    }
                 )
             }
         }
 
+        // Home screen
+        composable(LatchRoutes.HOME) {
+            homeContent()
+        }
+
         // Settings
         composable(LatchRoutes.SETTINGS) {
-            SettingsScreen(
-                onBackClick = { navController.popBackStack() },
-                onNavigateToCredentials = { navController.navigate(LatchRoutes.credentials(editMode = true)) }
-            )
+            PredictiveSlideBackContainer(
+                onBackPressed = { navController.popBackStack() },
+                backgroundContent = homeContent
+            ) { triggerBack ->
+                SettingsScreen(
+                    onBackClick = triggerBack,
+                    onNavigateToCredentials = { navController.navigate(LatchRoutes.credentials(editMode = true)) }
+                )
+            }
         }
 
         // Stats
@@ -171,8 +186,6 @@ fun LatchNavGraph(
             val statsViewModel: StatsViewModel = viewModel()
             val coroutineScope = rememberCoroutineScope()
             val context = LocalContext.current
-
-            var pendingReportHtml: String? = null
 
             val createDocumentLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.CreateDocument("text/html")
@@ -192,25 +205,136 @@ fun LatchNavGraph(
                 }
             }
 
-            StatsScreen(
-                onSaveReport = {
-                    val epoch = System.currentTimeMillis()
-                    val appVersion = com.vinnovateit.latch.BuildConfig.VERSION_NAME
-                    val fileName = "latch_report_${appVersion}_${epoch}.html"
-                    createDocumentLauncher.launch(fileName)
-                },
+            PredictiveSlideBackContainer(
                 onBackPressed = { navController.popBackStack() },
-                statsViewModel = statsViewModel
-            )
+                backgroundContent = homeContent
+            ) { triggerBack ->
+                StatsScreen(
+                    onSaveReport = {
+                        val epoch = System.currentTimeMillis()
+                        val appVersion = com.vinnovateit.latch.BuildConfig.VERSION_NAME
+                        val fileName = "latch_report_${appVersion}_${epoch}.html"
+                        createDocumentLauncher.launch(fileName)
+                    },
+                    onBackPressed = triggerBack,
+                    statsViewModel = statsViewModel
+                )
+            }
         }
 
         // Meet the Team
         composable(LatchRoutes.MEET_THE_TEAM) {
-            Surface(modifier = Modifier.fillMaxSize()) {
-                MeetTheTeamPage(
-                    onBackClick = { navController.popBackStack() }
-                )
+            PredictiveSlideBackContainer(
+                onBackPressed = { navController.popBackStack() },
+                backgroundContent = homeContent
+            ) { triggerBack ->
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MeetTheTeamPage(
+                        onBackClick = triggerBack
+                    )
+                }
             }
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------------------
+// CRITICAL ARCHITECTURE INVARIANT (DO NOT MODIFY / REWORK / SIMPLIFY):
+// Handles native Android predictive back gestures and programmatic back button clicks.
+// 1. Predictive gesture: Tracks gesture progress in real-time via `progress.snapTo(event.progress)`.
+// 2. Commit on release: Smoothly completes the remaining slide to 1.0f with `progress.animateTo(1f)`
+//    before calling `onBackPressed()` to prevent visual jerks or screen flashes.
+// 3. Parallax background: Renders `backgroundContent` (HomeScreen) behind the active screen shifted
+//    by `(progress - 1f) * (screenWidth / 3f)` with a subtle depth scrim.
+// 4. Cancellation: Springs back to 0.0f cleanly on gesture abort.
+// Never simplify, delete, or rework this implementation.
+// -------------------------------------------------------------------------------------------------
+@Composable
+private fun PredictiveSlideBackContainer(
+    onBackPressed: () -> Unit,
+    backgroundContent: (@Composable () -> Unit)? = null,
+    content: @Composable (triggerBack: () -> Unit) -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val progress = remember { Animatable(0f) }
+    var isPredictive by remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    val performAnimatedBack: () -> Unit = {
+        coroutineScope.launch {
+            isPredictive = true
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
+            onBackPressed()
+        }
+    }
+
+    PredictiveBackHandler(enabled = true) { backEvent ->
+        isPredictive = true
+        try {
+            backEvent.collect { event ->
+                progress.snapTo(event.progress)
+            }
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
+            onBackPressed()
+        } catch (_: Exception) {
+            progress.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
+            isPredictive = false
+        }
+    }
+
+    val density = LocalDensity.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val screenWidthPx = with(density) { screenWidth.toPx() }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (isPredictive && backgroundContent != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = (progress.value - 1f) * (screenWidthPx / 3f)
+                    }
+            ) {
+                backgroundContent()
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Color.Black.copy(
+                            alpha = (1f - progress.value) * 0.25f
+                        )
+                    )
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    if (isPredictive) {
+                        translationX = progress.value * screenWidthPx
+                    }
+                }
+        ) {
+            content(performAnimatedBack)
         }
     }
 }

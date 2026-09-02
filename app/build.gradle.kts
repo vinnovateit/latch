@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.serialization")
@@ -14,7 +13,7 @@ android {
         applicationId = "com.vinnovateit.latch"
         minSdk = 26
         versionCode = 7
-        targetSdk = 36
+        targetSdk = 37
         versionName = "1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -58,6 +57,7 @@ kotlin {
 
 dependencies {
     implementation(project(":core"))
+    implementation(libs.androidx.compose.material.core)
 
     // Core & Lifecycle
     implementation(libs.androidx.core.ktx)

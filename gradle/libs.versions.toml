@@ -1,65 +1,54 @@
 [versions]
-accompanistPager = "0.36.0"
 accompanistPermissions = "0.37.3"
-agp = "8.13.0"
-androidxMaterial3 = "1.5.0-alpha09"
-appcompatVersion = "1.7.1"
+agp = "9.4.0"
+androidxMaterial3 = "1.5.0-alpha27"
+appcompatVersion = "1.8.0"
 appUpdate = "2.1.0"
 appUpdateKtx = "2.1.0"
 coreSplashscreen = "1.2.0"
-glanceAppwidget = "1.1.1"
-glanceMaterial3 = "1.1.1"
-googleGson = "2.13.1"
-kotlin = "2.1.0"
-coreKtx = "1.17.0"
+glanceAppwidget = "1.2.0"
+glanceMaterial3 = "1.2.0"
+kotlin = "2.4.10"
+coreKtx = "1.19.0"
 junit = "4.13.2"
 junitExt = "1.3.0"
 espressoCore = "3.7.0"
-kotlinxCollectionsImmutable = "0.4.0"
-kotlinxSerializationJson = "1.9.0"
-lifecycleRuntimeKtx = "2.9.3"
-activityCompose = "1.10.1"
-composeBom = "2025.08.01"
-materialKolor = "3.0.1"
+kotlinxCollectionsImmutable = "0.5.2"
+kotlinxSerializationJson = "1.11.0"
+lifecycleRuntimeKtx = "2.11.0"
+activityCompose = "1.13.0"
+composeBom = "2026.08.00"
+materialKolor = "5.0.1"
 preferenceKtx = "1.2.1"
-protoliteWellKnownTypes = "18.0.1"
 securityCrypto = "1.1.0"
-workRuntimeKtx = "2.10.3"
-datastorePreferences = "1.1.7"
-lifecycleCompose = "2.9.3"
-navigationCompose = "2.9.3"
-firebaseCrashlyticsBuildtools = "3.0.6"
-foundationVersion = "1.9.0"
-animation = "1.9.0"
-hilt-navigation-compose = "1.2.0"
-# Matches roomKmp below -- :app now transitively depends on :core's Room
-# artifact (2.8.4) via api(...), so this must match or Gradle's classpath
-# conflict resolution silently upgrades :app's runtime past what its own
-# pinned room-compiler (ksp) targets.
-room = "2.8.4"
-foundation = "1.9.3"
-animationCore = "1.9.3"
+workRuntimeKtx = "2.11.2"
+datastorePreferences = "1.2.1"
+lifecycleCompose = "2.11.0"
+navigationCompose = "2.10.0"
+foundationVersion = "1.12.0"
 
 # --- :desktop (Compose Multiplatform / JVM) ---
 # Kept separate from the Android versions above: the desktop module resolves the
 # multiplatform artifact variants, which are versioned independently.
-composeMultiplatform = "1.9.3"
+composeMultiplatform = "1.12.0"
 # Explicitly NOT compose.material3 (which tracks composeMultiplatform). The
 # desktop UI uses expressive APIs -- LoadingIndicator, ExperimentalMaterial3-
 # ExpressiveApi -- that only exist in the alpha line.
 composeMaterial3Mp = "1.10.0-alpha05"
-ksp = "2.1.0-1.0.29"
-lifecycleMp = "2.9.4"
-kotlinxCoroutines = "1.10.2"
+ksp = "2.3.6"
+lifecycleMp = "2.11.0"
+kotlinxCoroutines = "1.11.0"
 roomKmp = "2.8.4"
 sqliteBundled = "2.7.0"
-oshi = "6.12.0"
-jna = "5.18.1"
-slf4jSimple = "2.0.16"
+oshi = "7.6.1"
+jna = "5.19.1"
+slf4jSimple = "2.0.18"
+composeMaterialCore = "1.6.2"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
@@ -70,13 +59,9 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 
 [libraries]
 # Core
-accompanist-pager = { module = "com.google.accompanist:accompanist-pager", version.ref = "accompanistPager" }
-accompanist-pager-indicators = { module = "com.google.accompanist:accompanist-pager-indicators", version.ref = "accompanistPager" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanistPermissions" }
 androidx-appcompat-v161 = { module = "androidx.appcompat:appcompat", version.ref = "appcompatVersion" }
-androidx-compose-foundation-foundation = { module = "androidx.compose.foundation:foundation" }
-androidx-compose-material-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version = "1.7.3" }
-androidx-compose-material-material-icons-extended2 = { module = "androidx.compose.material:material-icons-extended" }
+androidx-compose-material-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version = "1.7.8" }
 androidx-compose-ui-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
 androidx-compose-ui-ui-test-junit42 = { module = "androidx.compose.ui:ui-test-junit4" }
 androidx-compose-ui-ui-test-manifest4 = { module = "androidx.compose.ui:ui-test-manifest" }
@@ -101,11 +86,7 @@ androidx-activity-compose = { group = "androidx.activity", name = "activity-comp
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-material3-v150alpha01 = { module = "androidx.compose.material3:material3", version.ref = "androidxMaterial3" }
 androidx-preference-ktx = { module = "androidx.preference:preference-ktx", version.ref = "preferenceKtx" }
-androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
-androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
-androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
-androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hilt-navigation-compose" }
 
 # Navigation
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
@@ -117,27 +98,19 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 animation = { module = "androidx.compose.animation:animation" }
 app-update = { module = "com.google.android.play:app-update", version.ref = "appUpdate" }
 app-update-ktx = { module = "com.google.android.play:app-update-ktx", version.ref = "appUpdateKtx" }
-firebase-crashlytics-buildtools = { group = "com.google.firebase", name = "firebase-crashlytics-buildtools", version.ref = "firebaseCrashlyticsBuildtools" }
-
 # WorkManager
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
 
 # Testing
-gson-v2110 = { module = "com.google.code.gson:gson", version.ref = "googleGson" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitExt" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 kotlinx-collections-immutable = { module = "org.jetbrains.kotlinx:kotlinx-collections-immutable", version.ref = "kotlinxCollectionsImmutable" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "materialKolor" }
-protolite-well-known-types = { group = "com.google.firebase", name = "protolite-well-known-types", version.ref = "protoliteWellKnownTypes" }
 
 # AppCompat
 foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundationVersion" }
-androidx-animation = { group = "androidx.compose.animation", name = "animation", version.ref = "animation" }
-androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
-androidx-compose-animation-core = { group = "androidx.compose.animation", name = "animation-core", version.ref = "animationCore" }
-
 # --- :desktop (Compose Multiplatform / JVM) ---
 # These resolve the -jvm / -desktop variants of each module. The androidx
 # lifecycle and room artifacts are the same coordinates the Android app uses;
@@ -156,3 +129,4 @@ oshi-core = { module = "com.github.oshi:oshi-core", version.ref = "oshi" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4jSimple" }
+androidx-compose-material-core = { group = "androidx.wear.compose", name = "compose-material-core", version.ref = "composeMaterialCore" }
