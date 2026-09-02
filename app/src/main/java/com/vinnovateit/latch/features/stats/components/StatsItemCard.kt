@@ -30,7 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.vinnovateit.latch.domain.model.SessionSummary
+import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.common.util.formatBytes
 import com.vinnovateit.latch.common.util.formatDurationDynamic
 import com.vinnovateit.latch.ui.theme.ColorGraphDownload

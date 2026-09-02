@@ -80,7 +80,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.common.ui.components.ExpressiveTopBarContent
-import com.vinnovateit.latch.domain.model.SessionRepository
+import com.vinnovateit.latch.platform.LatchAppGraph
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -542,7 +542,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
       confirmText = stringResource(R.string.stats_reset_dialog_confirm),
       cancelText = stringResource(R.string.stats_reset_dialog_cancel),
       onConfirm = {
-        SessionRepository.clearHistory()
+        LatchAppGraph.sessions.clearHistory()
         showClearStatsSheet = false
       },
       onDismiss = { showClearStatsSheet = false }

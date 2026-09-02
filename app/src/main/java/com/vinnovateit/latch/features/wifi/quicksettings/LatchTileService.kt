@@ -6,7 +6,6 @@ import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
-import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import com.vinnovateit.latch.platform.LatchAppGraph
@@ -28,7 +27,7 @@ class LatchTileService : TileService() {
         updateTileState()
 
         serviceScope.launch {
-            SessionRepository.liveStatus.collect {
+            LatchAppGraph.sessions.liveStatus.collect {
                 if (!isProcessing) {
                     updateTileState()
                 }
@@ -83,7 +82,7 @@ class LatchTileService : TileService() {
                 isProcessing = true
                 updateTileState()
 
-                val isConnected = SessionRepository.liveStatus.value != null
+                val isConnected = LatchAppGraph.sessions.liveStatus.value != null
 
                 if (isConnected) {
                     Log.d(TAG, "Currently connected. Triggering logout...")
@@ -111,11 +110,11 @@ class LatchTileService : TileService() {
         }
     }
     private suspend fun waitForStatusChange(timeoutMs: Long) {
-        val initialStatus = SessionRepository.liveStatus.value
+        val initialStatus = LatchAppGraph.sessions.liveStatus.value
         val startTime = System.currentTimeMillis()
 
         while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val currentStatus = SessionRepository.liveStatus.value
+            val currentStatus = LatchAppGraph.sessions.liveStatus.value
             if (currentStatus != initialStatus) break
             delay(200)
         }
@@ -125,7 +124,7 @@ class LatchTileService : TileService() {
         serviceScope.launch {
             try {
                 val qsTile = qsTile ?: return@launch
-                val isConnected = SessionRepository.liveStatus.value != null
+                val isConnected = LatchAppGraph.sessions.liveStatus.value != null
 
                 val wifi = LatchAppGraph.platform.wifi
                 val isWifiReady = wifi.isWifiEnabled() && wifi.isConnectedToWifi()

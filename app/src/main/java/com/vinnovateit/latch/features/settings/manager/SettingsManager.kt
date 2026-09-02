@@ -3,7 +3,6 @@ package com.vinnovateit.latch.features.settings.manager
 import android.content.Context
 import android.content.Intent
 import com.vinnovateit.latch.core.settings.SettingsManager as CoreSettings
-import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
 import kotlinx.coroutines.flow.StateFlow
 
@@ -33,7 +32,7 @@ object SettingsManager {
         appContext?.let {
             if (enabled) {
                 it.startService(Intent(it, ForegroundService::class.java))
-            } else if (SessionRepository.liveStatus.value != null) {
+            } else if (com.vinnovateit.latch.platform.LatchAppGraph.sessions.liveStatus.value != null) {
                 it.startService(
                     Intent(it, ForegroundService::class.java).apply {
                         action = ForegroundService.ACTION_TRIGGER_LOGOUT

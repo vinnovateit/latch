@@ -64,7 +64,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.vinnovateit.latch.common.util.NoDataCard
 import com.vinnovateit.latch.common.util.formatBytes
-import com.vinnovateit.latch.domain.model.DataUsage
+import com.vinnovateit.latch.core.model.DataUsage
 import com.vinnovateit.latch.ui.theme.ColorGraphDownload
 import com.vinnovateit.latch.ui.theme.ColorGraphUpload
 import kotlinx.coroutines.Job

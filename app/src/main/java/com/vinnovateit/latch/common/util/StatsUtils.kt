@@ -1,7 +1,7 @@
 package com.vinnovateit.latch.common.util
 
 import androidx.compose.ui.graphics.Path
-import com.vinnovateit.latch.domain.model.LiveDataPoint
+import com.vinnovateit.latch.core.model.LiveDataPoint
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

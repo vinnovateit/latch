@@ -34,7 +34,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.common.util.createGraphPaths
-import com.vinnovateit.latch.domain.model.LiveDataPoint
+import com.vinnovateit.latch.core.model.LiveDataPoint
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import com.vinnovateit.latch.ui.theme.ColorTransparent
 import kotlinx.coroutines.delay

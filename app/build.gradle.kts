@@ -59,26 +59,26 @@ kotlin {
 dependencies {
     implementation(project(":core"))
 
-    // Core and Lifecycle
+    // Core & Lifecycle
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.core.splashscreen)
 
-    // Compose (using BOM)
+    // Compose (BOM managed)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui.ui2)
     implementation(libs.androidx.compose.ui.ui.graphics)
+    implementation(libs.foundation)
+    implementation(libs.animation)
     implementation(libs.androidx.material3.v150alpha01)
     implementation(libs.androidx.compose.material.material.icons.extended)
     implementation(libs.material.kolor)
-    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.navigation.compose)
 
-    implementation(libs.animation)
-
-    implementation(libs.accompanist.pager)
-    implementation(libs.accompanist.pager.indicators)
+    // Onboarding Permissions
     implementation(libs.accompanist.permissions)
     implementation(libs.kotlinx.collections.immutable)
 
@@ -86,53 +86,26 @@ dependencies {
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.work.runtime.ktx)
 
-    // Data
+    // Data & Storage
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.appcompat.v161)
 
-    // Compose Core UI modules
-    implementation(libs.androidx.compose.foundation.foundation)
-    implementation(libs.foundation)
-    implementation(libs.androidx.animation)
-    implementation(libs.androidx.compose.foundation)
-    implementation(libs.androidx.compose.animation.core)
+    // In-App Updates
+    implementation(libs.app.update)
+    implementation(libs.app.update.ktx)
 
-    // Tooling and Preview
+    // Tooling & Preview
     debugImplementation(libs.androidx.compose.ui.ui.tooling3)
     implementation(libs.androidx.compose.ui.ui.tooling.preview2)
 
     // Testing
-    implementation(libs.protolite.well.known.types)
-    implementation(libs.androidx.work.runtime.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.ui.test.junit42)
     debugImplementation(libs.androidx.compose.ui.ui.test.manifest4)
-
-    // Navigation
-    implementation(libs.androidx.navigation.compose)
-
-    // Settings
-    implementation(libs.androidx.preference.ktx)
-    implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.hilt.navigation.compose)
-
-    // JSON
-    implementation(libs.gson.v2110)
-
-    // Room
-    implementation(libs.androidx.room.runtime)
-    ksp(libs.androidx.room.compiler)
-    implementation(libs.androidx.room.ktx)
-
-    // AppCompat (deduplicate)
-    implementation(libs.androidx.appcompat.v161)
-    implementation(libs.androidx.compose.material.material.icons.extended2)
-
-    // In app updates
-    implementation(libs.app.update)
-    implementation(libs.app.update.ktx)
 }

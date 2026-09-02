@@ -13,7 +13,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.vinnovateit.latch.R
-import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus
 import com.vinnovateit.latch.platform.LatchAppGraph
 import com.vinnovateit.latch.platform.toLegacyStatus
@@ -70,7 +69,7 @@ class LatchWidgetUpdater(
     val useDynamic = SettingsManager.useDynamicColors.first()
     val accentColorVal = SettingsManager.accentColor.first()
 
-    val liveSession = SessionRepository.liveStatus.firstOrNull()
+    val liveSession = LatchAppGraph.sessions.liveStatus.firstOrNull()
     val detailedStatus = LatchAppGraph.engine.status.value.toLegacyStatus(applicationContext)
 
     val widgetState = when (detailedStatus) {

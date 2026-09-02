@@ -9,7 +9,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.core.engine.LatchCommand
-import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.features.settings.manager.SettingsManager
 import com.vinnovateit.latch.features.wifi.widget.LatchWidgetUpdater
 import com.vinnovateit.latch.core.platform.android.AndroidNetworkHandle
@@ -209,7 +208,7 @@ class ForegroundService : Service(), ForegroundController {
     private fun startNotificationUpdates() {
         notificationUpdateJob?.cancel()
         notificationUpdateJob = serviceScope.launch {
-            SessionRepository.liveStatus.collect { status ->
+            LatchAppGraph.sessions.liveStatus.collect { status ->
                 if (status != null && status.liveData.isNotEmpty()) {
                     val latestUsage = status.liveData.last().usage
                     val downloadBps = latestUsage.rxBps

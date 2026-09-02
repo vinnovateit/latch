@@ -4,10 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vinnovateit.latch.common.util.formatDate
-import com.vinnovateit.latch.domain.model.DataUsage
-import com.vinnovateit.latch.domain.model.SessionRepository
-import com.vinnovateit.latch.domain.model.SessionSummary
+import com.vinnovateit.latch.core.model.DataUsage
+import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.features.stats.components.HistoryChartItem
+import com.vinnovateit.latch.platform.LatchAppGraph
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,9 +20,9 @@ import java.util.Calendar
 class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
   // Data now comes from the single source of truth: SessionRepository
-  val liveStatus = SessionRepository.liveStatus
-  val lastSession = SessionRepository.lastSession
-  private val sessionHistory = SessionRepository.sessionSummaries
+  val liveStatus = LatchAppGraph.sessions.liveStatus
+  val lastSession = LatchAppGraph.sessions.lastSession
+  private val sessionHistory = LatchAppGraph.sessions.sessionSummaries
 
   // This flow combines live and last sessions to decide what to show in the UI.
   val sessionToShow: StateFlow<SessionSummary?> =
@@ -134,7 +134,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
 
   fun onClearHistory() {
-    SessionRepository.clearHistory()
+    LatchAppGraph.sessions.clearHistory()
   }
 
   override fun onCleared() {

@@ -5,7 +5,6 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.vinnovateit.latch.domain.model.SessionRepository
 import com.vinnovateit.latch.platform.LatchAppGraph
 import com.vinnovateit.latch.platform.toLegacyStatus
 import kotlinx.coroutines.Dispatchers
@@ -37,12 +36,12 @@ class WiFiStatusViewModel(application: Application) : AndroidViewModel(applicati
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = LatchAppGraph.engine.status.value.toLegacyStatus(ctx)
         )
-    val isConnected: StateFlow<Boolean> = SessionRepository.liveStatus
+    val isConnected: StateFlow<Boolean> = LatchAppGraph.sessions.liveStatus
         .map { it != null }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = SessionRepository.liveStatus.value != null
+            initialValue = LatchAppGraph.sessions.liveStatus.value != null
         )
 
     private val _ssid = MutableStateFlow("Not Latched")
@@ -53,7 +52,7 @@ class WiFiStatusViewModel(application: Application) : AndroidViewModel(applicati
 
     fun refreshStatus() {
         viewModelScope.launch(Dispatchers.IO) {
-            val isSessionActive = SessionRepository.liveStatus.value != null
+            val isSessionActive = LatchAppGraph.sessions.liveStatus.value != null
 
             withContext(Dispatchers.Main) {
                 _ssid.value = if (isSessionActive) "Latched" else ("Not Latched")
