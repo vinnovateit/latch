@@ -7,7 +7,9 @@ internal object CliOutput {
         """
         Usage: latch-cli [command]
 
-          (no command)                              Run the foreground daemon.
+          (no command)                              Onboard this machine, or show help when configured.
+          activate                                  Start Latch in the background and at login.
+          deactivate                                Stop the CLI daemon and disable login startup.
           --status                                  Show the current connection status.
           --login                                   Attempt one login.
           --logout                                  Log out once.

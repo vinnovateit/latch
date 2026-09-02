@@ -27,6 +27,7 @@ data class OperationResult<T>(
 )
 
 interface CliBackend : AutoCloseable {
+    suspend fun isSetup(): OperationResult<Boolean>
     suspend fun status(): OperationResult<CliStatus>
     suspend fun login(): OperationResult<Unit>
     suspend fun logout(): OperationResult<Unit>
@@ -36,6 +37,16 @@ interface CliBackend : AutoCloseable {
     suspend fun setAllowedSsids(values: Set<String>): OperationResult<Unit>
     suspend fun setCredentials(userId: String, password: CharArray): OperationResult<Unit>
     suspend fun runDaemon(): OperationResult<Unit>
+}
+
+interface CliLifecycle {
+    suspend fun activate(): OperationResult<Unit>
+    suspend fun deactivate(): OperationResult<Unit>
+}
+
+internal object UnavailableCliLifecycle : CliLifecycle {
+    override suspend fun activate() = OperationResult<Unit>(error = "Background lifecycle is unavailable.")
+    override suspend fun deactivate() = OperationResult<Unit>(error = "Background lifecycle is unavailable.")
 }
 
 interface TerminalIO {

@@ -76,7 +76,16 @@ On Windows, install `VinnovateIT.LatchCLI` with winget after its manifest is acc
 .\latch-cli.exe --status
 ```
 
-Run `latch-cli` with no arguments to keep the foreground auto-login daemon active. Common one-shot commands are:
+Run `latch-cli` with no arguments the first time. It prompts for your VIT credentials, starts the auto-login daemon in the background, and enables per-user startup at login. On later runs, `latch-cli` prints its help menu.
+
+Use `activate` and `deactivate` to control the background daemon on Linux or from PowerShell on Windows:
+
+```text
+latch-cli activate
+latch-cli deactivate
+```
+
+`activate` is idempotent and enables startup at login. `deactivate` stops a CLI-owned daemon and disables its login startup entry; it does not terminate a running desktop app. Common one-shot commands are:
 
 ```text
 latch-cli --set-credentials

@@ -11,6 +11,14 @@ class RemoteCliBackend(client: InstanceClient) : CliBackend by ProtocolCliBacken
 internal class ProtocolCliBackend(
     private val send: suspend (RuntimeCommand, Map<String, String>) -> InstanceResponse,
 ) : CliBackend {
+    override suspend fun isSetup(): OperationResult<Boolean> {
+        val response = send(RuntimeCommand.SETUP_STATUS, emptyMap())
+        response.errorOrNull()?.let { return OperationResult(error = it) }
+        val configured = response.data["configured"]?.toBooleanStrictOrNull()
+            ?: return OperationResult(error = "The owner returned invalid setup status.")
+        return OperationResult(configured)
+    }
+
     override suspend fun status(): OperationResult<CliStatus> {
         val response = send(RuntimeCommand.STATUS, emptyMap())
         response.errorOrNull()?.let { return OperationResult(error = it) }

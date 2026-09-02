@@ -2,13 +2,36 @@ package com.vinnovateit.latch.cli
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class CliCommandTest {
     @Test
-    fun `no arguments starts the daemon`() {
-        assertEquals(ParseResult.Success(CliCommand.Daemon), parseCommand(emptyArray()))
+    fun `no arguments selects first-run bootstrap`() {
+        val result = assertIs<ParseResult.Success>(parseCommand(emptyArray()))
+        assertEquals("Bootstrap", result.command::class.simpleName)
+    }
+
+    @Test
+    fun `activate and deactivate select lifecycle commands`() {
+        val cases = mapOf(
+            "activate" to "Activate",
+            "deactivate" to "Deactivate",
+        )
+
+        cases.forEach { (argument, expectedName) ->
+            val result = assertIs<ParseResult.Success>(parseCommand(arrayOf(argument)), argument)
+            assertEquals(expectedName, result.command::class.simpleName, argument)
+        }
+    }
+
+    @Test
+    fun `internal daemon process command is parsed but omitted from help`() {
+        val result = assertIs<ParseResult.Success>(parseCommand(arrayOf("--daemon-process")))
+
+        assertEquals("DaemonProcess", result.command::class.simpleName)
+        assertFalse(CliOutput.help.contains("--daemon-process"))
     }
 
     @Test

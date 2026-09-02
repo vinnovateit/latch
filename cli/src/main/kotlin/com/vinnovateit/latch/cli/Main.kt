@@ -5,8 +5,9 @@ import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
     val terminal = SystemTerminal
+    val lifecycle = createSystemCliLifecycle()
     val exitCode = runBlocking {
-        runCli(args, terminal) { command ->
+        runCli(args, terminal, lifecycle = lifecycle) { command ->
             createCoordinatedCliBackend(command, terminal)
         }
     }

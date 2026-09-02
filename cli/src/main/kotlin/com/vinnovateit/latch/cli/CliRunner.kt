@@ -11,9 +11,15 @@ suspend fun runCli(
     args: Array<String>,
     terminal: TerminalIO,
     version: String = LatchCore.VERSION,
+    lifecycle: CliLifecycle = UnavailableCliLifecycle,
     backendFactory: suspend (CliCommand) -> CliBackend,
 ): Int = when (val parsed = parseCommand(args)) {
-    is ParseResult.Success -> CliRunner(terminal, { backendFactory(parsed.command) }, version).run(parsed.command)
+    is ParseResult.Success -> CliRunner(
+        terminal,
+        { backendFactory(parsed.command) },
+        version,
+        lifecycle = lifecycle,
+    ).run(parsed.command)
     is ParseResult.Failure -> {
         terminal.println("error: ${parsed.message}")
         terminal.println(CliOutput.help)
@@ -28,6 +34,7 @@ class CliRunner(
     private val splash: suspend (TerminalIO) -> Unit = { output ->
         showSplash(output, detectSplashCapabilities(output))
     },
+    private val lifecycle: CliLifecycle = UnavailableCliLifecycle,
 ) {
     suspend fun run(command: CliCommand): Int {
         when (command) {
@@ -40,6 +47,10 @@ class CliRunner(
                 terminal.println("latch-cli $version")
                 return EXIT_SUCCESS
             }
+
+            CliCommand.Activate -> return activate()
+            CliCommand.Deactivate -> return deactivate()
+            CliCommand.Bootstrap -> return bootstrap()
 
             else -> Unit
         }
@@ -60,10 +71,9 @@ class CliRunner(
     }
 
     private suspend fun runWithBackend(command: CliCommand, backend: CliBackend): Int = when (command) {
-        CliCommand.Daemon -> {
-            splash(terminal)
-            report(backend.runDaemon())
-        }
+        CliCommand.Bootstrap -> error("Handled before backend creation")
+        CliCommand.DaemonProcess -> report(backend.runDaemon())
+        CliCommand.Activate, CliCommand.Deactivate -> error("Handled before backend creation")
         CliCommand.Status -> report(backend.status(), CliOutput::status)
         CliCommand.Login -> report(backend.login(), successMessage = "Login completed.")
         CliCommand.Logout -> report(backend.logout(), successMessage = "Logout completed.")
@@ -82,6 +92,53 @@ class CliRunner(
         CliCommand.SetCredentials -> setCredentials(backend)
         CliCommand.Help, CliCommand.Version -> error("Handled before backend creation")
     }
+
+    private suspend fun bootstrap(): Int {
+        splash(terminal)
+        val backend = try {
+            backendFactory()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            return fail(error.message ?: "Unable to initialize Latch.")
+        }
+
+        val shouldActivate = try {
+            val setup = backend.isSetup()
+            setup.error?.let { return fail(it) }
+            val configured = setup.value ?: return fail("The operation returned no setup status.")
+            if (configured) {
+                terminal.println(CliOutput.help)
+                return EXIT_SUCCESS
+            }
+
+            terminal.println("Welcome to Latch.")
+            val credentials = promptForCredentials(terminal).getOrElse {
+                return fail(it.message ?: "Invalid credentials.")
+            }
+            try {
+                val saved = backend.setCredentials(credentials.userId, credentials.password)
+                saved.error?.let { return fail(it) }
+            } finally {
+                credentials.password.fill('\u0000')
+            }
+            true
+        } finally {
+            backend.close()
+        }
+
+        return if (shouldActivate) activate() else EXIT_SUCCESS
+    }
+
+    private suspend fun activate(): Int = report(
+        lifecycle.activate(),
+        successMessage = "Latch is running in the background and will start when you log in.",
+    )
+
+    private suspend fun deactivate(): Int = report(
+        lifecycle.deactivate(),
+        successMessage = "Latch background daemon stopped and login startup disabled.",
+    )
 
     private suspend fun setCredentials(backend: CliBackend): Int {
         val credentials = promptForCredentials(terminal).getOrElse { return fail(it.message ?: "Invalid credentials.") }

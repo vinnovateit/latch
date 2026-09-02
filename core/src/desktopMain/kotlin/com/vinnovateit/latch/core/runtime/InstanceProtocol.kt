@@ -2,7 +2,7 @@ package com.vinnovateit.latch.core.runtime
 
 import kotlinx.serialization.Serializable
 
-const val INSTANCE_PROTOCOL_VERSION = 1
+const val INSTANCE_PROTOCOL_VERSION = 2
 const val MAX_INSTANCE_REQUEST_BYTES = 64 * 1024
 
 @Serializable
@@ -13,6 +13,8 @@ enum class RuntimeCommand {
     PING,
     ACTIVATE_UI,
     TAKE_OVER,
+    DEACTIVATE,
+    SETUP_STATUS,
     STATUS,
     LOGIN,
     LOGOUT,

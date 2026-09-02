@@ -20,7 +20,7 @@ class CoordinatedCliBackendTest {
     @Test
     fun `one-shot command forwards to active cli daemon`() = runBlocking {
         val directory = createTempDirectory("latch-cli-forward-").toFile()
-        val daemon = createCoordinatedCliBackend(CliCommand.Daemon, SilentTerminal, directory)
+        val daemon = createCoordinatedCliBackend(CliCommand.DaemonProcess, SilentTerminal, directory)
         try {
             val oneShot = createCoordinatedCliBackend(CliCommand.Status, SilentTerminal, directory)
             try {
@@ -38,7 +38,7 @@ class CoordinatedCliBackendTest {
     @Test
     fun `desktop takeover stops daemon and releases ownership`() = runBlocking {
         val directory = createTempDirectory("latch-cli-takeover-").toFile()
-        val daemon = createCoordinatedCliBackend(CliCommand.Daemon, SilentTerminal, directory)
+        val daemon = createCoordinatedCliBackend(CliCommand.DaemonProcess, SilentTerminal, directory)
         val daemonRun = async(Dispatchers.Default) { daemon.runDaemon() }
         try {
             val existing = assertIs<AcquireResult.Existing>(
@@ -55,6 +55,32 @@ class CoordinatedCliBackendTest {
                 InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP, ::echo),
             )
             desktop.coordinator.close()
+        } finally {
+            daemonRun.cancel()
+            daemon.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `authenticated deactivate stops daemon and releases ownership`() = runBlocking {
+        val directory = createTempDirectory("latch-cli-deactivate-").toFile()
+        val daemon = createCoordinatedCliBackend(CliCommand.DaemonProcess, SilentTerminal, directory)
+        val daemonRun = async(Dispatchers.Default) { daemon.runDaemon() }
+        try {
+            val existing = assertIs<AcquireResult.Existing>(
+                InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+            )
+
+            val response = existing.client.send(RuntimeCommand.DEACTIVATE)
+
+            assertTrue(response.ok)
+            assertEquals(OperationResult(Unit), withTimeout(2_000) { daemonRun.await() })
+            daemon.close()
+            val next = assertIs<AcquireResult.Owner>(
+                InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+            )
+            next.coordinator.close()
         } finally {
             daemonRun.cancel()
             daemon.close()

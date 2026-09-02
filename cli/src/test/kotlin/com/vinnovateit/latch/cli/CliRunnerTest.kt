@@ -57,6 +57,56 @@ class CliRunnerTest {
     }
 
     @Test
+    fun `configured bootstrap prints help and does not activate`() = runBlocking {
+        val terminal = RecordingTerminal()
+        val backend = FakeBackend(setupResult = OperationResult(true))
+        val lifecycle = FakeLifecycle()
+
+        val exitCode = CliRunner(terminal, { backend }, lifecycle = lifecycle).run(CliCommand.Bootstrap)
+
+        assertEquals(0, exitCode)
+        assertTrue(terminal.output.contains("Usage: latch-cli [command]"))
+        assertFalse(lifecycle.activated)
+        assertTrue(backend.closed)
+    }
+
+    @Test
+    fun `first bootstrap saves credentials and activates background daemon`() = runBlocking {
+        val secret = charArrayOf('s', 'e', 'c', 'r', 'e', 't')
+        val terminal = RecordingTerminal(lines = ArrayDeque(listOf("22BCE0001")), secrets = ArrayDeque(listOf(secret)))
+        val backend = FakeBackend(setupResult = OperationResult(false))
+        val lifecycle = FakeLifecycle()
+
+        val exitCode = CliRunner(terminal, { backend }, lifecycle = lifecycle).run(CliCommand.Bootstrap)
+
+        assertEquals(0, exitCode)
+        assertEquals("22BCE0001", backend.credentialUserId)
+        assertTrue(lifecycle.activated)
+        assertTrue(terminal.output.contains("Welcome to Latch."))
+        assertTrue(terminal.output.contains("Latch is running in the background and will start when you log in."))
+    }
+
+    @Test
+    fun `activate and deactivate use persistent lifecycle without backend`() = runBlocking {
+        val terminal = RecordingTerminal()
+        var backendCreated = false
+        val lifecycle = FakeLifecycle()
+        val runner = CliRunner(terminal, {
+            backendCreated = true
+            FakeBackend()
+        }, lifecycle = lifecycle)
+
+        assertEquals(0, runner.run(CliCommand.Activate))
+        assertEquals(0, runner.run(CliCommand.Deactivate))
+
+        assertFalse(backendCreated)
+        assertTrue(lifecycle.activated)
+        assertTrue(lifecycle.deactivated)
+        assertTrue(terminal.output.contains("Latch is running in the background and will start when you log in."))
+        assertTrue(terminal.output.contains("Latch background daemon stopped and login startup disabled."))
+    }
+
+    @Test
     fun `status has stable human-readable output and closes backend`() = runBlocking {
         val terminal = RecordingTerminal()
         val backend = FakeBackend(
@@ -222,14 +272,17 @@ class CliRunnerTest {
     }
 
     @Test
-    fun `splash runs only before daemon mode`() = runBlocking {
+    fun `splash runs for interactive bootstrap but not background daemon`() = runBlocking {
         var splashCount = 0
         val splash: suspend (TerminalIO) -> Unit = { splashCount++ }
 
         CliRunner(RecordingTerminal(), { FakeBackend() }, splash = splash).run(CliCommand.Status)
         assertEquals(0, splashCount)
 
-        CliRunner(RecordingTerminal(), { FakeBackend() }, splash = splash).run(CliCommand.Daemon)
+        CliRunner(RecordingTerminal(), { FakeBackend() }, splash = splash).run(CliCommand.Bootstrap)
+        assertEquals(1, splashCount)
+
+        CliRunner(RecordingTerminal(), { FakeBackend() }, splash = splash).run(CliCommand.DaemonProcess)
         assertEquals(1, splashCount)
     }
 }
@@ -263,6 +316,7 @@ private class FakeBackend(
     private val settingsResult: OperationResult<CliSettings> = OperationResult(
         CliSettings(autoLogin = true, allowedSsids = setOf("VIT")),
     ),
+    private val setupResult: OperationResult<Boolean> = OperationResult(true),
 ) : CliBackend {
     var closed = false
     var autoLoginValue: Boolean? = null
@@ -275,6 +329,7 @@ private class FakeBackend(
     override suspend fun logout(): OperationResult<Unit> = OperationResult(Unit)
     override suspend fun history(): OperationResult<List<CliSession>> = historyResult
     override suspend fun settings(): OperationResult<CliSettings> = settingsResult
+    override suspend fun isSetup(): OperationResult<Boolean> = setupResult
 
     override suspend fun setAutoLogin(enabled: Boolean): OperationResult<Unit> {
         autoLoginValue = enabled
@@ -296,5 +351,20 @@ private class FakeBackend(
 
     override fun close() {
         closed = true
+    }
+}
+
+private class FakeLifecycle : CliLifecycle {
+    var activated = false
+    var deactivated = false
+
+    override suspend fun activate(): OperationResult<Unit> {
+        activated = true
+        return OperationResult(Unit)
+    }
+
+    override suspend fun deactivate(): OperationResult<Unit> {
+        deactivated = true
+        return OperationResult(Unit)
     }
 }

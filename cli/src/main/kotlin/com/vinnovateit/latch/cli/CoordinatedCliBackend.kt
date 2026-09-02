@@ -21,7 +21,7 @@ internal suspend fun createCoordinatedCliBackend(
     terminal: TerminalIO,
     dataDir: File = AppPaths.dataDir,
 ): CliBackend {
-    val ownerKind = if (command == CliCommand.Daemon) OwnerKind.CLI_DAEMON else OwnerKind.CLI_ONESHOT
+    val ownerKind = if (command == CliCommand.DaemonProcess) OwnerKind.CLI_DAEMON else OwnerKind.CLI_ONESHOT
     val serviceReady = CompletableDeferred<RuntimeCommandService>()
     val acquired = InstanceCoordinator.tryAcquire(dataDir, ownerKind) { request ->
         serviceReady.await().execute(request)
@@ -30,7 +30,7 @@ internal suspend fun createCoordinatedCliBackend(
     return when (acquired) {
         is AcquireResult.Existing -> {
             val remote = RemoteCliBackend(acquired.client)
-            if (command == CliCommand.Daemon) ExistingDaemonBackend(remote, terminal, acquired.metadata.ownerKind)
+            if (command == CliCommand.DaemonProcess) ExistingDaemonBackend(remote, terminal, acquired.metadata.ownerKind)
             else remote
         }
         is AcquireResult.Failure -> error(acquired.message)
@@ -54,6 +54,14 @@ private suspend fun createOwnerBackend(
             ownerKind = ownerKind,
             runtime = runtime,
             onTakeOver = {
+                if (ownerKind == OwnerKind.CLI_DAEMON) {
+                    stopSignal.complete(Unit)
+                    true
+                } else {
+                    false
+                }
+            },
+            onDeactivate = {
                 if (ownerKind == OwnerKind.CLI_DAEMON) {
                     stopSignal.complete(Unit)
                     true

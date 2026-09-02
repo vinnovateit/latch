@@ -1,7 +1,10 @@
 package com.vinnovateit.latch.cli
 
 sealed interface CliCommand {
-    data object Daemon : CliCommand
+    data object Bootstrap : CliCommand
+    data object Activate : CliCommand
+    data object Deactivate : CliCommand
+    data object DaemonProcess : CliCommand
     data object Status : CliCommand
     data object Login : CliCommand
     data object Logout : CliCommand
@@ -23,7 +26,7 @@ private const val SETTINGS_USAGE =
     "Usage: --settings [set auto-login <on|off> | set allowed-ssids <comma,separated>]"
 
 fun parseCommand(args: Array<String>): ParseResult {
-    if (args.isEmpty()) return ParseResult.Success(CliCommand.Daemon)
+    if (args.isEmpty()) return ParseResult.Success(CliCommand.Bootstrap)
 
     if (args.first() == "--settings") return parseSettings(args)
 
@@ -32,6 +35,9 @@ fun parseCommand(args: Array<String>): ParseResult {
     }
 
     val command = when (args.first()) {
+        "activate" -> CliCommand.Activate
+        "deactivate" -> CliCommand.Deactivate
+        "--daemon-process" -> CliCommand.DaemonProcess
         "--status" -> CliCommand.Status
         "--login" -> CliCommand.Login
         "--logout" -> CliCommand.Logout

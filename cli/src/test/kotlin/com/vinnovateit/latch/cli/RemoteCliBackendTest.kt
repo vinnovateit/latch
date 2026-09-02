@@ -20,6 +20,7 @@ class RemoteCliBackendTest {
     @Test
     fun `remote backend maps status history and settings`() = runBlocking {
         withRemoteBackend { backend, _ ->
+            assertEquals(OperationResult(true), backend.isSetup())
             assertEquals(
                 OperationResult(CliStatus("desktop", "connected", "VIT", true)),
                 backend.status(),
@@ -89,6 +90,7 @@ private class RemoteTarget(
     var userId: String? = null
     var password: String? = null
 
+    override suspend fun isSetup() = true
     override suspend fun snapshot() = RuntimeSnapshot("connected", "VIT", true)
     override suspend fun login() = loginOperation
     override suspend fun logout() = RuntimeOperation(true)

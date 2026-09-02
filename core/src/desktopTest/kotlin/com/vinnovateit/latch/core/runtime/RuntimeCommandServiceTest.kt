@@ -17,6 +17,37 @@ class RuntimeCommandServiceTest {
     }
 
     @Test
+    fun `setup status reports whether credentials exist`() = runBlocking {
+        val configured = service(FakeRuntimeTarget(setup = true)).execute(request(RuntimeCommand.SETUP_STATUS))
+        val unconfigured = service(FakeRuntimeTarget(setup = false)).execute(request(RuntimeCommand.SETUP_STATUS))
+
+        assertEquals("true", configured.data["configured"])
+        assertEquals("false", unconfigured.data["configured"])
+    }
+
+    @Test
+    fun `deactivate stops only a cli daemon owner`() = runBlocking {
+        var stopped = false
+        val cliService = RuntimeCommandService(
+            ownerKind = OwnerKind.CLI_DAEMON,
+            target = FakeRuntimeTarget(),
+            onDeactivate = { stopped = true; true },
+        )
+        val desktopService = RuntimeCommandService(
+            ownerKind = OwnerKind.DESKTOP,
+            target = FakeRuntimeTarget(),
+            onDeactivate = { true },
+        )
+
+        val cliResponse = cliService.execute(request(RuntimeCommand.DEACTIVATE))
+        val desktopResponse = desktopService.execute(request(RuntimeCommand.DEACTIVATE))
+
+        assertTrue(cliResponse.ok)
+        assertTrue(stopped)
+        assertEquals("OWNER_CHANGED", desktopResponse.code)
+    }
+
+    @Test
     fun `status and history are serialized for clients`() = runBlocking {
         val target = FakeRuntimeTarget(
             snapshot = RuntimeSnapshot("connected", "VIT", true),
@@ -152,6 +183,7 @@ private class FakeRuntimeTarget(
     private val settingsValue: RuntimeSettingsSnapshot = RuntimeSettingsSnapshot(true, setOf("VIT")),
     private val loginResult: RuntimeOperation = RuntimeOperation(true),
     private val logoutResult: RuntimeOperation = RuntimeOperation(true),
+    private val setup: Boolean = true,
 ) : RuntimeCommandTarget {
     var autoLoginValue: Boolean? = null
     var allowedSsidsValue: Set<String>? = null
@@ -159,6 +191,7 @@ private class FakeRuntimeTarget(
     var credentialPassword: String? = null
 
     override suspend fun snapshot(): RuntimeSnapshot = snapshot
+    override suspend fun isSetup(): Boolean = setup
     override suspend fun login(): RuntimeOperation = loginResult
     override suspend fun logout(): RuntimeOperation = logoutResult
     override suspend fun history(): List<RuntimeSessionRecord> = sessionValues

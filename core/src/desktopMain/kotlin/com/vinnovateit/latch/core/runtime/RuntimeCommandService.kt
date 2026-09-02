@@ -31,6 +31,7 @@ data class RuntimeOperation(
 )
 
 interface RuntimeCommandTarget {
+    suspend fun isSetup(): Boolean
     suspend fun snapshot(): RuntimeSnapshot
     suspend fun login(): RuntimeOperation
     suspend fun logout(): RuntimeOperation
@@ -46,13 +47,15 @@ class RuntimeCommandService(
     private val target: RuntimeCommandTarget,
     private val onActivateUi: () -> Unit = {},
     private val onTakeOver: suspend () -> Boolean = { false },
+    private val onDeactivate: suspend () -> Boolean = { false },
 ) {
     constructor(
         ownerKind: OwnerKind,
         runtime: DesktopEngineRuntime,
         onActivateUi: () -> Unit = {},
         onTakeOver: suspend () -> Boolean = { false },
-    ) : this(ownerKind, DesktopRuntimeTarget(runtime), onActivateUi, onTakeOver)
+        onDeactivate: suspend () -> Boolean = { false },
+    ) : this(ownerKind, DesktopRuntimeTarget(runtime), onActivateUi, onTakeOver, onDeactivate)
 
     suspend fun execute(request: InstanceRequest): InstanceResponse {
         if (request.version != INSTANCE_PROTOCOL_VERSION) {
@@ -70,6 +73,14 @@ class RuntimeCommandService(
                     if (ownerKind == OwnerKind.CLI_DAEMON && onTakeOver()) success(request)
                     else failure(request, "OWNER_CHANGED", "The active owner refused takeover.")
                 }
+                RuntimeCommand.DEACTIVATE -> {
+                    if (ownerKind == OwnerKind.CLI_DAEMON && onDeactivate()) success(request)
+                    else failure(request, "OWNER_CHANGED", "The active owner is not the CLI daemon.")
+                }
+                RuntimeCommand.SETUP_STATUS -> success(
+                    request,
+                    mapOf("configured" to target.isSetup().toString()),
+                )
                 RuntimeCommand.STATUS -> status(request)
                 RuntimeCommand.LOGIN -> operation(request, target.login())
                 RuntimeCommand.LOGOUT -> operation(request, target.logout())
@@ -151,6 +162,8 @@ class RuntimeCommandService(
 }
 
 private class DesktopRuntimeTarget(private val runtime: DesktopEngineRuntime) : RuntimeCommandTarget {
+    override suspend fun isSetup(): Boolean = runtime.platform.credentials.exists()
+
     override suspend fun snapshot(): RuntimeSnapshot {
         val status = runtime.engine.status.value
         val connection = when (status) {
