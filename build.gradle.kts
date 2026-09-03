@@ -1,5 +1,6 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+<<<<<<< HEAD
 // AGP pulls jose4j in transitively through its Google auth stack. 0.9.5
 // decompresses JWE payloads without an output bound, so a crafted token can
 // exhaust the heap (GHSA-3677-xxcr-wjqv). Build classpath only -- it never
@@ -9,6 +10,18 @@ buildscript {
         constraints {
             classpath("org.bitbucket.b_c:jose4j:0.9.6") {
                 because("GHSA-3677-xxcr-wjqv: DoS via compressed JWE content in jose4j < 0.9.6")
+=======
+// AGP pulls jdom2 in transitively through jetifier-processor. 2.0.6 parses XML
+// with external entities enabled (GHSA-2363-cqg2-863c, XXE). Nothing here feeds
+// it untrusted XML, and it never reaches a shipped artifact -- it is on the
+// build classpath only -- but the patched release is a drop-in, so there is no
+// reason to keep the vulnerable one around.
+buildscript {
+    dependencies {
+        constraints {
+            classpath("org.jdom:jdom2:2.0.6.1") {
+                because("GHSA-2363-cqg2-863c: XXE injection in jdom2 < 2.0.6.1")
+>>>>>>> origin/main
             }
         }
     }
