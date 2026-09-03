@@ -1,4 +1,18 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+// bcpkix ships alongside bcprov on the build classpath, pulled by AGP and the
+// Kotlin Gradle plugin. Modules in 1.80.2 still use a broken cryptographic
+// algorithm (GHSA-wg6q-6289-32hp). Build classpath only, but the patched
+// release is a drop-in.
+buildscript {
+    dependencies {
+        constraints {
+            classpath("org.bouncycastle:bcpkix-jdk18on:1.84") {
+                because("GHSA-wg6q-6289-32hp: broken cryptographic algorithm in bcpkix-jdk18on < 1.84")
+            }
+        }
+    }
+}
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
