@@ -34,6 +34,12 @@ buildscript {
             classpath("org.apache.commons:commons-lang3:3.18.0") {
                 because("GHSA-j288-q9x7-2f5v: uncontrolled recursion in commons-lang3 < 3.18.0")
             }
+            // AGP declares 4.5.6, vulnerable to XSS in its error responses. Conflict
+            // resolution already lands on 4.5.14; this states the safe floor rather than
+            // leaving it incidental to whichever AGP version wins.
+            classpath("org.apache.httpcomponents:httpclient:4.5.14") {
+                because("GHSA-7r82-7xv7-xcpj: cross-site scripting in httpclient < 4.5.13")
+            }
         }
     }
 }
