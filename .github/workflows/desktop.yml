@@ -1,0 +1,44 @@
+# Desktop/CLI counterpart to android.yml.
+#
+# android.yml runs `assembleDebug testDebugUnitTest :app:lintDebug`, which only
+# reaches :core's androidTarget. That leaves :desktop, :cli and :core's
+# desktopTest source set uncompiled and unrun on every PR -- a green Android
+# check has never said anything about them. This job closes that gap.
+#
+# Kept as a separate workflow rather than a job in android.yml so the check
+# name stays distinct if it is ever made a required status check.
+name: Desktop CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # :desktop is a single jvm("desktop") target, so compiling it on Linux
+      # covers the Kotlin/Compose surface; OS differences live behind
+      # OsBindings at runtime and are exercised by release.yml's per-OS jobs.
+      # :cli:build compiles and tests the CLI module, which is plain
+      # kotlin("jvm") and so has an ordinary `build` lifecycle task.
+      - name: Build and Test
+        run: ./gradlew :desktop:compileKotlinDesktop :core:desktopTest :cli:build
