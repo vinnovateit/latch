@@ -10,12 +10,15 @@ import com.vinnovateit.latch.core.wifi.CaptivePortalDetector
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.core.wifi.ConnectionStatusManager
 import com.vinnovateit.latch.core.wifi.LoginResult
+import com.vinnovateit.latch.core.wifi.isVitCampusSsid
+import com.vinnovateit.latch.core.wifi.probeCampusNetwork
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,14 +77,6 @@ class LatchEngine(
         const val HEALTH_CHECK_INTERVAL_MS = 60_000L
         const val REVALIDATE_DELAY_MS = 2000L
         const val MAX_REVALIDATE_RETRIES = 3
-
-        // Campus networks come in two shapes: the hostel/block form
-        // "<letter>-VIT" (optionally with a trailing band suffix Windows
-        // appends, e.g. "G-VIT 5") and the academic-block form "VIT<band>"
-        // ("VIT5G", "VIT2.4G"). Anchored to the start of the SSID so an
-        // unrelated network that merely contains "VIT" somewhere in its name
-        // does not match.
-        val VIT_SSID_PATTERN = Regex("^(?:[A-Za-z]-)?VIT", RegexOption.IGNORE_CASE)
     }
 
     private val logger = platform.logger
@@ -125,7 +120,7 @@ class LatchEngine(
 
     override suspend fun submitAndAwait(command: LatchCommand, timeoutMs: Long): Boolean {
         val done = CompletableDeferred<Unit>()
-        commands.trySend(QueuedCommand(command, done))
+        if (commands.trySend(QueuedCommand(command, done)).isFailure) return false
         return withTimeoutOrNull(timeoutMs) { done.await() } != null
     }
 
@@ -215,7 +210,10 @@ class LatchEngine(
                 activeActionJob?.cancel()
                 activeActionJob = null
                 healthCheckJob?.cancel()
-                unlatch()
+                _isLatched.value = false
+                sessions.stopSessionAndAwait()
+                commands.close()
+                scope.coroutineContext.cancelChildren()
             }
         }
     }
@@ -371,17 +369,6 @@ class LatchEngine(
         resolves
     }
 
-    /**
-     * True unless the SSID is readable and readably *not* a campus network.
-     */
-    private fun isVitCampusSsid(ssid: String?): Boolean {
-        val clean = ssid?.trim()?.removeSurrounding("\"")?.takeIf { it.isNotEmpty() } ?: return true
-        return VIT_SSID_PATTERN.containsMatchIn(clean) ||
-            clean.contains("VIT", ignoreCase = true) ||
-            clean.endsWith("-VIT", ignoreCase = true) ||
-            SettingsManager.allowedSsids.value.any { clean.contains(it, ignoreCase = true) }
-    }
-
     private suspend fun handleCaptivePortal(handle: NetworkHandle) {
         logger.d(TAG, "[ConnectAnalysis] Step 4/4: Authenticating with Captive Portal...")
         ConnectionStatusManager.postStatus(
@@ -445,7 +432,18 @@ class LatchEngine(
             ConnectionStatus.Failed(ConnectionStatus.Reason.Disconnected)
         )
 
-        if (handle != null && wasLatched) {
+        // This process's memory is not the only way to be logged in: a CLI
+        // one-shot creates the engine for the length of a single command, so
+        // _isLatched is false even when the portal is authenticated, and
+        // `latch-cli --logout` with no daemon running went through the motions
+        // without ever telling the portal. Asking the network settles it.
+        // Deliberately after the status post -- the probe must not delay the
+        // "Disconnected" the user is waiting to see -- and only when this
+        // process does not already know, so the common path is unchanged.
+        val authenticated = wasLatched ||
+            probeCampusNetwork(platform.wifi, platform.httpTransport, logger).latched
+
+        if (handle != null && authenticated) {
             platform.wifi.bindProcess(handle)
             try {
                 val ok = withTimeoutOrNull(2000L) {

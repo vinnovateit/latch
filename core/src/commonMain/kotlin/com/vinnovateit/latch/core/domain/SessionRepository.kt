@@ -98,7 +98,18 @@ class SessionRepository(
     }
 
     fun stopSession() {
-        val sessionToFinalize = _liveStatus.value ?: return
+        val session = finishActiveSession() ?: return
+        scope.launch { statsDao.insertSession(session) }
+    }
+
+    /** Completes persistence before returning, for orderly process shutdown. */
+    suspend fun stopSessionAndAwait() {
+        val session = finishActiveSession() ?: return
+        statsDao.insertSession(session)
+    }
+
+    private fun finishActiveSession(): Session? {
+        val sessionToFinalize = _liveStatus.value ?: return null
 
         sessionUpdateJob?.cancel()
         sessionUpdateJob = null
@@ -114,22 +125,18 @@ class SessionRepository(
         // that carried no traffic. Threshold matches Android.
         if (totalRxBytes + totalTxBytes < 1024) {
             onSessionChanged?.invoke()
-            return
+            return null
         }
 
-        scope.launch {
-            statsDao.insertSession(
-                Session(
-                    startTime = sessionToFinalize.startTimeMillis,
-                    endTime = System.currentTimeMillis(),
-                    rxBytes = totalRxBytes,
-                    txBytes = totalTxBytes,
-                    maxRxBps = maxRxBps,
-                    maxTxBps = maxTxBps,
-                )
-            )
-        }
         onSessionChanged?.invoke()
+        return Session(
+            startTime = sessionToFinalize.startTimeMillis,
+            endTime = System.currentTimeMillis(),
+            rxBytes = totalRxBytes,
+            txBytes = totalTxBytes,
+            maxRxBps = maxRxBps,
+            maxTxBps = maxTxBps,
+        )
     }
 
     fun clearHistory() {

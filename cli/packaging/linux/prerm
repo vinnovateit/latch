@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        if [ -L /usr/bin/latch-cli ] &&
+           [ "$(readlink /usr/bin/latch-cli)" = "/opt/latch-cli/bin/latch-cli" ]; then
+            rm /usr/bin/latch-cli
+        fi
+        ;;
+esac
+
+exit 0

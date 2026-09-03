@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+    ln -sfn /opt/latch-cli/bin/latch-cli /usr/bin/latch-cli
+fi
+
+exit 0

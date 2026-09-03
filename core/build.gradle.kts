@@ -1,4 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.language.jvm.tasks.ProcessResources
+
+val latchVersion = providers.gradleProperty("latchVersion").get()
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -24,8 +27,6 @@ kotlin {
     }
 
     sourceSets {
-        val desktopMain by getting
-
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
@@ -47,6 +48,9 @@ kotlin {
             implementation(libs.androidx.preference.ktx)
         }
 
+        val desktopMain by getting
+        val desktopTest by getting
+
         desktopMain.dependencies {
             // JVM has no built-in SQLite; Android does, so this stays desktop-only.
             api(libs.sqlite.bundled)
@@ -55,6 +59,10 @@ kotlin {
             implementation(libs.jna)
             implementation(libs.jna.platform)
             implementation(libs.slf4j.simple)
+        }
+
+        desktopTest.dependencies {
+            implementation(kotlin("test"))
         }
     }
 }
@@ -66,4 +74,3 @@ dependencies {
     add("kspDesktop", libs.room.compiler.desktop)
     add("kspAndroid", libs.room.compiler.desktop)
 }
-

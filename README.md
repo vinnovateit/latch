@@ -23,6 +23,7 @@ Latch is a Kotlin application developed by VinnovateIT that automates the login 
 - Automatic detection of VIT hostel WiFi networks
 - Auto-login with securely stored credentials
 - Logging and display of network usage statistics
+- Standalone CLI for Linux terminals and Windows PowerShell
 
 ## Prerequisites
 
@@ -54,6 +55,50 @@ Before you start, make sure you have:
 2. Launch Latch from your application menu, or run `latch` in a terminal.
 
    To install manually instead, download `latch-1.3.8-linux-x64.tar.gz` from the [latest release](https://github.com/vinnovateit/latch/releases/latest) and extract it.
+
+### Command-line app
+
+`latch-cli` is a standalone application with its own trimmed Java runtime; Java does not need to be installed separately.
+
+On Debian or Ubuntu, download the `.deb` from the [latest release](https://github.com/vinnovateit/latch/releases/latest), then run:
+
+```sh
+sudo apt install ./latch-cli_1.3.8_amd64.deb
+```
+
+RPM-based distributions can install the release package with `sudo dnf install ./latch-cli-*.rpm`. Arch users can install the `latch-cli-bin` AUR package after its release metadata is submitted. The portable `latch-cli-1.3.8-linux-x64.tar.gz` works without package-manager installation.
+
+A hosted APT repository can be added later; the initial `.deb` is installed directly with `apt`. Flatpak is intentionally outside the CLI release scope because its sandbox and desktop-first distribution model do not fit a host-network command-line daemon.
+
+On Windows, install `VinnovateIT.LatchCLI` with winget after its manifest is accepted, or download and extract `latch-cli-1.3.8-windows-x64.zip`. The executable works directly from PowerShell:
+
+```powershell
+.\latch-cli.exe --status
+```
+
+Run `latch-cli` with no arguments the first time. It prompts for your VIT credentials, starts the auto-login daemon in the background, and enables per-user startup at login. On later runs, `latch-cli` prints its help menu.
+
+Use `activate` and `deactivate` to control the background daemon on Linux or from PowerShell on Windows:
+
+```text
+latch-cli activate
+latch-cli deactivate
+```
+
+`activate` is idempotent and enables startup at login. `deactivate` stops a CLI-owned daemon and disables its login startup entry; it does not terminate a running desktop app. Common one-shot commands are:
+
+```text
+latch-cli --set-credentials
+latch-cli --status
+latch-cli --login
+latch-cli --logout
+latch-cli --history
+latch-cli --settings
+latch-cli --settings set auto-login on
+latch-cli --settings set allowed-ssids "VIT2.4G,VIT5G"
+```
+
+Desktop and CLI installations can coexist. They coordinate through an authenticated local connection so only one networking engine is active, and opening Desktop takes ownership from a running CLI daemon.
 
 ### Android
 
@@ -126,7 +171,7 @@ Optionally, it records network statistics for monitoring purposes.
 
 - Add support for multiple VIT campuses
 - Improve UI responsiveness
-- CLI client ;)
+- Publish the generated CLI manifests to additional package repositories
 
 See the [open issues](https://github.com/vinnovateit/latch/issues) for a full list of proposed features and known issues.
 

@@ -11,6 +11,7 @@ import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.platform.SystemActions
 import com.vinnovateit.latch.core.platform.UserNotifier
 import com.vinnovateit.latch.core.platform.WifiPlatform
+import com.vinnovateit.latch.core.LatchCore
 import com.vinnovateit.latch.desktop.AppPaths
 import com.vinnovateit.latch.desktop.platform.linux.LinuxCredentialStore
 import com.vinnovateit.latch.desktop.platform.linux.LinuxSystemActions
@@ -20,7 +21,7 @@ import com.vinnovateit.latch.desktop.platform.windows.WindowsSystemActions
 import com.vinnovateit.latch.desktop.platform.windows.WindowsWifiPlatform
 
 private object DesktopBuildInfo : BuildInfo {
-    override val versionName: String = "1.3.8"
+    override val versionName: String = LatchCore.VERSION
     override val isDebug: Boolean = System.getProperty("latch.debug") == "true"
     override val isInstalled: Boolean = InstalledBuild.isInstalled
 }
