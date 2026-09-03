@@ -9,12 +9,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import java.io.File
-
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.channels.*
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * Settings persistence as a plain JSON file.
@@ -42,27 +39,46 @@ class JsonKeyValueStore(
         data class StrSet(val value: Set<String>) : JsonPrimitiveOrArray
     }
 
-    private val scope        = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val writeChannel = Channel<JsonObject>(10)
-    // Channel's buffer has size 10.
-
-    /** Serialises the two write paths -- the writer coroutine and [flush]. */
+    /** Serialises writers against each other. */
     private val writeLock = Any()
 
     init {
         load()
-        // Load file then launch writer coroutine.
-        scope.launch {
-            for (jsonObj in writeChannel) {
-                write(jsonObj)
-                logger.d(TAG, "Saved settings to file.")
-            }
-        }
     }
 
+    /**
+     * Writes the settings file whole, on the calling thread.
+     *
+     * Deliberately not deferred to a coroutine. A background writer meant a
+     * one-shot `latch-cli --settings set ...` exited before its write ran, and
+     * it left a window where the file was truncated mid-rewrite -- a reader
+     * arriving then (another Latch process, or the next store instance) parsed
+     * nothing and silently fell back to defaults. The file is well under a
+     * kilobyte and only written on an explicit settings change, so writing it
+     * inline costs nothing worth deferring.
+     *
+     * The temp-file-plus-move keeps that window closed for readers: they see
+     * either the previous file or the new one, never a half-written one.
+     */
     private fun write(obj: JsonObject) = synchronized(writeLock) {
         file.parentFile?.mkdirs()
-        file.writeText(json.encodeToString(JsonObject.serializer(), obj))
+        val temporary = Files.createTempFile(file.parentFile.toPath(), file.name, ".tmp")
+        try {
+            Files.writeString(temporary, json.encodeToString(JsonObject.serializer(), obj))
+            try {
+                Files.move(
+                    temporary,
+                    file.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary, file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
+        logger.d(TAG, "Saved settings to file.")
     }
 
     private fun load() {
@@ -111,29 +127,9 @@ class JsonKeyValueStore(
 
     private fun persist() {
         try {
-            if (!writeChannel.trySend(snapshot()).isSuccess) {
-                throw Exception("Write channel is currently full.")
-            }
-        } catch (e: Throwable) {
-            logger.e(TAG, "Failed to persist settings", e)
-        }
-    }
-
-    /**
-     * Writes the current settings on the calling thread.
-     *
-     * The writer coroutine above is right for the desktop app, which outlives
-     * any queued write by hours. It is wrong for a one-shot `latch-cli
-     * --settings set ...`, which returns success and exits before the
-     * coroutine is ever scheduled -- the setting was silently lost. Called from
-     * DesktopEngineRuntime.close(), so every owner lands its writes on the way
-     * out.
-     */
-    override fun flush() {
-        try {
             write(snapshot())
         } catch (e: Throwable) {
-            logger.e(TAG, "Failed to flush settings", e)
+            logger.e(TAG, "Failed to persist settings", e)
         }
     }
 
