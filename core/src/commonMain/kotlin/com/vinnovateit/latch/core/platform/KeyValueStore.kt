@@ -13,6 +13,15 @@ interface KeyValueStore {
     fun putString(key: String, value: String)
     fun putBoolean(key: String, value: Boolean)
     fun putStringSet(key: String, value: Set<String>)
+
+    /**
+     * Makes every write so far durable before the process may exit.
+     *
+     * A store that writes synchronously has nothing to do here. One that defers
+     * writes must land them now: a `latch-cli --settings set ...` process exits
+     * within milliseconds of the write, far sooner than any background writer.
+     */
+    fun flush() {}
 }
 
 /** Used before a real store is installed, and in tests. */

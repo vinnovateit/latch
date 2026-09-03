@@ -46,16 +46,23 @@ class JsonKeyValueStore(
     private val writeChannel = Channel<JsonObject>(10)
     // Channel's buffer has size 10.
 
+    /** Serialises the two write paths -- the writer coroutine and [flush]. */
+    private val writeLock = Any()
+
     init {
         load()
         // Load file then launch writer coroutine.
         scope.launch {
             for (jsonObj in writeChannel) {
-                file.parentFile?.mkdirs()
-                file.writeText(json.encodeToString(JsonObject.serializer(), jsonObj))
+                write(jsonObj)
                 logger.d(TAG, "Saved settings to file.")
             }
         }
+    }
+
+    private fun write(obj: JsonObject) = synchronized(writeLock) {
+        file.parentFile?.mkdirs()
+        file.writeText(json.encodeToString(JsonObject.serializer(), obj))
     }
 
     private fun load() {
@@ -87,25 +94,46 @@ class JsonKeyValueStore(
         }
     }
 
-    private fun persist() {
-        try {
-            val obj = buildJsonObject {
-                values.forEach { (key, value) ->
-                    when (value) {
-                        is JsonPrimitiveOrArray.Str -> put(key, JsonPrimitive(value.value))
-                        is JsonPrimitiveOrArray.Bool -> put(key, JsonPrimitive(value.value))
-                        is JsonPrimitiveOrArray.StrSet -> put(
-                            key,
-                            JsonArray(value.value.map { JsonPrimitive(it) }),
-                        )
-                    }
+    private fun snapshot(): JsonObject = synchronized(writeLock) {
+        buildJsonObject {
+            values.forEach { (key, value) ->
+                when (value) {
+                    is JsonPrimitiveOrArray.Str -> put(key, JsonPrimitive(value.value))
+                    is JsonPrimitiveOrArray.Bool -> put(key, JsonPrimitive(value.value))
+                    is JsonPrimitiveOrArray.StrSet -> put(
+                        key,
+                        JsonArray(value.value.map { JsonPrimitive(it) }),
+                    )
                 }
             }
-            if (!writeChannel.trySend(obj).isSuccess) {
+        }
+    }
+
+    private fun persist() {
+        try {
+            if (!writeChannel.trySend(snapshot()).isSuccess) {
                 throw Exception("Write channel is currently full.")
             }
         } catch (e: Throwable) {
             logger.e(TAG, "Failed to persist settings", e)
+        }
+    }
+
+    /**
+     * Writes the current settings on the calling thread.
+     *
+     * The writer coroutine above is right for the desktop app, which outlives
+     * any queued write by hours. It is wrong for a one-shot `latch-cli
+     * --settings set ...`, which returns success and exits before the
+     * coroutine is ever scheduled -- the setting was silently lost. Called from
+     * DesktopEngineRuntime.close(), so every owner lands its writes on the way
+     * out.
+     */
+    override fun flush() {
+        try {
+            write(snapshot())
+        } catch (e: Throwable) {
+            logger.e(TAG, "Failed to flush settings", e)
         }
     }
 
@@ -119,14 +147,14 @@ class JsonKeyValueStore(
         (values[key] as? JsonPrimitiveOrArray.StrSet)?.value ?: default
 
     override fun putString(key: String, value: String) {
-        values[key] = JsonPrimitiveOrArray.Str(value); persist()
+        synchronized(writeLock) { values[key] = JsonPrimitiveOrArray.Str(value) }; persist()
     }
 
     override fun putBoolean(key: String, value: Boolean) {
-        values[key] = JsonPrimitiveOrArray.Bool(value); persist()
+        synchronized(writeLock) { values[key] = JsonPrimitiveOrArray.Bool(value) }; persist()
     }
 
     override fun putStringSet(key: String, value: Set<String>) {
-        values[key] = JsonPrimitiveOrArray.StrSet(value); persist()
+        synchronized(writeLock) { values[key] = JsonPrimitiveOrArray.StrSet(value) }; persist()
     }
 }

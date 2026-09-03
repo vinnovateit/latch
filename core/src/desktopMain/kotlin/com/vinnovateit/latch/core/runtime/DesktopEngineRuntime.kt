@@ -32,6 +32,9 @@ class DesktopEngineRuntime private constructor(
     suspend fun close() {
         if (!closed.compareAndSet(false, true)) return
         if (started.get()) engine.submitAndAwait(LatchCommand.Shutdown, ENGINE_SHUTDOWN_TIMEOUT_MS)
+        // Before the process can exit: a one-shot CLI writes a setting and is
+        // gone milliseconds later, well before a deferred write would land.
+        platform.settingsStore.flush()
         database.close()
     }
 
