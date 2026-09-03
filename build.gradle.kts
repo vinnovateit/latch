@@ -1,4 +1,19 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+// AGP declares httpclient 4.5.6, which is vulnerable to XSS in its error
+// responses (GHSA-7r82-7xv7-xcpj, fixed in 4.5.13). Conflict resolution
+// already lands the build classpath on 4.5.14, so this constraint changes
+// nothing today -- it states the safe floor rather than leaving it incidental
+// to whichever AGP version happens to win.
+buildscript {
+    dependencies {
+        constraints {
+            classpath("org.apache.httpcomponents:httpclient:4.5.14") {
+                because("GHSA-7r82-7xv7-xcpj: cross-site scripting in httpclient < 4.5.13")
+            }
+        }
+    }
+}
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
