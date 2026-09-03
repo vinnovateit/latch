@@ -1,4 +1,18 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+// commons-lang3 reaches the build classpath through AGP. 3.16.0 recurses
+// without a depth bound on long inputs, so a large string can overflow the
+// stack (GHSA-j288-q9x7-2f5v). Build classpath only, but the patched release
+// is a drop-in.
+buildscript {
+    dependencies {
+        constraints {
+            classpath("org.apache.commons:commons-lang3:3.18.0") {
+                because("GHSA-j288-q9x7-2f5v: uncontrolled recursion in commons-lang3 < 3.18.0")
+            }
+        }
+    }
+}
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
