@@ -55,7 +55,7 @@ class RuntimeCommandService(
         onActivateUi: () -> Unit = {},
         onTakeOver: suspend () -> Boolean = { false },
         onDeactivate: suspend () -> Boolean = { false },
-    ) : this(ownerKind, DesktopRuntimeTarget(runtime), onActivateUi, onTakeOver, onDeactivate)
+    ) : this(ownerKind, runtimeTarget(ownerKind, runtime), onActivateUi, onTakeOver, onDeactivate)
 
     suspend fun execute(request: InstanceRequest): InstanceResponse {
         if (request.version != INSTANCE_PROTOCOL_VERSION) {
@@ -159,6 +159,27 @@ class RuntimeCommandService(
 
     private fun operation(request: InstanceRequest, result: RuntimeOperation): InstanceResponse =
         if (result.ok) success(request) else failure(request, result.code, result.message)
+}
+
+/**
+ * A desktop or CLI-daemon owner keeps its engine running and so answers from it.
+ * A CLI one-shot creates its engine for the length of a single command, leaving
+ * it cold -- it must read the network itself rather than report that cold state.
+ */
+private fun runtimeTarget(ownerKind: OwnerKind, runtime: DesktopEngineRuntime): RuntimeCommandTarget {
+    val target = DesktopRuntimeTarget(runtime)
+    return if (ownerKind == OwnerKind.CLI_ONESHOT) ProbedSnapshotTarget(target, runtime) else target
+}
+
+private class ProbedSnapshotTarget(
+    delegate: RuntimeCommandTarget,
+    private val runtime: DesktopEngineRuntime,
+) : RuntimeCommandTarget by delegate {
+    override suspend fun snapshot(): RuntimeSnapshot = probeRuntimeSnapshot(
+        wifi = runtime.platform.wifi,
+        transport = runtime.platform.httpTransport,
+        logger = runtime.platform.logger,
+    )
 }
 
 private class DesktopRuntimeTarget(private val runtime: DesktopEngineRuntime) : RuntimeCommandTarget {

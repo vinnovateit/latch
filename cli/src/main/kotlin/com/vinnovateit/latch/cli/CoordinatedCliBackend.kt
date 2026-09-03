@@ -1,5 +1,6 @@
 package com.vinnovateit.latch.cli
 
+import com.vinnovateit.latch.core.engine.LatchCommand
 import com.vinnovateit.latch.core.runtime.AcquireResult
 import com.vinnovateit.latch.core.runtime.DesktopEngineRuntime
 import com.vinnovateit.latch.core.runtime.INSTANCE_PROTOCOL_VERSION
@@ -9,6 +10,7 @@ import com.vinnovateit.latch.core.runtime.InstanceResponse
 import com.vinnovateit.latch.core.runtime.OwnerKind
 import com.vinnovateit.latch.core.runtime.RuntimeCommand
 import com.vinnovateit.latch.core.runtime.RuntimeCommandService
+import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.desktop.AppPaths
 import java.io.File
 import java.util.UUID
@@ -72,6 +74,16 @@ private suspend fun createOwnerBackend(
         )
         serviceReady.complete(service)
         runtime.start()
+        // Mirror LatchApp.start(): probe once on startup so a network that is
+        // already authenticated is recognised without waiting for the next
+        // Wi-Fi event, which otherwise leaves `--status` reporting "latched: no"
+        // for a freshly activated daemon.
+        if (ownerKind == OwnerKind.CLI_DAEMON) {
+            runtime.engine.submit(
+                if (SettingsManager.autoLogin.value) LatchCommand.CheckAndLogin
+                else LatchCommand.SilentCheck,
+            )
+        }
         OwnedCliBackend(ownerKind, runtime, coordinator, service, stopSignal)
     } catch (error: Exception) {
         serviceReady.completeExceptionally(error)

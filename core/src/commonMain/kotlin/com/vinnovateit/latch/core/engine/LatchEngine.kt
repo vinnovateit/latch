@@ -10,6 +10,7 @@ import com.vinnovateit.latch.core.wifi.CaptivePortalDetector
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.core.wifi.ConnectionStatusManager
 import com.vinnovateit.latch.core.wifi.LoginResult
+import com.vinnovateit.latch.core.wifi.isVitCampusSsid
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -75,14 +76,6 @@ class LatchEngine(
         const val HEALTH_CHECK_INTERVAL_MS = 60_000L
         const val REVALIDATE_DELAY_MS = 2000L
         const val MAX_REVALIDATE_RETRIES = 3
-
-        // Campus networks come in two shapes: the hostel/block form
-        // "<letter>-VIT" (optionally with a trailing band suffix Windows
-        // appends, e.g. "G-VIT 5") and the academic-block form "VIT<band>"
-        // ("VIT5G", "VIT2.4G"). Anchored to the start of the SSID so an
-        // unrelated network that merely contains "VIT" somewhere in its name
-        // does not match.
-        val VIT_SSID_PATTERN = Regex("^(?:[A-Za-z]-)?VIT", RegexOption.IGNORE_CASE)
     }
 
     private val logger = platform.logger
@@ -373,17 +366,6 @@ class LatchEngine(
             logger.d(TAG, "[ConnectAnalysis] Target Verification PASSED: Network verified successfully.")
         }
         resolves
-    }
-
-    /**
-     * True unless the SSID is readable and readably *not* a campus network.
-     */
-    private fun isVitCampusSsid(ssid: String?): Boolean {
-        val clean = ssid?.trim()?.removeSurrounding("\"")?.takeIf { it.isNotEmpty() } ?: return true
-        return VIT_SSID_PATTERN.containsMatchIn(clean) ||
-            clean.contains("VIT", ignoreCase = true) ||
-            clean.endsWith("-VIT", ignoreCase = true) ||
-            SettingsManager.allowedSsids.value.any { clean.contains(it, ignoreCase = true) }
     }
 
     private suspend fun handleCaptivePortal(handle: NetworkHandle) {
