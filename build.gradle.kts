@@ -29,6 +29,11 @@ buildscript {
             classpath("org.bouncycastle:bcpkix-jdk18on:1.84") {
                 because("GHSA-wg6q-6289-32hp: broken cryptographic algorithm in bcpkix-jdk18on < 1.84")
             }
+            // 3.16.0 recurses without a depth bound on long inputs, so a large
+            // string can overflow the stack. Reached through AGP.
+            classpath("org.apache.commons:commons-lang3:3.18.0") {
+                because("GHSA-j288-q9x7-2f5v: uncontrolled recursion in commons-lang3 < 3.18.0")
+            }
         }
     }
 }
