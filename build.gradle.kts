@@ -1,4 +1,19 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+// AGP pulls jdom2 in transitively through jetifier-processor. 2.0.6 parses XML
+// with external entities enabled (GHSA-2363-cqg2-863c, XXE). Nothing here feeds
+// it untrusted XML, and it never reaches a shipped artifact -- it is on the
+// build classpath only -- but the patched release is a drop-in, so there is no
+// reason to keep the vulnerable one around.
+buildscript {
+    dependencies {
+        constraints {
+            classpath("org.jdom:jdom2:2.0.6.1") {
+                because("GHSA-2363-cqg2-863c: XXE injection in jdom2 < 2.0.6.1")
+            }
+        }
+    }
+}
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
