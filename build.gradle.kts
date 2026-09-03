@@ -1,15 +1,23 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
-// AGP pulls jdom2 in transitively through jetifier-processor. 2.0.6 parses XML
-// with external entities enabled (GHSA-2363-cqg2-863c, XXE). Nothing here feeds
-// it untrusted XML, and it never reaches a shipped artifact -- it is on the
-// build classpath only -- but the patched release is a drop-in, so there is no
-// reason to keep the vulnerable one around.
+// AGP and the Kotlin Gradle plugin pull these in transitively, so the versions
+// are theirs rather than ours and a version-catalog bump cannot reach them.
+// Every one of them is on the build classpath only -- none is packaged into the
+// APK, the desktop image or the CLI bundle -- but each patched release is a
+// drop-in, so there is no reason to keep a flagged version around.
 buildscript {
     dependencies {
         constraints {
+            // 2.0.6 parses XML with external entities enabled. Reached through
+            // AGP -> jetifier-processor; nothing here feeds it untrusted XML.
             classpath("org.jdom:jdom2:2.0.6.1") {
                 because("GHSA-2363-cqg2-863c: XXE injection in jdom2 < 2.0.6.1")
+            }
+            // 0.9.5 decompresses JWE payloads without an output bound, so a
+            // crafted token can exhaust the heap. Reached through AGP's Google
+            // auth stack; nothing here processes JWEs.
+            classpath("org.bitbucket.b_c:jose4j:0.9.6") {
+                because("GHSA-3677-xxcr-wjqv: DoS via compressed JWE content in jose4j < 0.9.6")
             }
         }
     }
