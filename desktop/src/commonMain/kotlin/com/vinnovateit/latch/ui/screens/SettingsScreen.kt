@@ -55,6 +55,7 @@ import com.vinnovateit.latch.ui.components.SettingsItem
 import com.vinnovateit.latch.ui.components.SettingsRowGap
 import com.vinnovateit.latch.ui.components.SettingsSection
 import com.vinnovateit.latch.ui.components.SettingsSelectionDialog
+import com.vinnovateit.latch.ui.components.itemShape
 import com.vinnovateit.latch.ui.theme.AccentSeeds
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 import org.jetbrains.compose.resources.stringResource
@@ -128,6 +129,7 @@ fun SettingsScreen(
                             title = "Auto-login",
                             subtitle = "Login automatically when a VIT WIFI is available nearby",
                             leadingIcon = LatchIcons.Login,
+                            shape = itemShape(0, 2),
                             trailingContent = {
                                 Switch(
                                     checked = autoLogin,
@@ -140,6 +142,7 @@ fun SettingsScreen(
                             title = stringResource(Res.string.update_credentials),
                             subtitle = "Change the registration number or password Latch uses",
                             leadingIcon = LatchIcons.Autorenew,
+                            shape = itemShape(1, 2),
                             onClick = onNavigateToCredentials,
                         )
                     }
@@ -156,6 +159,7 @@ fun SettingsScreen(
                                 "Dark" -> LatchIcons.DarkMode
                                 else -> LatchIcons.DesktopWindows
                             },
+                            shape = itemShape(0, 2),
                             onClick = { showThemeDialog = true },
                         )
                         SettingsRowGap()
@@ -167,6 +171,7 @@ fun SettingsScreen(
                                 else -> accentColor
                             },
                             leadingIcon = LatchIcons.InvertColors,
+                            shape = itemShape(1, 2),
                             onClick = { showAccentDialog = true },
                             trailingContent = {
                                 AccentSwatch(
@@ -185,6 +190,7 @@ fun SettingsScreen(
                             title = "Speed units",
                             subtitle = speedUnits,
                             leadingIcon = LatchIcons.BarChart,
+                            shape = itemShape(0, 2),
                             onClick = { showUnitsDialog = true },
                         )
                         SettingsRowGap()
@@ -192,6 +198,7 @@ fun SettingsScreen(
                             title = "Clear session history",
                             subtitle = "Delete all recorded sessions and usage totals",
                             leadingIcon = LatchIcons.Restore,
+                            shape = itemShape(1, 2),
                             onClick = { showClearStatsDialog = true },
                         )
                     }
@@ -205,6 +212,7 @@ fun SettingsScreen(
                                 title = "Run at startup",
                                 subtitle = "Launch Latch automatically when you sign in",
                                 leadingIcon = LatchIcons.DesktopWindows,
+                                shape = itemShape(0, 1),
                                 trailingContent = {
                                     Switch(
                                         checked = autostartEnabled,

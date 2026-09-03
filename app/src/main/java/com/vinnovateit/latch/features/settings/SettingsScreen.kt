@@ -44,6 +44,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -52,6 +54,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ripple
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -232,6 +235,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                   tint = MaterialTheme.colorScheme.primary
                 )
               },
+              shape = itemShape(0, 2),
               trailingContent = {
                 Switch(
                   checked = autoLogin,
@@ -253,6 +257,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                   tint = MaterialTheme.colorScheme.primary
                 )
               },
+              shape = itemShape(1, 2),
               onClick = { onNavigateToCredentials() }
             )
           }
@@ -264,6 +269,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
       // APPEARANCE
       item {
         SettingsSection(title = "Appearance") {
+          val appearanceItemCount = if (useDynamicColors) 2 else 3
           Column(modifier = Modifier.clip(shape = RoundedCornerShape(24.dp))) {
             SettingsItem(
               title = "Theme",
@@ -280,6 +286,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                   tint = MaterialTheme.colorScheme.primary
                 )
               },
+              shape = itemShape(0, appearanceItemCount),
               onClick = { showThemeSheet = true }
             )
 
@@ -301,6 +308,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                       tint = MaterialTheme.colorScheme.primary
                     )
                   },
+                  shape = itemShape(1, 3),
                   trailingContent = {
                     val colors = listOf(
                       "Red" to androidx.compose.ui.graphics.Color(0xFFC01221),
@@ -334,6 +342,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                   tint = MaterialTheme.colorScheme.primary
                 )
               },
+              shape = itemShape(appearanceItemCount - 1, appearanceItemCount),
               trailingContent = {
                 Switch(
                   checked = useDynamicColors,
@@ -368,6 +377,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                   tint = MaterialTheme.colorScheme.primary
                 )
               },
+              shape = itemShape(0, 2),
               onClick = { showSpeedUnitsSheet = true }
             )
             Spacer(modifier = Modifier.height(3.dp))
@@ -381,6 +391,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                   tint = MaterialTheme.colorScheme.primary
                 )
               },
+              shape = itemShape(1, 2),
               onClick = { showClearStatsSheet = true }
             )
           }
@@ -619,67 +630,58 @@ fun AccentColorPicker(
   }
 }
 
+fun itemShape(index: Int, count: Int, cornerRadius: Dp = 24.dp, innerRadius: Dp = 4.dp): Shape {
+  if (count <= 1) return RoundedCornerShape(cornerRadius)
+  return when (index) {
+    0 -> RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius, bottomStart = innerRadius, bottomEnd = innerRadius)
+    count - 1 -> RoundedCornerShape(topStart = innerRadius, topEnd = innerRadius, bottomStart = cornerRadius, bottomEnd = cornerRadius)
+    else -> RoundedCornerShape(innerRadius)
+  }
+}
+
 @Composable
 fun SettingsItem(
   title: String,
   subtitle: String,
   leadingIcon: @Composable () -> Unit,
-  trailingContent: @Composable () -> Unit = {},
+  shape: Shape = RoundedCornerShape(10.dp),
+  trailingContent: (@Composable () -> Unit)? = null,
   onClick: () -> Unit
 ) {
   val haptic = LocalHapticFeedback.current
-  Surface(
-    color = MaterialTheme.colorScheme.surfaceVariant,
+  ListItem(
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(10.dp))
+      .clip(shape)
       .clickable(onClick = {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         onClick()
-      })
-  ) {
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      modifier = Modifier
-        .padding(16.dp)
-        .fillMaxWidth()
-    ) {
-      Box(
-        modifier = Modifier
-          .padding(end = 16.dp)
-          .size(24.dp),
-        contentAlignment = Alignment.Center
-      ) {
+      }),
+    leadingContent = {
+      Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
         leadingIcon()
       }
-
-      Column(
-        modifier = Modifier
-          .weight(1f)
-          .padding(end = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-      ) {
-        Text(
-          text = title,
-          style = MaterialTheme.typography.titleMedium,
-          fontSize = 16.sp,
-          fontWeight = FontWeight.Medium,
-          color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-          text = subtitle,
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-      }
-
-      Box(
-        modifier = Modifier.padding(start = 16.dp),
-        contentAlignment = Alignment.CenterEnd
-      ) {
-        trailingContent()
-      }
-    }
+    },
+    trailingContent = trailingContent,
+    supportingContent = {
+      Text(
+        text = subtitle,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = if (trailingContent != null) Modifier.padding(end = 16.dp) else Modifier
+      )
+    },
+    colors = ListItemDefaults.colors(
+      containerColor = MaterialTheme.colorScheme.surfaceVariant
+    ),
+    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
+  ) {
+    Text(
+      text = title,
+      style = MaterialTheme.typography.titleMedium,
+      color = MaterialTheme.colorScheme.onSurface,
+      modifier = if (trailingContent != null) Modifier.padding(end = 16.dp) else Modifier
+    )
   }
 }
 

@@ -97,6 +97,33 @@ fun LatchNavGraph(
         }
     }
 
+    val settingsContent: @Composable () -> Unit = {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            SettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                onNavigateToCredentials = { navController.navigate(LatchRoutes.credentials(editMode = true)) }
+            )
+        }
+    }
+
+    val onboardingContent: @Composable () -> Unit = {
+        val context = LocalContext.current
+        Surface(modifier = Modifier.fillMaxSize()) {
+            OnboardingScreen(
+                onComplete = {
+                    val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+                    prefs.edit { putBoolean("hasSeenOnboarding", true) }
+                    navController.navigate(LatchRoutes.HOME) {
+                        popUpTo(LatchRoutes.ONBOARDING) { inclusive = true }
+                    }
+                },
+                onNavigateToCredentials = {
+                    navController.navigate(LatchRoutes.credentials(editMode = false))
+                }
+            )
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -127,19 +154,7 @@ fun LatchNavGraph(
     ) {
         // Onboarding pager
         composable(LatchRoutes.ONBOARDING) {
-            val context = LocalContext.current
-            OnboardingScreen(
-                onComplete = {
-                    val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                    prefs.edit { putBoolean("hasSeenOnboarding", true) }
-                    navController.navigate(LatchRoutes.HOME) {
-                        popUpTo(LatchRoutes.ONBOARDING) { inclusive = true }
-                    }
-                },
-                onNavigateToCredentials = {
-                    navController.navigate(LatchRoutes.credentials(editMode = false))
-                }
-            )
+            onboardingContent()
         }
 
         // Credentials screen
@@ -152,13 +167,15 @@ fun LatchNavGraph(
                     } else {
                         navController.popBackStack(LatchRoutes.ONBOARDING, inclusive = false)
                     }
-                }
+                },
+                backgroundContent = if (editMode) settingsContent else onboardingContent
             ) { triggerBack ->
                 CredentialsScreen(
                     editMode = editMode,
                     onCredentialsSaved = {
                         triggerBack()
-                    }
+                    },
+                    onBackClick = triggerBack
                 )
             }
         }

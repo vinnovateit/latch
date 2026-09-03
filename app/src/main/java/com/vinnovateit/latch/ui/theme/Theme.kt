@@ -79,18 +79,24 @@ fun LatchTheme(
 
     var colorScheme = baseColorScheme
 
-    if (darkTheme && usePureBlack) {
-        colorScheme = colorScheme.copy(
-            background = Color.Black,
-            surface = Color.Black,
-            surfaceContainer = Color.Black,
-            surfaceContainerLow = Color.Black,
-            surfaceContainerLowest = Color.Black,
-            surfaceVariant = Color(0xFF121212),
-            surfaceContainerHigh = Color(0xFF121212),
-            surfaceContainerHighest = Color(0xFF1A1A1A),
-            surfaceDim = Color.Black
-        )
+    if (darkTheme) {
+        colorScheme = if (usePureBlack) {
+            colorScheme.copy(
+                background = Color.Black,
+                surface = Color.Black,
+                surfaceContainer = Color.Black,
+                surfaceContainerLow = Color.Black,
+                surfaceContainerLowest = Color.Black,
+                surfaceVariant = Color(0xFF121212),
+                surfaceContainerHigh = Color(0xFF121212),
+                surfaceContainerHighest = Color(0xFF1A1A1A),
+                surfaceDim = Color.Black
+            )
+        } else {
+            colorScheme.copy(
+                surfaceVariant = colorScheme.surfaceContainerHigh
+            )
+        }
     }
 
     CompositionLocalProvider(LocalIsDarkTheme provides darkTheme) {

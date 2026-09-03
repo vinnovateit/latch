@@ -5,7 +5,7 @@
 <img src="https://raw.githubusercontent.com/vinnovateit/latch/main/.github/assets/redLogoLatch.svg" alt="Project Logo" width="120">
 
 
-Cross-platform app that automates login to VIT hostel WiFi networks.
+Cross-platform app that automates login to VIT hostel Wi-Fi networks.
 
 [![Latest Release](https://img.shields.io/github/v/release/vinnovateit/latch?style=flat&color=E53935&logoColor=white&label=Release)](https://github.com/vinnovateit/latch/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/vinnovateit/latch/total?style=flat&logo=github&color=E53935&logoColor=white&label=Downloads)](https://github.com/vinnovateit/latch/releases)
@@ -16,11 +16,11 @@ Cross-platform app that automates login to VIT hostel WiFi networks.
 [![Request Feature](https://img.shields.io/badge/Request_Feature-E53935?style=flat&logo=github&logoColor=white)](https://github.com/vinnovateit/latch/issues/new?labels=enhancement&template=feature-request---.md)
 ## About the project
 
-Latch is a Kotlin application developed by VinnovateIT that automates the login process for VIT hostel WiFi networks. It detects network connections, submits credentials automatically, and optionally logs network statistics. The app reduces repetitive manual logins for students.
+Latch is a Kotlin application developed by VinnovateIT that automates the login process for VIT hostel Wi-Fi networks. It detects network connections, submits credentials automatically, and optionally logs network statistics. The app reduces repetitive manual logins for students.
 
 ## Key features
 
-- Automatic detection of VIT hostel WiFi networks
+- Automatic detection of VIT hostel Wi-Fi networks
 - Auto-login with securely stored credentials
 - Logging and display of network usage statistics
 - Standalone CLI for Linux terminals and Windows PowerShell
@@ -44,7 +44,7 @@ Before you start, make sure you have:
 
 ### Linux (desktop)
 
-1. Run the install script:
+1. Run the installation script:
 
    ```sh
    curl -fsSL https://latch.vinnovateit.com/install.sh | sh
@@ -153,7 +153,7 @@ No pre-built APK is currently published for the Android app. To use it today, bu
 
 ## Usage
 
-Latch automatically detects VIT hostel WiFi networks and logs in using the credentials you provide.
+Latch automatically detects VIT hostel Wi-Fi networks and logs in using the credentials you provide.
 
 Optionally, it records network statistics for monitoring purposes.
 

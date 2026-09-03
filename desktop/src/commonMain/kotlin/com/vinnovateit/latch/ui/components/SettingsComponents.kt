@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Surface
@@ -39,10 +41,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,6 +90,15 @@ internal fun SettingsRowGap() {
     Spacer(Modifier.height(3.dp))
 }
 
+internal fun itemShape(index: Int, count: Int, cornerRadius: Dp = 24.dp, innerRadius: Dp = 4.dp): Shape {
+    if (count <= 1) return RoundedCornerShape(cornerRadius)
+    return when (index) {
+        0 -> RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius, bottomStart = innerRadius, bottomEnd = innerRadius)
+        count - 1 -> RoundedCornerShape(topStart = innerRadius, topEnd = innerRadius, bottomStart = cornerRadius, bottomEnd = cornerRadius)
+        else -> RoundedCornerShape(innerRadius)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Individual row
 // ---------------------------------------------------------------------------
@@ -96,6 +109,7 @@ internal fun SettingsItem(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     leadingIcon: ImageVector? = null,
+    shape: Shape = RoundedCornerShape(10.dp),
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
     trailingContent: @Composable (() -> Unit)? = null,
@@ -106,78 +120,59 @@ internal fun SettingsItem(
         Modifier
     }
 
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .then(clickModifier),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-        ) {
-            if (leadingIcon != null) {
-                Box(
-                    modifier = Modifier
-                        .padding(end = 16.dp)
-                        .size(24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = leadingIcon,
-                        contentDescription = null,
-                        tint = if (enabled) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        },
-                    )
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (enabled) {
-                        MaterialTheme.colorScheme.onSurface
+    val leading: (@Composable () -> Unit)? = if (leadingIcon != null) {
+        {
+            Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = leadingIcon,
+                    contentDescription = null,
+                    tint = if (enabled) {
+                        MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                     },
-                    fontFamily = satoshiFontFamily(),
                 )
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                            alpha = if (enabled) 1f else 0.38f,
-                        ),
-                        fontFamily = satoshiFontFamily(),
-                    )
-                }
-            }
-
-            if (trailingContent != null) {
-                Box(
-                    modifier = Modifier.padding(start = 16.dp),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    trailingContent()
-                }
             }
         }
-    }
+    } else null
+
+    val supporting: (@Composable () -> Unit)? = if (subtitle != null) {
+        {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (enabled) 1f else 0.38f,
+                ),
+                modifier = if (trailingContent != null) Modifier.padding(end = 16.dp) else Modifier,
+            )
+        }
+    } else null
+
+    ListItem(
+        headlineContent = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                },
+                modifier = if (trailingContent != null) Modifier.padding(end = 16.dp) else Modifier,
+            )
+        },
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .then(clickModifier),
+        supportingContent = supporting,
+        leadingContent = leading,
+        trailingContent = trailingContent,
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    )
 }
 
 // ---------------------------------------------------------------------------

@@ -25,7 +25,6 @@ import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.PowerSettingsNew
-import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.QuestionMark
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Wifi
@@ -585,10 +584,6 @@ fun HowItWorksBottomSheet(onDismiss: () -> Unit) {
                 HowItWorksRow(
                     icon = Icons.Rounded.BarChart,
                     text = "Once connected, you can watch your real-time stats and data usage."
-                )
-                HowItWorksRow(
-                    icon = Icons.Rounded.Speed,
-                    text = "The 20 mbps cap will not be bypassable."
                 )
                 HowItWorksRow(
                     icon = Icons.Rounded.PowerSettingsNew,

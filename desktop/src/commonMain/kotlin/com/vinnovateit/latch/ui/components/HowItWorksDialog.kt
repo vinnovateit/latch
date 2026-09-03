@@ -47,12 +47,6 @@ internal fun HowItWorksDialog(onDismiss: () -> Unit) {
             )
             Spacer(Modifier.height(16.dp))
             HowItWorksRow(
-                icon = LatchIcons.Restore,
-                title = "20 Mbps cap",
-                body = "Campus Wi-Fi enforces a 20 Mbps cap per session. Latch re-authenticates automatically when the session expires.",
-            )
-            Spacer(Modifier.height(16.dp))
-            HowItWorksRow(
                 icon = LatchIcons.DesktopWindows,
                 title = "Lives in the system tray",
                 body = "Latch runs quietly in the background. The tray icon turns red when you're latched and grey when you're not.",
