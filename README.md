@@ -94,6 +94,7 @@ No pre-built APK is currently published for the Android app. To use it today, bu
    ./gradlew :desktop:packageReleaseRpm          # .rpm
    ./gradlew :desktop:packageReleaseAppImage     # AppImage
    ./gradlew :desktop:packageReleaseTarGz        # .tar.gz (Linux)
+   ./gradlew :desktop:packageReleaseApp          # .App (MacOS)
    ```
 
    Build artifacts land in `desktop/build/distributions/`.
