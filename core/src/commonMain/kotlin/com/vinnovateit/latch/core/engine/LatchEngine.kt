@@ -11,6 +11,7 @@ import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.core.wifi.ConnectionStatusManager
 import com.vinnovateit.latch.core.wifi.LoginResult
 import com.vinnovateit.latch.core.wifi.isVitCampusSsid
+import com.vinnovateit.latch.core.wifi.probeCampusNetwork
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -431,7 +432,18 @@ class LatchEngine(
             ConnectionStatus.Failed(ConnectionStatus.Reason.Disconnected)
         )
 
-        if (handle != null && wasLatched) {
+        // This process's memory is not the only way to be logged in: a CLI
+        // one-shot creates the engine for the length of a single command, so
+        // _isLatched is false even when the portal is authenticated, and
+        // `latch-cli --logout` with no daemon running went through the motions
+        // without ever telling the portal. Asking the network settles it.
+        // Deliberately after the status post -- the probe must not delay the
+        // "Disconnected" the user is waiting to see -- and only when this
+        // process does not already know, so the common path is unchanged.
+        val authenticated = wasLatched ||
+            probeCampusNetwork(platform.wifi, platform.httpTransport, logger).latched
+
+        if (handle != null && authenticated) {
             platform.wifi.bindProcess(handle)
             try {
                 val ok = withTimeoutOrNull(2000L) {
