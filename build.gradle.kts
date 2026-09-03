@@ -1,4 +1,18 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+// Bouncy Castle arrives transitively from both AGP and the Kotlin Gradle
+// plugin. 1.80.2 does not escape values used to build LDAP filters
+// (GHSA-c3fc-8qff-9hwx). Build classpath only, and nothing here performs LDAP
+// lookups, but the patched release is a drop-in.
+buildscript {
+    dependencies {
+        constraints {
+            classpath("org.bouncycastle:bcprov-jdk18on:1.84") {
+                because("GHSA-c3fc-8qff-9hwx: LDAP injection in bcprov-jdk18on < 1.84")
+            }
+        }
+    }
+}
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
