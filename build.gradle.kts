@@ -19,6 +19,11 @@ buildscript {
             classpath("org.bitbucket.b_c:jose4j:0.9.6") {
                 because("GHSA-3677-xxcr-wjqv: DoS via compressed JWE content in jose4j < 0.9.6")
             }
+            // 1.80.2 does not escape values used to build LDAP filters. Reached
+            // through both AGP and the Kotlin Gradle plugin; nothing here does LDAP.
+            classpath("org.bouncycastle:bcprov-jdk18on:1.84") {
+                because("GHSA-c3fc-8qff-9hwx: LDAP injection in bcprov-jdk18on < 1.84")
+            }
         }
     }
 }
