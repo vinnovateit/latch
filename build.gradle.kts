@@ -1,12 +1,26 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
-// Bouncy Castle arrives transitively from both AGP and the Kotlin Gradle
-// plugin. 1.80.2 does not escape values used to build LDAP filters
-// (GHSA-c3fc-8qff-9hwx). Build classpath only, and nothing here performs LDAP
-// lookups, but the patched release is a drop-in.
+// AGP and the Kotlin Gradle plugin pull these in transitively, so the versions
+// are theirs rather than ours and a version-catalog bump cannot reach them.
+// Every one of them is on the build classpath only -- none is packaged into the
+// APK, the desktop image or the CLI bundle -- but each patched release is a
+// drop-in, so there is no reason to keep a flagged version around.
 buildscript {
     dependencies {
         constraints {
+            // 2.0.6 parses XML with external entities enabled. Reached through
+            // AGP -> jetifier-processor; nothing here feeds it untrusted XML.
+            classpath("org.jdom:jdom2:2.0.6.1") {
+                because("GHSA-2363-cqg2-863c: XXE injection in jdom2 < 2.0.6.1")
+            }
+            // 0.9.5 decompresses JWE payloads without an output bound, so a
+            // crafted token can exhaust the heap. Reached through AGP's Google
+            // auth stack; nothing here processes JWEs.
+            classpath("org.bitbucket.b_c:jose4j:0.9.6") {
+                because("GHSA-3677-xxcr-wjqv: DoS via compressed JWE content in jose4j < 0.9.6")
+            }
+            // 1.80.2 does not escape values used to build LDAP filters. Reached
+            // through both AGP and the Kotlin Gradle plugin; nothing here does LDAP.
             classpath("org.bouncycastle:bcprov-jdk18on:1.84") {
                 because("GHSA-c3fc-8qff-9hwx: LDAP injection in bcprov-jdk18on < 1.84")
             }
