@@ -16,7 +16,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  desktop:
 
     runs-on: ubuntu-latest
 
