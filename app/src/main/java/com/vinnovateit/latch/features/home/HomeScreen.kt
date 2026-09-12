@@ -364,24 +364,26 @@ fun PowerButtonOverlay(
         (LocalResources.current.displayMetrics.widthPixels * 0.48f).toDp()
     }
 
-    val rotation by animateFloatAsState(
-        targetValue = if (isConnected) 0f else 180f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "powerIconRotation"
-    )
-
     val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
+    val colorScheme = MaterialTheme.colorScheme
 
-    val containerColor = if (isAmoled) Color.Black else MaterialTheme.colorScheme.primaryContainer
+    val containerColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isAmoled) Color.Black else if (isConnected) colorScheme.primary else colorScheme.primaryContainer,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "powerBtnContainerColor"
+    )
 
     val contentColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        targetValue = if (isAmoled) {
+            if (isConnected) colorScheme.primary else colorScheme.onSurface
+        } else {
+            if (isConnected) colorScheme.onPrimary else colorScheme.onPrimaryContainer
+        },
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
         label = "powerBtnContentColor"
     )
 
-    val primaryColor = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier.size(buttonDiameterDp),
         contentAlignment = Alignment.Center
@@ -392,14 +394,12 @@ fun PowerButtonOverlay(
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = contentColor),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
-            border = if (isAmoled) androidx.compose.foundation.BorderStroke(4.dp, if (isConnected) primaryColor else MaterialTheme.colorScheme.outline) else null
+            border = if (isAmoled) androidx.compose.foundation.BorderStroke(4.dp, if (isConnected) colorScheme.primary else colorScheme.outline) else null
         ) {
             Icon(
                 imageVector = Icons.Rounded.PowerSettingsNew,
                 contentDescription = "Power Button",
-                modifier = Modifier
-                    .size(80.dp)
-                    .graphicsLayer { rotationZ = rotation }
+                modifier = Modifier.size(80.dp)
             )
         }
     }
@@ -422,24 +422,26 @@ fun LandscapePowerButton(
         label = "cornerRadiusAnim"
     )
 
-    val rotation by animateFloatAsState(
-        targetValue = if (isConnected) 0f else 180f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "powerIconRotation"
-    )
-
     val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
     val isAmoled = usePureBlack && com.vinnovateit.latch.ui.theme.LocalIsDarkTheme.current
+    val colorScheme = MaterialTheme.colorScheme
 
-    val containerColor = if (isAmoled) Color.Black else MaterialTheme.colorScheme.primaryContainer
+    val containerColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isAmoled) Color.Black else if (isConnected) colorScheme.primary else colorScheme.primaryContainer,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "powerBtnContainerColor"
+    )
 
     val contentColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        targetValue = if (isAmoled) {
+            if (isConnected) colorScheme.primary else colorScheme.onSurface
+        } else {
+            if (isConnected) colorScheme.onPrimary else colorScheme.onPrimaryContainer
+        },
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
         label = "powerBtnContentColor"
     )
 
-    val primaryColor = MaterialTheme.colorScheme.primary
     Button(
         onClick = onConnectClick,
         interactionSource = interactionSource,
@@ -453,7 +455,7 @@ fun LandscapePowerButton(
         shape = RoundedCornerShape(cornerRadius),
         colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = contentColor),
         contentPadding = PaddingValues(0.dp),
-        border = if (isAmoled) androidx.compose.foundation.BorderStroke(4.dp, if (isConnected) primaryColor else MaterialTheme.colorScheme.outline) else null
+        border = if (isAmoled) androidx.compose.foundation.BorderStroke(4.dp, if (isConnected) colorScheme.primary else colorScheme.outline) else null
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -462,9 +464,7 @@ fun LandscapePowerButton(
             Icon(
                 imageVector = Icons.Rounded.PowerSettingsNew,
                 contentDescription = "Power Button",
-                modifier = Modifier
-                    .fillMaxSize(fraction = 0.5f)
-                    .graphicsLayer { rotationZ = rotation }
+                modifier = Modifier.fillMaxSize(fraction = 0.5f)
             )
         }
     }

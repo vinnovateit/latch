@@ -53,6 +53,20 @@ class ForegroundService : Service(), ForegroundController {
         super.onCreate()
         Log.d("ForegroundService", "Service created")
 
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancelAll()
+
+        val chan = NotificationChannel(
+            channelId,
+            getString(R.string.notification_channel_name),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            setSound(null, null)
+            enableVibration(false)
+            enableLights(false)
+        }
+        manager.createNotificationChannel(chan)
+
         try {
             val notification = createNotificationBuilder("Latch is Running", getString(R.string.notification_text)).build()
 
@@ -170,9 +184,9 @@ class ForegroundService : Service(), ForegroundController {
                     val timeString = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
                     updateNotification("Latched", "Connected at $timeString")
                     startNotificationUpdates()
-                    LatchAppGraph.platform.notifier.notifyTransient("Connected", "Latched onto VIT WiFi at $timeString")
                 } else if (!latched && wasLatched) {
                     notificationUpdateJob?.cancel()
+                    updateNotification("Latch is Running", getString(R.string.notification_text))
                 }
                 wasLatched = latched
             }
@@ -180,22 +194,13 @@ class ForegroundService : Service(), ForegroundController {
     }
 
     private fun createNotificationBuilder(title: String, text: String): NotificationCompat.Builder {
-        val channelName = getString(R.string.notification_channel_name)
-
-        val chan = NotificationChannel(
-            channelId,
-            channelName,
-            NotificationManager.IMPORTANCE_LOW
-        )
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(chan)
-
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_latch)
             .setContentIntent(ongoingNotificationTapIntent())
             .setOnlyAlertOnce(true)
+            .setSilent(true)
     }
 
     private fun updateNotification(title: String, text: String) {

@@ -19,6 +19,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -30,6 +33,8 @@ import com.vinnovateit.latch.core.model.LiveConnectionStatus
 import com.vinnovateit.latch.core.model.PortalSessionRecord
 import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.core.stats.formatDate
+import com.vinnovateit.latch.core.stats.formatDisplayDate
 import com.vinnovateit.latch.features.stats.StatsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -53,7 +58,17 @@ fun StatsList(
   val statsInsights by statsViewModel.statsInsights.collectAsStateWithLifecycle()
   val chartItems by statsViewModel.chartItems.collectAsStateWithLifecycle()
   val isHistoryLoaded by statsViewModel.isHistoryLoaded.collectAsStateWithLifecycle()
-  val todaySessions by statsViewModel.todaySessions.collectAsStateWithLifecycle()
+  var selectedDayTimestamp by remember { mutableStateOf<Long?>(null) }
+  val todayKey = remember { formatDate(System.currentTimeMillis(), "yyyy-MM-dd") }
+  val selectedDateKey = selectedDayTimestamp?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
+  val isToday = selectedDateKey == todayKey
+
+  val displayedSessions = remember(portalHistory, selectedDateKey) {
+    portalHistory.filter { session ->
+      session.loginTime > 0 && (session.uploadBytes > 0L || session.downloadBytes > 0L) && formatDate(session.loginTime, "yyyy-MM-dd") == selectedDateKey
+    }
+  }
+
   val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
   val isAmoled = usePureBlack && com.vinnovateit.latch.ui.theme.LocalIsDarkTheme.current
   val chartPalette by SettingsManager.chartPalette.collectAsStateWithLifecycle()
@@ -103,15 +118,17 @@ fun StatsList(
       item {
         HistoryBarChart(
           history = chartItems,
-          isLoaded = isHistoryLoaded
+          isLoaded = isHistoryLoaded,
+          onSelectedDayChange = { selectedDayTimestamp = it }
         )
         Spacer(modifier = Modifier.height(15.dp))
       }
     }
 
     item {
+      val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())} Sessions"
       Text(
-        text = "Today's Sessions",
+        text = title,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onBackground,
@@ -122,11 +139,11 @@ fun StatsList(
       )
     }
 
-    if (todaySessions.isNotEmpty()) {
-      itemsIndexed(todaySessions, key = { index, session -> "today_${session.loginTime}_$index" }) { index, session ->
+    if (displayedSessions.isNotEmpty()) {
+      itemsIndexed(displayedSessions, key = { index, session -> "session_${session.loginTime}_$index" }) { index, session ->
         TodaySessionListItem(
           session = session,
-          shape = groupedItemShape(index, todaySessions.size),
+          shape = groupedItemShape(index, displayedSessions.size),
           isAmoled = isAmoled,
           dlColor = dlColor,
           ulColor = ulColor
@@ -134,6 +151,7 @@ fun StatsList(
       }
     } else {
       item {
+        val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())}."
         Surface(
           modifier = Modifier
             .fillMaxWidth()
@@ -142,7 +160,7 @@ fun StatsList(
           color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ) {
           Text(
-            text = "No active portal sessions recorded today.",
+            text = emptyText,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(16.dp)

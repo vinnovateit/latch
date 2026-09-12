@@ -3,7 +3,6 @@ package com.vinnovateit.latch.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -37,38 +35,39 @@ private data class PowerButtonStyle(
     val container: Color,
     val content: Color,
     val border: Color?,
-    val rotation: Float,
 )
 
 @Composable
 private fun powerButtonStyle(isConnected: Boolean): PowerButtonStyle {
     val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
-    val primary = MaterialTheme.colorScheme.primary
-    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val colorScheme = MaterialTheme.colorScheme
 
     val container by animateColorAsState(
-        targetValue = if (isAmoled) Color.Black else primaryContainer,
+        targetValue = if (isAmoled) Color.Black else if (isConnected) colorScheme.primary else colorScheme.primaryContainer,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
         label = "btnContainer",
     )
     val content by animateColorAsState(
-        targetValue = if (isConnected) primary else primary.copy(alpha = 0.4f),
-        label = "btnContent",
-    )
-    val rotation by animateFloatAsState(
-        targetValue = if (isConnected) 0f else 180f,
+        targetValue = if (isAmoled) {
+            if (isConnected) colorScheme.primary else colorScheme.onSurface
+        } else {
+            if (isConnected) colorScheme.onPrimary else colorScheme.onPrimaryContainer
+        },
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
         ),
-        label = "btnRotation",
+        label = "btnContent",
     )
 
     return PowerButtonStyle(
         container = container,
         content = content,
-        border = if (isAmoled) primary else null,
-        rotation = rotation,
+        border = if (isAmoled) (if (isConnected) colorScheme.primary else colorScheme.outline) else null,
     )
 }
 
@@ -99,9 +98,7 @@ internal fun CircularPowerButton(
                 imageVector = LatchIcons.PowerSettingsNew,
                 contentDescription = if (isConnected) "Disconnect" else "Connect",
                 tint = style.content,
-                modifier = Modifier
-                    .size(diameter * 0.45f)
-                    .rotate(style.rotation),
+                modifier = Modifier.size(diameter * 0.45f),
             )
         }
     }
@@ -143,9 +140,7 @@ internal fun MorphingPowerButton(
                 imageVector = LatchIcons.PowerSettingsNew,
                 contentDescription = if (isConnected) "Disconnect" else "Connect",
                 tint = style.content,
-                modifier = Modifier
-                    .fillMaxSize(0.45f)
-                    .rotate(style.rotation),
+                modifier = Modifier.fillMaxSize(0.45f),
             )
         }
     }

@@ -76,6 +76,7 @@ fun HistoryBarChart(
     dlColor: Color,
     ulColor: Color,
     isAmoled: Boolean,
+    onSelectedDayChange: ((Long?) -> Unit)? = null,
 ) {
     if (chartItems.isEmpty()) return
 
@@ -120,6 +121,9 @@ fun HistoryBarChart(
     val initialBarItem = remember(chartItems, todayIdx) {
         chartItems.getOrNull(todayIdx) as? HistoryChartItem.BarData
     }
+    LaunchedEffect(initialBarItem) {
+        onSelectedDayChange?.invoke(initialBarItem?.timestamp)
+    }
     var selectedIndex by remember(chartItems, todayIdx) {
         mutableIntStateOf(if (initialBarItem != null) todayIdx else -1)
     }
@@ -155,6 +159,38 @@ fun HistoryBarChart(
             maxV
         }.distinctUntilChanged().collect {
             visibleMaxUsage = it
+        }
+    }
+
+    var lastCenteredIndex by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(chartItems, lazyListState) {
+        snapshotFlow {
+            val layoutInfo = lazyListState.layoutInfo
+            val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+            val visibleBars = layoutInfo.visibleItemsInfo.filter {
+                chartItems.getOrNull(it.index) is HistoryChartItem.BarData
+            }
+            visibleBars.minByOrNull { item ->
+                val itemCenter = item.offset + item.size / 2
+                kotlin.math.abs(itemCenter - viewportCenter)
+            }?.index ?: -1
+        }.distinctUntilChanged().collect { centerIdx ->
+            if (centerIdx != -1 && centerIdx != lastCenteredIndex && lazyListState.isScrollInProgress) {
+                val item = chartItems.getOrNull(centerIdx) as? HistoryChartItem.BarData
+                if (item != null) {
+                    lastCenteredIndex = centerIdx
+                    selectedIndex = centerIdx
+                    displayedData = DesktopChartDetailState(
+                        usage = item.usage,
+                        label = item.formattedDate.ifBlank {
+                            formatDate(item.timestamp, "EEEE, MMMM d, yyyy")
+                        },
+                        sessionCount = item.sessionCount,
+                        durationFormatted = item.durationFormatted,
+                    )
+                    onSelectedDayChange?.invoke(item.timestamp)
+                }
+            }
         }
     }
 
@@ -244,6 +280,7 @@ fun HistoryBarChart(
                                 dlColor = dlColor,
                                 ulColor = ulColor,
                                 onTap = {
+                                    lastCenteredIndex = idx
                                     selectedIndex = idx
                                     displayedData = DesktopChartDetailState(
                                         usage = item.usage,
@@ -253,6 +290,7 @@ fun HistoryBarChart(
                                         sessionCount = item.sessionCount,
                                         durationFormatted = item.durationFormatted,
                                     )
+                                    onSelectedDayChange?.invoke(item.timestamp)
                                     coroutineScope.launch {
                                         val layoutInfo = lazyListState.layoutInfo
                                         val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx }

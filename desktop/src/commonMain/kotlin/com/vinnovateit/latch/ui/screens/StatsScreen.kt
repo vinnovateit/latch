@@ -39,6 +39,7 @@ import com.vinnovateit.latch.core.model.DataUsage
 import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.formatDate
+import com.vinnovateit.latch.core.stats.formatDisplayDate
 import com.vinnovateit.latch.core.stats.generatePortalHtmlReport
 import com.vinnovateit.latch.desktop.resources.Res
 import com.vinnovateit.latch.desktop.resources.stats_title
@@ -93,9 +94,13 @@ fun StatsScreen(
     val insights by sessions.statsInsights.collectAsStateWithLifecycle()
     val chartItems by sessions.chartItems.collectAsStateWithLifecycle()
 
-    val todaySessions = remember(portalHistory) {
-        val todayKey = formatDate(System.currentTimeMillis(), "yyyy-MM-dd")
-        portalHistory.filter { it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L) && formatDate(it.loginTime, "yyyy-MM-dd") == todayKey }
+    var selectedDayTimestamp by remember { mutableStateOf<Long?>(null) }
+    val todayKey = remember { formatDate(System.currentTimeMillis(), "yyyy-MM-dd") }
+    val selectedDateKey = selectedDayTimestamp?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
+    val isToday = selectedDateKey == todayKey
+
+    val displayedSessions = remember(portalHistory, selectedDateKey) {
+        portalHistory.filter { it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L) && formatDate(it.loginTime, "yyyy-MM-dd") == selectedDateKey }
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -298,15 +303,17 @@ fun StatsScreen(
                                 dlColor = dlColor,
                                 ulColor = ulColor,
                                 isAmoled = isAmoled,
+                                onSelectedDayChange = { selectedDayTimestamp = it },
                             )
                             Spacer(modifier = Modifier.height(15.dp))
                         }
                     }
 
-                    // Today's Sessions header
+                    // Selected day's Sessions header
                     item {
+                        val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())} Sessions"
                         Text(
-                            text = "Today's Sessions",
+                            text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
@@ -317,12 +324,12 @@ fun StatsScreen(
                         )
                     }
 
-                    // Today's session items or empty state
-                    if (todaySessions.isNotEmpty()) {
-                        itemsIndexed(todaySessions, key = { index, session -> "today_${session.loginTime}_$index" }) { index, session ->
+                    // Selected day's session items or empty state
+                    if (displayedSessions.isNotEmpty()) {
+                        itemsIndexed(displayedSessions, key = { index, session -> "session_${session.loginTime}_$index" }) { index, session ->
                             TodaySessionListItem(
                                 session = session,
-                                shape = groupedItemShape(index, todaySessions.size),
+                                shape = groupedItemShape(index, displayedSessions.size),
                                 isAmoled = isAmoled,
                                 dlColor = dlColor,
                                 ulColor = ulColor,
@@ -330,6 +337,7 @@ fun StatsScreen(
                         }
                     } else {
                         item {
+                            val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())}."
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -338,7 +346,7 @@ fun StatsScreen(
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             ) {
                                 Text(
-                                    text = "No active portal sessions recorded today.",
+                                    text = emptyText,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(16.dp),

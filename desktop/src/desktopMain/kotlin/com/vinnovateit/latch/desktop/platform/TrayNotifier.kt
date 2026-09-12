@@ -4,6 +4,7 @@ import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.TrayState
 import com.vinnovateit.latch.core.platform.UserNotifier
 import com.vinnovateit.latch.desktop.AppPaths
+import com.vinnovateit.latch.desktop.platform.linux.LinuxNotifier
 import com.vinnovateit.latch.desktop.platform.windows.WindowsBalloonNotifier
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -19,10 +20,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
  *   notifyTransient  -> real balloon. State transitions ONLY.
  *
  * On Windows, [notifyTransient] routes through [WindowsBalloonNotifier] so
- * that the Latch icon appears in the balloon (NIIF_USER). Compose Desktop's
- * Notification.Type enum only exposes system icons (info/warning/error) and
- * Type.None (no icon), so there is no way to supply the Latch mark through
- * the Compose API alone.
+ * that the Latch icon appears in the balloon (NIIF_USER).
+ * On Linux, [notifyTransient] routes through [LinuxNotifier] to enforce a
+ * single notification, silent by default, with zombie cleanup across distros.
  */
 class TrayNotifier : UserNotifier {
 
@@ -46,6 +46,8 @@ class TrayNotifier : UserNotifier {
         // verbatim in the balloon body, so callers' own [title] is used instead.
         if (AppPaths.isWindows) {
             WindowsBalloonNotifier.notify(title, text, isError)
+        } else if (AppPaths.isLinux) {
+            LinuxNotifier.notify(title, text, isError)
         } else {
             trayState?.sendNotification(
                 Notification(
@@ -59,5 +61,8 @@ class TrayNotifier : UserNotifier {
 
     override fun hideOngoing() {
         tooltip.value = APP_DISPLAY_NAME
+        if (AppPaths.isLinux) {
+            LinuxNotifier.clear()
+        }
     }
 }

@@ -28,22 +28,31 @@ class AndroidUserNotifier(
     companion object {
         const val ONGOING_CHANNEL_ID = "WIFI_LOGIN_CHANNEL"
         const val ONGOING_NOTIFICATION_ID = 1
-        private const val TRANSIENT_CHANNEL_ID = "latch_ui_notifications"
-        private const val TRANSIENT_NOTIFICATION_ID = 2002
+        private const val OLD_TRANSIENT_NOTIFICATION_ID = 2002
     }
 
     private val notificationManager
         get() = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     override fun showOngoing(title: String, text: String) {
-        notificationManager.createNotificationChannel(
-            NotificationChannel(ONGOING_CHANNEL_ID, context.getString(R.string.notification_channel_name), NotificationManager.IMPORTANCE_LOW)
-        )
+        val chan = NotificationChannel(
+            ONGOING_CHANNEL_ID,
+            context.getString(R.string.notification_channel_name),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            setSound(null, null)
+            enableVibration(false)
+            enableLights(false)
+        }
+        notificationManager.createNotificationChannel(chan)
+
         val notification = NotificationCompat.Builder(context, ONGOING_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_latch)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setContentIntent(foregroundController.ongoingNotificationTapIntent())
             .build()
         notificationManager.notify(ONGOING_NOTIFICATION_ID, notification)
@@ -55,18 +64,7 @@ class AndroidUserNotifier(
     }
 
     override fun notifyTransient(title: String, text: String, isError: Boolean) {
-        notificationManager.createNotificationChannel(
-            NotificationChannel(TRANSIENT_CHANNEL_ID, "Status Notifications", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Shows temporary status messages like Connected/Disconnected"
-            }
-        )
-        val notification = NotificationCompat.Builder(context, TRANSIENT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-        notificationManager.notify(TRANSIENT_NOTIFICATION_ID, notification)
+        notificationManager.cancel(OLD_TRANSIENT_NOTIFICATION_ID)
+        showOngoing(title, text)
     }
 }
