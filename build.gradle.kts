@@ -16,8 +16,8 @@ buildscript {
             // 0.9.5 decompresses JWE payloads without an output bound, so a
             // crafted token can exhaust the heap. Reached through AGP's Google
             // auth stack; nothing here processes JWEs.
-            classpath("org.bitbucket.b_c:jose4j:0.9.6") {
-                because("GHSA-3677-xxcr-wjqv: DoS via compressed JWE content in jose4j < 0.9.6")
+            classpath("org.bitbucket.b_c:jose4j:0.9.7") {
+                because("GHSA-3677-xxcr-wjqv: DoS via compressed JWE content in jose4j < 0.9.7")
             }
             // 1.80.2 does not escape values used to build LDAP filters. Reached
             // through both AGP and the Kotlin Gradle plugin; nothing here does LDAP.
