@@ -37,7 +37,7 @@ roomKmp = "2.8.4"
 sqliteBundled = "2.7.0"
 oshi = "7.6.1"
 jna = "5.19.1"
-slf4jSimple = "2.0.18"
+slf4jSimple = "2.0.19"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
