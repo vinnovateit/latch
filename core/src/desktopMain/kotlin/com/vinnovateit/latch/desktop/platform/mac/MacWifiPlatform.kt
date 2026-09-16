@@ -12,9 +12,6 @@ import java.util.concurrent.TimeUnit
 
 internal data class SimpleMacNetworkHandle(override val id: String) : NetworkHandle
 
-// Assuming 'en0' is wifi network device
-val interfaceName = "en0"
-
 /**
 'networksetup -listpreferredwirelessnetworks <device-name> (en0 for mba)' lists all saved wifi networks. 
 'system_profiler SPAirPortDataType' gives info about current connected wifi network and lists available wifi networks.
@@ -109,7 +106,7 @@ class MacWifiPlatform(private val logger: Logger) : WifiPlatform {
     private fun checkWifiEnabled(): Boolean {
         // Option 1: networksetup
         // This reports on even if wifi is on 'disconnected' state.
-        val power = runCommand("networksetup", "-getairportpower", interfaceName)
+        val power = runCommand("networksetup", "-getairportpower", findFirstWirelessInterface() as String)
         if (power != null) {
             return power.lowercase().contains("on")
         }
@@ -131,7 +128,7 @@ class MacWifiPlatform(private val logger: Logger) : WifiPlatform {
                 if (currNetSection) {
                     var ssid = line.trim().dropLast(1)
                     logger.d(TAG, "Connected WiFi: ${ssid}")
-                    return Pair(interfaceName, ssid)
+                    return Pair(findFirstWirelessInterface() as String, ssid)
                 }
             }
         }
@@ -141,7 +138,8 @@ class MacWifiPlatform(private val logger: Logger) : WifiPlatform {
 
     private fun findFirstWirelessInterface(): String? {
         logger.w(TAG, "Find wireless interface has hardcoded value.")
-        return interfaceName
+        return "en0"
+        // Return correct interface instead of hardcoded value.
         val netDir = File("/sys/class/net")
         if (netDir.exists()) {
             return netDir.listFiles()
@@ -152,64 +150,9 @@ class MacWifiPlatform(private val logger: Logger) : WifiPlatform {
     }
 
     private fun resolveGateway(iface: String?): String? {
-        val routeOut = runCommand("ipconfig", "getoption", interfaceName, "router")
+        val routeOut = runCommand("ipconfig", "getoption", findFirstWirelessInterface() as String, "router")
         logger.w(TAG, "Route Out: ${routeOut}")
         return routeOut
-    }
-
-    override fun connectToBestVitNetwork(): Boolean {
-        enableWifi()
-        logger.d(TAG, "Scanning Wi-Fi access points for -VIT / VIT networks...")
-        val networkDevice = "en0"
-        val scanOut = runCommand("system_profiler", "SPAirPortDataType")
-
-        val apList = mutableListOf<com.vinnovateit.latch.core.platform.WifiAccessPoint>()
-        if (scanOut != null) {
-            var wifiSection = false
-            var indentLevel = 0
-            for (line in scanOut.lines()) {
-                if (line.contains("Other Local Wi-Fi Networks:", ignoreCase = true)) {
-                    wifiSection = true
-                    continue
-                }
-                if (!wifiSection) continue
-                val currentIndent = countIndent(line)
-                if (indentLevel == 0) indentLevel = currentIndent
-                if (currentIndent < indentLevel) break
-                if (currentIndent > indentLevel) continue
-                var ssid = line.trim().dropLast(1)
-                val bssid = "" // Cannot figure out how to get bssid
-                val signal = 0 // Cannot figure out how to get signal
-                if (ssid.isNotEmpty()) {
-                    apList.add(com.vinnovateit.latch.core.platform.WifiAccessPoint(ssid, bssid, signal))
-                }
-            }
-        }
-
-        val vitAps = apList.filter { ap ->
-            ap.ssid.endsWith("-VIT", ignoreCase = true) || ap.ssid.contains("VIT", ignoreCase = true)
-        }.sortedByDescending { it.signalPercentage }
-
-        val bestAp = vitAps.firstOrNull()
-        if (bestAp == null) {
-            logger.w(TAG, "No -VIT / VIT Wi-Fi networks found in scan.")
-            return isConnectedToWifi()
-        }
-
-        logger.d(TAG, "Best VIT AP found: SSID='${bestAp.ssid}', BSSID='${bestAp.bssid}', Signal=${bestAp.signalPercentage}%")
-        runCommand(
-            "networksetup",
-            "-setairportnetwork", "en0",
-            bestAp.ssid
-        )
-
-        invalidate()
-        repeat(ENABLE_SETTLE_ATTEMPTS) {
-            if (isConnectedToWifi()) return true
-            Thread.sleep(ENABLE_SETTLE_INTERVAL_MS)
-            invalidate()
-        }
-        return isConnectedToWifi()
     }
 
     override fun isWifiEnabled(): Boolean = snapshot().wifiEnabled
@@ -220,8 +163,8 @@ class MacWifiPlatform(private val logger: Logger) : WifiPlatform {
         logger.d(TAG, "Attempting to enable Wi-Fi radio via networksetup...")
         // Turning off then turning it on handles the case where the wifi
         // was in 'disconnected' state.
-        runCommand("networksetup", "-setairportpower", interfaceName, "off")
-        runCommand("networksetup", "-setairportpower", interfaceName, "on")
+        runCommand("networksetup", "-setairportpower", findFirstWirelessInterface() as String, "off")
+        runCommand("networksetup", "-setairportpower", findFirstWirelessInterface() as String, "on")
         invalidate()
 
         repeat(ENABLE_SETTLE_ATTEMPTS) {
