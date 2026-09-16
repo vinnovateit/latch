@@ -140,7 +140,14 @@ class SessionRepository(
                     }
                 }
                 .collect { records ->
-                    _portalHistory.value = records
+                    // Room emits its initial snapshot asynchronously. If a manual
+                    // record is added before that empty snapshot arrives, do not
+                    // let the stale empty emission erase the in-memory record.
+                    // The insert flow will emit the authoritative non-empty row
+                    // shortly afterwards.
+                    if (records.isNotEmpty() || _portalHistory.value.isEmpty()) {
+                        _portalHistory.value = records
+                    }
                     _isHistoryLoaded.value = true
                 }
         }

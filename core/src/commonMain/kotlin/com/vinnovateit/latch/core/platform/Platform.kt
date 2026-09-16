@@ -146,7 +146,7 @@ interface CredentialStore {
 
 interface UserNotifier {
     /** Cheap, high-frequency status (the tray tooltip). Safe to call every 2s. */
-    fun showOngoing(title: String, text: String)
+    fun showOngoing(title: String, text: String) {}
 
     /**
      * A real notification. Reserve for state transitions only -- Windows
@@ -154,7 +154,7 @@ interface UserNotifier {
      */
     fun notifyTransient(title: String, text: String, isError: Boolean = false)
 
-    fun hideOngoing()
+    fun hideOngoing() {}
 }
 
 interface SystemActions {

@@ -151,7 +151,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path staging | Out-Null
-          Copy-Item desktop\build\compose\binaries\main-release\msi\*.msi staging\
+          # Keep one stable GUI installer filename across patch rebuilds. The
+          # MSI's internal product/version metadata remains controlled by
+          # Compose/jpackage; only the release asset name is normalized here.
+          $msi = @(Get-ChildItem desktop\build\compose\binaries\main-release\msi\*.msi)
+          if ($msi.Count -ne 1) {
+            throw "Expected exactly one Desktop MSI, found $($msi.Count)"
+          }
+          Copy-Item $msi.FullName staging\Latch-Setup.msi
           Copy-Item cli\build\distributions\*.zip staging\
           Get-ChildItem staging
 

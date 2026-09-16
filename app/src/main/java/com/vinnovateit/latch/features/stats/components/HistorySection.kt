@@ -81,12 +81,13 @@ data class ChartDetailState(
 @Composable
 fun HistoryBarChart(
     history: List<HistoryChartItem>,
-    isLoaded: Boolean = true
+    isLoaded: Boolean = true,
+    onSelectedDayChange: ((Long?) -> Unit)? = null
 ) {
     if (!isLoaded) {
         HistoryBarChartSkeleton()
     } else if (history.isNotEmpty()) {
-        HistoryBarChartContent(chartItems = history, isLoaded = isLoaded)
+        HistoryBarChartContent(chartItems = history, isLoaded = isLoaded, onSelectedDayChange = onSelectedDayChange)
     } else {
         NoDataCard("No stats available. Connect to Wi-Fi to start tracking your usage.")
     }
@@ -111,7 +112,11 @@ private fun NoDataCard(msg: String) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun HistoryBarChartContent(chartItems: List<HistoryChartItem>, isLoaded: Boolean = true) {
+private fun HistoryBarChartContent(
+    chartItems: List<HistoryChartItem>,
+    isLoaded: Boolean = true,
+    onSelectedDayChange: ((Long?) -> Unit)? = null
+) {
 
     if (isLoaded && chartItems.filterIsInstance<HistoryChartItem.BarData>().all { it.usage.rxBytes + it.usage.txBytes == 0L }) {
         NoDataCard("No stats available. Connect to Wi-Fi to start tracking your usage.")
@@ -162,6 +167,9 @@ private fun HistoryBarChartContent(chartItems: List<HistoryChartItem>, isLoaded:
 
     val initialBarItem = remember(chartItems, todayIdx) {
         chartItems.getOrNull(todayIdx) as? HistoryChartItem.BarData
+    }
+    LaunchedEffect(initialBarItem) {
+        onSelectedDayChange?.invoke(initialBarItem?.timestamp)
     }
     var selectedIndex by remember(chartItems, todayIdx) {
         mutableIntStateOf(if (initialBarItem != null) todayIdx else -1)
@@ -254,6 +262,7 @@ private fun HistoryBarChartContent(chartItems: List<HistoryChartItem>, isLoaded:
                         sessionCount = item.sessionCount,
                         durationFormatted = item.durationFormatted
                     )
+                    onSelectedDayChange?.invoke(item.timestamp)
                 }
             }
         }
@@ -336,6 +345,18 @@ private fun HistoryBarChartContent(chartItems: List<HistoryChartItem>, isLoaded:
                                 ulColor = ulColor,
                                 onTap = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    lastCenteredIndex = idx
+                                    selectedIndex = idx
+                                    val formattedDate = item.formattedDate.ifBlank {
+                                        formatDisplayDate(item.timestamp)
+                                    }
+                                    displayedData = ChartDetailState(
+                                        usage = item.usage,
+                                        label = formattedDate,
+                                        sessionCount = item.sessionCount,
+                                        durationFormatted = item.durationFormatted
+                                    )
+                                    onSelectedDayChange?.invoke(item.timestamp)
                                     coroutineScope.launch {
                                         val layoutInfo = lazyListState.layoutInfo
                                         val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx }
