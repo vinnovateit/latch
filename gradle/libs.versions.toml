@@ -1,6 +1,6 @@
 [versions]
 agp = "9.4.1"
-androidxMaterial3 = "1.5.0-alpha28"
+androidxMaterial3 = "1.5.0-alpha27"
 appUpdate = "2.1.0"
 coreSplashscreen = "1.2.0"
 glanceAppwidget = "1.2.0"
