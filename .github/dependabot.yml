@@ -14,6 +14,11 @@ updates:
         patterns:
           - "org.jetbrains.kotlin*"
           - "com.google.devtools.ksp*"
+      # Compose Multiplatform is versioned independently of the Kotlin toolchain (its
+      # Material3 alpha line moves on its own cadence), so it gets its own group rather
+      # than riding along with Kotlin/KSP in the same PR.
+      compose-multiplatform:
+        patterns:
           - "org.jetbrains.compose*"
       androidx:
         patterns:
