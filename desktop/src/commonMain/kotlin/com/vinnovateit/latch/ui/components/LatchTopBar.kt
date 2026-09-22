@@ -38,7 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.vinnovateit.latch.desktop.LatchMark
 import com.vinnovateit.latch.desktop.resources.Res
 import com.vinnovateit.latch.desktop.resources.home_status_connected
 import com.vinnovateit.latch.desktop.resources.home_status_disconnected
@@ -49,11 +48,16 @@ import org.jetbrains.compose.resources.stringResource
 
 
 /**
- * Immersive top bar: Latch mark on left and an auto-dismissing status pill (3.5s).
+ * Home status area: a transient LATCHED / DISCONNECTED pill that shows on a
+ * connection change and dismisses itself after 3.5s.
  *
- * The application menu lives in the window title bar alongside Minimize and Close,
- * not here, so this bar carries no actions and reserves no space for window
- * controls -- those sit in a physically separate row above the content.
+ * Carries no brand mark. Application identity is already stated by the window
+ * title bar, and again by the navigation rail on wide layouts, so a third mark
+ * beside the pill was only repetition.
+ *
+ * Carries no actions either: the application menu lives in the window title bar
+ * alongside Minimize and Close, and reserves no space here because those controls
+ * sit in a physically separate row above the content.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,13 +84,6 @@ internal fun LatchHomeTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(start = 4.dp),
             ) {
-                Icon(
-                    imageVector = LatchMark,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp),
-                )
-                Spacer(Modifier.width(12.dp))
                 AnimatedVisibility(
                     visible = showPill,
                     enter = fadeIn(tween(200)),
