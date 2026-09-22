@@ -36,6 +36,22 @@ import com.vinnovateit.latch.ui.theme.modernizFontFamily
 import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import kotlinx.coroutines.launch
 
+/**
+ * Index of the "Your Account" slide, the only one that gates progress.
+ *
+ * The requirement used to be enforced on the final slide by disabling its
+ * finish button. Nothing stopped a user walking straight past this slide, so
+ * they landed on "You're Ready!" -- whose copy states setup is complete -- in
+ * front of a greyed checkmark that silently swallowed clicks. Holding them here
+ * instead puts the block where "Set Up Credentials" is in reach, and matches
+ * what Android already does.
+ */
+private const val CREDENTIALS_PAGE = 3
+
+/** Whether forward navigation off [page] is permitted. */
+private fun canLeavePage(page: Int, hasCredentials: Boolean): Boolean =
+    page != CREDENTIALS_PAGE || hasCredentials
+
 private data class DesktopSlide(
     val title: String,
     val description: String,
@@ -127,9 +143,10 @@ fun DesktopOnboardingScreen(
         bottomBar = {
             DesktopOnboardingBottomBar(
                 pagerState = pagerState,
-                isFinishButtonEnabled = hasCredentials,
+                isForwardEnabled = canLeavePage(pagerState.currentPage, hasCredentials),
                 onNextClicked = {
                     scope.launch {
+                        if (!canLeavePage(pagerState.currentPage, hasCredentials)) return@launch
                         if (pagerState.currentPage < slides.size - 1) {
                             pagerState.animateScrollToPage(pagerState.currentPage + 1)
                         }
@@ -141,6 +158,7 @@ fun DesktopOnboardingScreen(
     ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = canLeavePage(pagerState.currentPage, hasCredentials),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),

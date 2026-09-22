@@ -45,4 +45,4 @@ jobs:
       # keyring and no display, and it is the only check that exercises the desktop
       # platform seams (SSID detection, OSHI counters, credential round-trip, Room).
       - name: Build and Test
-        run: ./gradlew :desktop:compileKotlinDesktop :core:desktopTest :cli:build :desktop:smoke
+        run: ./gradlew :desktop:compileKotlinDesktop :core:desktopTest :desktop:desktopTest :cli:build :desktop:smoke

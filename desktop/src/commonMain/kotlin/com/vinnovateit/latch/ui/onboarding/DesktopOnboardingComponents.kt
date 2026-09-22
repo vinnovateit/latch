@@ -151,13 +151,20 @@ fun HandsConnectAnimation(
 }
 
 /**
+ * What the forward button currently offers. A blocked button must never wear the
+ * arrow or the checkmark: the reported bug was a greyed checkmark that looked
+ * like a working finish control and silently swallowed every click.
+ */
+private enum class ForwardAffordance { NEXT, FINISH, BLOCKED }
+
+/**
  * 1:1 match of Android LatchSetupBottomBar: morphing shape FAB, rotation animation,
  * VinnovateIT branding logo, and page indicator dots.
  */
 @Composable
 fun DesktopOnboardingBottomBar(
     pagerState: PagerState,
-    isFinishButtonEnabled: Boolean,
+    isForwardEnabled: Boolean,
     onNextClicked: () -> Unit,
     onFinishClicked: () -> Unit,
     modifier: Modifier = Modifier,
@@ -209,7 +216,7 @@ fun DesktopOnboardingBottomBar(
                 }
 
                 val isLastPage = pagerState.currentPage == pagerState.pageCount - 1
-                val isEnabled = !isLastPage || isFinishButtonEnabled
+                val isEnabled = isForwardEnabled
                 val fabShape = RoundedCornerShape(
                     topStart = animatedTopStart.dp,
                     topEnd = animatedTopEnd.dp,
@@ -223,15 +230,15 @@ fun DesktopOnboardingBottomBar(
                         if (isLastPage) onFinishClicked() else onNextClicked()
                     },
                     shape = fabShape,
-                    containerColor = if (isLastPage) {
-                        if (isFinishButtonEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                    } else {
-                        MaterialTheme.colorScheme.primaryContainer
+                    containerColor = when {
+                        !isEnabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                        isLastPage -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.primaryContainer
                     },
-                    contentColor = if (isLastPage) {
-                        if (isFinishButtonEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                    } else {
-                        MaterialTheme.colorScheme.onPrimaryContainer
+                    contentColor = when {
+                        !isEnabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        isLastPage -> MaterialTheme.colorScheme.onPrimary
+                        else -> MaterialTheme.colorScheme.onPrimaryContainer
                     },
                     elevation = FloatingActionButtonDefaults.elevation(defaultElevation = if (isEnabled) 2.dp else 0.dp),
                     modifier = Modifier.size(56.dp),
@@ -241,22 +248,30 @@ fun DesktopOnboardingBottomBar(
                         modifier = Modifier.rotate(animatedRotation),
                     ) {
                         AnimatedContent(
-                            targetState = isLastPage,
+                            targetState = when {
+                                !isEnabled -> ForwardAffordance.BLOCKED
+                                isLastPage -> ForwardAffordance.FINISH
+                                else -> ForwardAffordance.NEXT
+                            },
                             transitionSpec = {
                                 (slideInVertically { it } + fadeIn()).togetherWith(
                                     slideOutVertically { -it } + fadeOut(),
                                 )
                             },
                             label = "FabIcon",
-                        ) { last ->
-                            if (last) {
-                                Icon(
+                        ) { affordance ->
+                            when (affordance) {
+                                ForwardAffordance.BLOCKED -> Icon(
+                                    imageVector = LatchIcons.Close,
+                                    contentDescription = "Blocked",
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                ForwardAffordance.FINISH -> Icon(
                                     imageVector = LatchIcons.Check,
                                     contentDescription = "Finish",
                                     modifier = Modifier.size(24.dp),
                                 )
-                            } else {
-                                Icon(
+                                ForwardAffordance.NEXT -> Icon(
                                     imageVector = LatchIcons.ArrowForwardIos,
                                     contentDescription = "Next",
                                     modifier = Modifier.size(20.dp),

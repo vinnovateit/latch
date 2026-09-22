@@ -78,7 +78,7 @@ jobs:
       - name: Verify shared runtime and CLI
         run: |
           chmod +x gradlew
-          ./gradlew :core:desktopTest :cli:test :desktop:smoke
+          ./gradlew :core:desktopTest :desktop:desktopTest :cli:test :desktop:smoke
 
       - name: Build Desktop and CLI packages
         run: |
