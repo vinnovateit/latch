@@ -21,6 +21,7 @@ kotlin {
 
     sourceSets {
         val desktopMain by getting
+        val desktopTest by getting
 
         commonMain.dependencies {
             implementation(project(":core"))
@@ -60,7 +61,21 @@ kotlin {
             implementation(libs.jna)
             implementation(libs.jna.platform)
         }
+
+        // Compose UI tests for the desktop screens. They render offscreen via
+        // Skia, so they run headless in CI with no display server.
+        desktopTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(compose.desktop.currentOs)
+            implementation(compose.desktop.uiTestJUnit4)
+        }
     }
+}
+
+// Compose Desktop renders through Skia offscreen here; without this the AWT
+// toolkit tries to reach a display server and the tests fail on a CI runner.
+tasks.named<Test>("desktopTest") {
+    systemProperty("java.awt.headless", "true")
 }
 
 /**
