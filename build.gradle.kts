@@ -27,7 +27,7 @@ buildscript {
             // Modules in 1.80.2 still use a broken cryptographic algorithm. Ships
             // alongside bcprov, pulled by AGP and the Kotlin Gradle plugin.
             classpath("org.bouncycastle:bcpkix-jdk18on:1.86") {
-                because("GHSA-wg6q-6289-32hp: broken cryptographic algorithm in bcpkix-jdk18on < 1.86")
+                because("GHSA-wg6q-6289-32hp: broken cryptographic algorithm in bcpkix-jdk18on < 1.84")
             }
             // 3.16.0 recurses without a depth bound on long inputs, so a large
             // string can overflow the stack. Reached through AGP.
