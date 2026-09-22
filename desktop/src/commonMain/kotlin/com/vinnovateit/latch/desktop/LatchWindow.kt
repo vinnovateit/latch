@@ -337,9 +337,23 @@ private fun LatchTitleBar(
  * part of the chrome rather than a stray app control.
  *
  * The dropdown is a Popup, so it is not clipped by the 36dp title bar.
+ *
+ * Toggling it is not as simple as flipping [expanded] on click. The popup is
+ * non-focusable by design (see the note on its properties below) and is dispatched
+ * above the title bar, so pressing the hamburger while the menu is open produces:
+ *
+ * ```text
+ * onDismissRequest -> anchor press -> anchor release -> onClick
+ * ```
+ *
+ * The dismissal lands first and closes the menu, then the click reopens it in the
+ * same gesture. That is the "closes and immediately reopens" bug, and `!expanded`
+ * alone does not fix it because the state is already false by the time the click
+ * runs. The anchor can only be hovered when the press was aimed at it, so that one
+ * dismissal is left to the click path and every other dismissal still closes.
  */
 @Composable
-private fun TitleBarMenuButton(actions: AppMenuActions) {
+internal fun TitleBarMenuButton(actions: AppMenuActions) {
     var expanded by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val hovered by interactionSource.collectIsHoveredAsState()
@@ -359,7 +373,7 @@ private fun TitleBarMenuButton(actions: AppMenuActions) {
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = { expanded = true },
+                onClick = { expanded = !expanded },
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -372,7 +386,7 @@ private fun TitleBarMenuButton(actions: AppMenuActions) {
 
         DropdownMenu(
             expanded = expanded,
-            onDismissRequest = { expanded = false },
+            onDismissRequest = { if (!hovered) expanded = false },
             shape = MenuCornerShape(12.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
             modifier = Modifier.width(200.dp),
