@@ -40,5 +40,9 @@ jobs:
       # OsBindings at runtime and are exercised by release.yml's per-OS jobs.
       # :cli:build compiles and tests the CLI module, which is plain
       # kotlin("jvm") and so has an ordinary `build` lifecycle task.
+      # :desktop:smoke is the headless platform smoke test that release.yml already
+      # runs before packaging. It degrades gracefully where there is no Wi-Fi, no
+      # keyring and no display, and it is the only check that exercises the desktop
+      # platform seams (SSID detection, OSHI counters, credential round-trip, Room).
       - name: Build and Test
-        run: ./gradlew :desktop:compileKotlinDesktop :core:desktopTest :cli:build
+        run: ./gradlew :desktop:compileKotlinDesktop :core:desktopTest :cli:build :desktop:smoke
