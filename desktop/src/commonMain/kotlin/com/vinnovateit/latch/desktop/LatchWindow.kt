@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.window.WindowDraggableArea
+import androidx.compose.foundation.shape.RoundedCornerShape as MenuCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,7 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,13 +43,18 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import com.vinnovateit.latch.desktop.LatchMark
+import com.vinnovateit.latch.ui.chrome.AppMenuActions
+import com.vinnovateit.latch.ui.chrome.AppMenuHost
 import com.vinnovateit.latch.ui.components.LatchIcons
 import com.vinnovateit.latch.ui.theme.LatchTheme
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.Frame
@@ -114,6 +124,7 @@ internal fun LatchWindow(
     visible: Boolean,
     restoreTrigger: Int = 0,
     onCloseRequest: () -> Unit,
+    appMenu: AppMenuHost,
     content: @Composable () -> Unit,
 ) {
     val initialSize = remember { preferredWindowSize() }
@@ -209,6 +220,7 @@ internal fun LatchWindow(
                             LatchTitleBar(
                                 onMinimize = { state.isMinimized = true },
                                 onClose = onCloseRequest,
+                                menuActions = appMenu.actions,
                             )
                         }
 
@@ -267,13 +279,17 @@ internal fun LatchWindow(
 /**
  * Custom native-styled title bar:
  * - Brand icon and title on the left (draggable via WindowDraggableArea)
- * - Minimize and Close buttons on the right with native-styled hover states
+ * - Application menu, then Minimize and Close on the right with native hover states
  * - Maximize button is omitted intentionally because fullscreen/maximize is not allowed.
+ *
+ * The buttons are interactive children of the draggable area, exactly as Minimize
+ * and Close already were, so the title bar stays the only draggable region.
  */
 @Composable
 private fun LatchTitleBar(
     onMinimize: () -> Unit,
     onClose: () -> Unit,
+    menuActions: AppMenuActions?,
 ) {
     Row(
         modifier = Modifier
@@ -295,6 +311,9 @@ private fun LatchTitleBar(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp).weight(1f),
         )
+        if (menuActions != null) {
+            TitleBarMenuButton(menuActions)
+        }
         TitleBarButton(
             icon = LatchIcons.Minimize,
             contentDescription = "Minimize",
@@ -310,6 +329,100 @@ private fun LatchTitleBar(
             iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
             hoverIconTint = Color.White,
         )
+    }
+}
+
+/**
+ * Hamburger sharing the control row's geometry and hover treatment, so it reads as
+ * part of the chrome rather than a stray app control.
+ *
+ * The dropdown is a Popup, so it is not clipped by the 36dp title bar.
+ *
+ * Toggling it is not as simple as flipping [expanded] on click. The popup is
+ * non-focusable by design (see the note on its properties below) and is dispatched
+ * above the title bar, so pressing the hamburger while the menu is open produces:
+ *
+ * ```text
+ * onDismissRequest -> anchor press -> anchor release -> onClick
+ * ```
+ *
+ * The dismissal lands first and closes the menu, then the click reopens it in the
+ * same gesture. That is the "closes and immediately reopens" bug, and `!expanded`
+ * alone does not fix it because the state is already false by the time the click
+ * runs. The anchor can only be hovered when the press was aimed at it, so that one
+ * dismissal is left to the click path and every other dismissal still closes.
+ */
+@Composable
+internal fun TitleBarMenuButton(actions: AppMenuActions) {
+    var expanded by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+
+    Box(
+        modifier = Modifier
+            .width(46.dp)
+            .fillMaxHeight()
+            .background(
+                if (hovered || expanded) {
+                    MaterialTheme.colorScheme.surfaceContainerHighest
+                } else {
+                    Color.Transparent
+                },
+            )
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = { expanded = !expanded },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = LatchIcons.Menu,
+            contentDescription = "Menu",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(14.dp),
+        )
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { if (!hovered) expanded = false },
+            shape = MenuCornerShape(12.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.width(200.dp),
+            // Load-bearing on Linux: see 0f5a7ff, "fix Linux home top bar menu
+            // freeze on first setup after login" (#87). A focusable popup here
+            // deadlocks the first post-login menu open. Moved verbatim with the
+            // menu; do not drop it without evidence on Linux.
+            properties = PopupProperties(focusable = false),
+        ) {
+            if (actions.showSettings) {
+                DropdownMenuItem(
+                    text = { Text("Settings", fontSize = 15.sp, fontFamily = satoshiFontFamily()) },
+                    leadingIcon = { Icon(LatchIcons.SettingsOutlined, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        actions.onOpenSettings()
+                    },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("How it works", fontSize = 15.sp, fontFamily = satoshiFontFamily()) },
+                leadingIcon = { Icon(LatchIcons.Help, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    actions.onHowItWorks()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("About", fontSize = 15.sp, fontFamily = satoshiFontFamily()) },
+                leadingIcon = { Icon(LatchIcons.Info, contentDescription = null) },
+                onClick = {
+                    expanded = false
+                    actions.onOpenAbout()
+                },
+            )
+        }
     }
 }
 

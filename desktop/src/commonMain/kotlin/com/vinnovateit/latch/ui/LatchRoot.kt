@@ -22,6 +22,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +38,9 @@ import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.desktop.LatchMark
-import com.vinnovateit.latch.ui.components.LatchHomeTopBar
+import com.vinnovateit.latch.ui.chrome.AppMenuActions
+import com.vinnovateit.latch.ui.chrome.AppMenuHost
+import com.vinnovateit.latch.ui.components.HowItWorksDialog
 import com.vinnovateit.latch.ui.navigation.LatchDestination
 import com.vinnovateit.latch.ui.onboarding.DesktopOnboardingScreen
 import com.vinnovateit.latch.ui.screens.AboutScreen
@@ -71,6 +74,11 @@ fun LatchRoot(
     onCancelDownload: () -> Unit,
     onInstallUpdate: (String) -> Unit,
     onDismissUpdate: () -> Unit,
+    /**
+     * Window chrome to publish the application menu to. Null when there is no
+     * chrome, which is how tests and previews render this screen.
+     */
+    appMenu: AppMenuHost? = null,
 ) {
     LatchTheme {
         Surface(
@@ -82,6 +90,7 @@ fun LatchRoot(
             val onboardingPagerState = rememberPagerState(initialPage = 0, pageCount = { 6 })
             var editingCredentials by remember { mutableStateOf(false) }
             var showAbout by remember { mutableStateOf(false) }
+            var showHowItWorks by remember { mutableStateOf(false) }
             var destination by remember { mutableStateOf(LatchDestination.Home) }
 
             // Surfaced the moment an update is found rather than left for
@@ -211,6 +220,24 @@ fun LatchRoot(
                             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                 val railVisible = maxWidth >= RailBreakpoint
 
+                                // Visibility rule: the hamburger exists only while
+                                // this shell is mounted, so onboarding, credential
+                                // setup, About and the update screen never show it.
+                                // Settings is offered only when the rail is not
+                                // already providing it and we are not on it.
+                                DisposableEffect(appMenu, railVisible, destination) {
+                                    appMenu?.publish(
+                                        AppMenuActions(
+                                            showSettings = !railVisible &&
+                                                destination != LatchDestination.Settings,
+                                            onOpenSettings = { destination = LatchDestination.Settings },
+                                            onHowItWorks = { showHowItWorks = true },
+                                            onOpenAbout = { showAbout = true },
+                                        ),
+                                    )
+                                    onDispose { appMenu?.publish(null) }
+                                }
+
                                 Row(modifier = Modifier.fillMaxSize()) {
                                     if (railVisible) {
                                         LatchNavigationRail(
@@ -261,9 +288,6 @@ fun LatchRoot(
                                                 sessions = sessions,
                                                 platform = platform,
                                                 onOpenStats = { destination = LatchDestination.Stats },
-                                                onOpenSettings = { destination = LatchDestination.Settings },
-                                                onOpenAbout = { showAbout = true },
-                                                showNavigationMenuItems = !railVisible,
                                             )
 
                                             LatchDestination.Stats -> StatsScreen(
@@ -293,6 +317,9 @@ fun LatchRoot(
                     }
                 }
 
+                if (showHowItWorks) {
+                    HowItWorksDialog(onDismiss = { showHowItWorks = false })
+                }
             }
         }
     }

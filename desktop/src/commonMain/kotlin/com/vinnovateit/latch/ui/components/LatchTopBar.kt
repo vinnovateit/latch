@@ -19,9 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,9 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.PopupProperties
-import com.vinnovateit.latch.desktop.LatchMark
 import com.vinnovateit.latch.desktop.resources.Res
 import com.vinnovateit.latch.desktop.resources.home_status_connected
 import com.vinnovateit.latch.desktop.resources.home_status_disconnected
@@ -54,21 +48,23 @@ import org.jetbrains.compose.resources.stringResource
 
 
 /**
- * Immersive top bar: Latch mark on left, auto-dismissing status pill (3.5s) transitioning
- * back to Latch title text, menu icon with 40dp circular ripple on right.
+ * Home status area: a transient LATCHED / DISCONNECTED pill that shows on a
+ * connection change and dismisses itself after 3.5s.
+ *
+ * Carries no brand mark. Application identity is already stated by the window
+ * title bar, and again by the navigation rail on wide layouts, so a third mark
+ * beside the pill was only repetition.
+ *
+ * Carries no actions either: the application menu lives in the window title bar
+ * alongside Minimize and Close, and reserves no space here because those controls
+ * sit in a physically separate row above the content.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun LatchHomeTopBar(
     isLatched: Boolean,
-    onHowItWorks: () -> Unit,
-    onOpenStats: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenAbout: () -> Unit,
     modifier: Modifier = Modifier,
-    showNavigationItems: Boolean = true,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
     var showPill by remember(isLatched) { mutableStateOf(true) }
 
     LaunchedEffect(isLatched) {
@@ -88,13 +84,6 @@ internal fun LatchHomeTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(start = 4.dp),
             ) {
-                Icon(
-                    imageVector = LatchMark,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp),
-                )
-                Spacer(Modifier.width(12.dp))
                 AnimatedVisibility(
                     visible = showPill,
                     enter = fadeIn(tween(200)),
@@ -119,63 +108,6 @@ internal fun LatchHomeTopBar(
                     }
                 }
             }
-        },
-        actions = {
-            // Menu icon with matching 40dp circular ripple
-            Box {
-                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(40.dp)) {
-                    Icon(
-                        imageVector = LatchIcons.Menu,
-                        contentDescription = "Menu",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                    shape = RoundedCornerShape(12.dp),
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    modifier = Modifier.width(200.dp),
-                    properties = PopupProperties(focusable = false),
-                ) {
-                    if (showNavigationItems) {
-                        DropdownMenuItem(
-                            text = { Text("Settings", fontSize = 15.sp, fontFamily = satoshiFontFamily()) },
-                            leadingIcon = {
-                                Icon(LatchIcons.SettingsOutlined, contentDescription = null)
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onOpenSettings()
-                            },
-                        )
-                    }
-                    DropdownMenuItem(
-                        leadingIcon = {
-                            Icon(LatchIcons.Help, contentDescription = null)
-                        },
-                        text = { Text("How it works", fontSize = 15.sp, fontFamily = satoshiFontFamily()) },
-                        onClick = {
-                            menuExpanded = false
-                            onHowItWorks()
-                        },
-                    )
-                    DropdownMenuItem(
-                        leadingIcon = {
-                            Icon(LatchIcons.Info, contentDescription = null)
-                        },
-                        text = { Text("About", fontSize = 15.sp, fontFamily = satoshiFontFamily()) },
-                        onClick = {
-                            menuExpanded = false
-                            onOpenAbout()
-                        },
-                    )
-                }
-            }
-
-            // Reserve space for static WindowControlButtons overlay (100dp)
-            Spacer(Modifier.width(100.dp))
         },
     )
 }
@@ -234,8 +166,7 @@ internal fun LatchDetailHeader(
             actions()
         }
 
-        // Reserve space for static WindowControlButtons overlay (100dp)
-        Spacer(Modifier.width(100.dp))
+        Spacer(Modifier.width(12.dp))
     }
 }
 
