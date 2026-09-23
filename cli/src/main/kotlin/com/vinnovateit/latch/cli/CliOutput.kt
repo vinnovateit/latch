@@ -33,7 +33,7 @@ internal object CliOutput {
         if (values.isEmpty()) return "No sessions.\n"
 
         return buildString {
-            appendLine("start\tend\trx-bytes\ttx-bytes\tmax-rx-bps\tmax-tx-bps")
+            appendLine("start\tend\trx-bytes\ttx-bytes")
             values.sortedByDescending(CliSession::start).forEach { session ->
                 append(Instant.ofEpochMilli(session.start))
                 append('\t')
@@ -41,11 +41,7 @@ internal object CliOutput {
                 append('\t')
                 append(session.rx)
                 append('\t')
-                append(session.tx)
-                append('\t')
-                append(session.maxRx)
-                append('\t')
-                appendLine(session.maxTx)
+                appendLine(session.tx)
             }
         }
     }

@@ -12,8 +12,6 @@ data class CliSession(
     val end: Long,
     val rx: Long,
     val tx: Long,
-    val maxRx: Long,
-    val maxTx: Long,
 )
 
 data class CliSettings(

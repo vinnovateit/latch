@@ -10,6 +10,7 @@ import com.vinnovateit.latch.core.runtime.InstanceResponse
 import com.vinnovateit.latch.core.runtime.OwnerKind
 import com.vinnovateit.latch.core.runtime.RuntimeCommand
 import com.vinnovateit.latch.core.runtime.RuntimeCommandService
+import com.vinnovateit.latch.core.runtime.tryAcquireOneShot
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.desktop.AppPaths
 import java.io.File
@@ -25,8 +26,14 @@ internal suspend fun createCoordinatedCliBackend(
 ): CliBackend {
     val ownerKind = if (command == CliCommand.DaemonProcess) OwnerKind.CLI_DAEMON else OwnerKind.CLI_ONESHOT
     val serviceReady = CompletableDeferred<RuntimeCommandService>()
-    val acquired = InstanceCoordinator.tryAcquire(dataDir, ownerKind) { request ->
-        serviceReady.await().execute(request)
+    val handler: suspend (InstanceRequest) -> InstanceResponse = { request -> serviceReady.await().execute(request) }
+    // Ordinary one-shot commands tolerate a short owner startup/shutdown
+    // transition; the daemon process itself either becomes owner or finds
+    // an existing one immediately, so it is not worth retrying here.
+    val acquired = if (ownerKind == OwnerKind.CLI_ONESHOT) {
+        tryAcquireOneShot(dataDir, ownerKind, handler = handler)
+    } else {
+        InstanceCoordinator.tryAcquire(dataDir, ownerKind, handler)
     }
 
     return when (acquired) {

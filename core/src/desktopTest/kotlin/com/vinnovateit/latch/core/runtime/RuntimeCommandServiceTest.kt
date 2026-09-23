@@ -51,7 +51,7 @@ class RuntimeCommandServiceTest {
     fun `status and history are serialized for clients`() = runBlocking {
         val target = FakeRuntimeTarget(
             snapshot = RuntimeSnapshot("connected", "VIT", true),
-            sessionValues = listOf(RuntimeSessionRecord(1, 2, 3, 4, 5, 6)),
+            sessionValues = listOf(RuntimeSessionRecord(1, 2, 3, 4)),
         )
         val service = service(target)
 
