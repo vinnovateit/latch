@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -30,12 +31,20 @@ private const val RESPONSE_READ_TIMEOUT_MS = 25_000
  * A login/logout request can run for tens of seconds. Servicing requests one
  * at a time on the accept loop meant a slow one queued every other request
  * behind it -- a STATUS call could time out despite the owner being healthy,
- * purely because it never got read off the socket. This bounds concurrent
- * request *handling*, not connections: `accept()` stays a tight loop, and
- * the engine remains the thing serializing its own mutating commands
- * (LatchEngine's command channel), so this is safe to widen.
+ * purely because it never got read off the socket. Requests are handled by a
+ * fixed pool of [MAX_CONCURRENT_REQUESTS] workers pulling from a
+ * [MAX_PENDING_REQUESTS]-deep admission channel, so `accept()` stays a tight
+ * loop while both *active* and *admitted-but-waiting* work stay bounded --
+ * `Dispatchers.IO.limitedParallelism` alone bounded only the former, letting
+ * `launch` pile up an unbounded number of queued-but-not-yet-running jobs
+ * behind it. The engine remains the thing serializing its own mutating
+ * commands (LatchEngine's command channel), so widening concurrency here is
+ * still safe.
  */
-private const val MAX_CONCURRENT_REQUESTS = 8
+internal const val MAX_CONCURRENT_REQUESTS = 8
+
+/** See [MAX_CONCURRENT_REQUESTS]. A connection admitted beyond this backlog is closed immediately. */
+internal const val MAX_PENDING_REQUESTS = 16
 
 /**
  * Why [InstanceCoordinator.tryAcquire] failed. [isTransitional] marks the
@@ -69,12 +78,21 @@ class InstanceCoordinator private constructor(
 ) : AutoCloseable {
     val port: Int get() = server.localPort
     private val closed = AtomicBoolean(false)
-    private val requestScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(MAX_CONCURRENT_REQUESTS))
+    private val requestScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pending = Channel<Socket>(capacity = MAX_PENDING_REQUESTS)
     private val listener = thread(start = false, isDaemon = true, name = "LatchRuntimeListener") {
         listen()
     }
 
     private fun start() {
+        // Exactly MAX_CONCURRENT_REQUESTS long-lived workers, each processing
+        // one socket at a time -- the active-handler bound is the size of
+        // this pool, not a dispatcher setting layered on top of `launch`.
+        repeat(MAX_CONCURRENT_REQUESTS) {
+            requestScope.launch {
+                for (socket in pending) handle(socket)
+            }
+        }
         listener.start()
     }
 
@@ -85,7 +103,13 @@ class InstanceCoordinator private constructor(
             } catch (_: Exception) {
                 break
             }
-            requestScope.launch { handle(socket) }
+            // Admission is bounded by the channel's capacity: a socket that
+            // doesn't fit is refused immediately rather than queued without
+            // limit. The client sees this as a closed connection, which
+            // InstanceClient already reports as OWNER_UNAVAILABLE.
+            if (!pending.trySend(socket).isSuccess) {
+                runCatching { socket.close() }
+            }
         }
     }
 
@@ -135,6 +159,14 @@ class InstanceCoordinator private constructor(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         runCatching { server.close() }
+        pending.close()
+        // Anything admitted but not yet claimed by a worker would otherwise
+        // leak its socket once the scope below is cancelled -- a worker that
+        // never gets to it can't run its own socket.use{} cleanup.
+        while (true) {
+            val leftover = pending.tryReceive().getOrNull() ?: break
+            runCatching { leftover.close() }
+        }
         // Not joined: a handler may be blocked on the engine, and close() must
         // return promptly regardless. Each handler's own socket.use{} still
         // runs its close on the way out.
