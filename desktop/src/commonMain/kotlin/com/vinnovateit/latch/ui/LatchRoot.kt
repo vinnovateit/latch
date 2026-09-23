@@ -178,9 +178,19 @@ fun LatchRoot(
                                 initialRegNo = platform.credentials.userId().orEmpty(),
                                 initialPassword = platform.credentials.password().orEmpty(),
                                 onSave = { userId, password ->
-                                    platform.credentials.save(userId, password)
-                                    hasCredentials = true
-                                    editingCredentials = false
+                                    platform.credentials.save(userId, password).fold(
+                                        onSuccess = {
+                                            hasCredentials = true
+                                            editingCredentials = false
+                                        },
+                                        onFailure = {
+                                            platform.notifier.notifyTransient(
+                                                "Latch",
+                                                "Unable to save credentials securely.",
+                                                isError = true,
+                                            )
+                                        },
+                                    )
                                 },
                                 onCancel = if (hasCredentials || !hasSeenOnboarding) {
                                     { editingCredentials = false }

@@ -36,9 +36,10 @@ import kotlinx.coroutines.flow.emptyFlow
 class FakeCredentialStore(private var stored: Pair<String, String>? = null) : CredentialStore {
     val saves = mutableListOf<Pair<String, String>>()
 
-    override fun save(userId: String, password: String) {
+    override fun save(userId: String, password: String): Result<Unit> {
         saves += userId to password
         stored = userId to password
+        return Result.success(Unit)
     }
 
     override fun userId(): String? = stored?.first

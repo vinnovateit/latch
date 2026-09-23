@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vinnovateit.latch.core.credentials.RegistrationNumber
 import com.vinnovateit.latch.desktop.LatchMark
 import com.vinnovateit.latch.desktop.resources.Res
 import com.vinnovateit.latch.desktop.resources.credentials_error_message
@@ -75,8 +76,6 @@ import com.vinnovateit.latch.ui.components.LeafOverlay
 import com.vinnovateit.latch.ui.theme.modernizFontFamily
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-
-private val REG_NO_REGEX = "^[0-9]{2}[A-Z]{3}[0-9]{4}$".toRegex()
 
 /**
  * Credential entry, dressed like the Android onboarding account page: leaf
@@ -136,12 +135,12 @@ fun CredentialsScreen(
     }
 
     val submit = {
-        val trimmedRegNo = regNo.trim().uppercase()
+        val trimmedRegNo = RegistrationNumber.normalize(regNo)
         when {
             trimmedRegNo.isBlank() || pass.isBlank() -> {
                 triggerError(errorMessage)
             }
-            !REG_NO_REGEX.matches(trimmedRegNo) -> {
+            !RegistrationNumber.isValid(trimmedRegNo) -> {
                 triggerError("Invalid Registration Number")
             }
             else -> {

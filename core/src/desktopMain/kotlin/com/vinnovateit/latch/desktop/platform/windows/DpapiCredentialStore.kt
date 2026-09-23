@@ -11,12 +11,30 @@ import java.io.File
 private data class StoredCreds(val userId: String, val password: String)
 
 /**
+ * Seam over the actual DPAPI calls so tests can exercise success/failure
+ * propagation without the Windows Crypt32 API, which is unavailable on the
+ * Linux CI runners this module is tested on.
+ */
+internal interface DpapiBackend {
+    fun protect(plain: ByteArray): ByteArray
+    fun unprotect(encrypted: ByteArray): ByteArray
+}
+
+private object JnaDpapiBackend : DpapiBackend {
+    override fun protect(plain: ByteArray): ByteArray = Crypt32Util.cryptProtectData(plain)
+    override fun unprotect(encrypted: ByteArray): ByteArray = Crypt32Util.cryptUnprotectData(encrypted)
+}
+
+/**
  * Credential storage backed by Windows DPAPI.
  */
-class DpapiCredentialStore(
+class DpapiCredentialStore internal constructor(
     private val file: File,
     private val logger: Logger,
+    private val backend: DpapiBackend,
 ) : CredentialStore {
+    constructor(file: File, logger: Logger) : this(file, logger, JnaDpapiBackend)
+
 
     private companion object {
         const val TAG = "DpapiCredentialStore"
@@ -25,23 +43,21 @@ class DpapiCredentialStore(
     private val json = Json { ignoreUnknownKeys = true }
     private var cache: StoredCreds? = null
 
-    override fun save(userId: String, password: String) {
-        try {
-            val plain = json.encodeToString(StoredCreds(userId, password)).toByteArray(Charsets.UTF_8)
-            val encrypted = Crypt32Util.cryptProtectData(plain)
-            file.parentFile?.mkdirs()
-            file.writeBytes(encrypted)
-            cache = StoredCreds(userId, password)
-        } catch (e: Throwable) {
-            logger.e(TAG, "Failed to save credentials", e)
-        }
+    override fun save(userId: String, password: String): Result<Unit> = runCatching {
+        val plain = json.encodeToString(StoredCreds(userId, password)).toByteArray(Charsets.UTF_8)
+        val encrypted = backend.protect(plain)
+        file.parentFile?.mkdirs()
+        file.writeBytes(encrypted)
+        cache = StoredCreds(userId, password)
+    }.onFailure { e ->
+        logger.e(TAG, "Failed to save credentials", e)
     }
 
     private fun read(): StoredCreds? {
         cache?.let { return it }
         if (!file.exists()) return null
         return try {
-            val decrypted = Crypt32Util.cryptUnprotectData(file.readBytes())
+            val decrypted = backend.unprotect(file.readBytes())
             json.decodeFromString<StoredCreds>(decrypted.toString(Charsets.UTF_8))
                 .also { cache = it }
         } catch (e: Throwable) {
