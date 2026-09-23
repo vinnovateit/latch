@@ -29,7 +29,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Person
@@ -110,7 +112,10 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
             }
             else -> {
                 scope.launch {
-                    if (StoredCredentials.saveCredentials(context, trimmedRegNo, password)) {
+                    val saved = withContext(Dispatchers.IO) {
+                        StoredCredentials.saveCredentials(context, trimmedRegNo, password)
+                    }
+                    if (saved) {
                         onCredentialsSaved()
                     } else {
                         triggerError("Couldn't save credentials securely. Please try again.")
