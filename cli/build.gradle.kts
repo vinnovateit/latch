@@ -106,6 +106,11 @@ tasks.register<Tar>("packageCliTarGz") {
     archiveFileName.set("latch-cli-$latchVersion-linux-$hostArch.tar.gz")
     destinationDirectory.set(cliDistributionsDir)
     compression = Compression.GZIP
+    // Gradle 9 archives are reproducible by default, which also resets every
+    // file to 0644. That shipped bin/ launchers and the runtime's jspawnhelper
+    // non-executable, so extracted installs could not start. Keep the modes
+    // jpackage gave the app image.
+    useFileSystemPermissions()
     from(cliImageDir) {
         into("latch-cli-$latchVersion-linux-$hostArch")
     }
