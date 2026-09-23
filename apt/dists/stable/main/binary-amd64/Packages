@@ -14,3 +14,19 @@ Section: Network
 Priority: optional
 Description: Automatic VIT Wi-Fi login from the terminal
 
+Package: latch-cli
+Version: 1.4.1
+Architecture: amd64
+Maintainer: VinnovateIT <VinnovateIT>
+Installed-Size: 110295
+Depends: libasound2t64, libbsd0, libc6, libmd0, libx11-6, libxau6, libxcb1, libxdmcp6, libxext6, libxi6, libxrender1, libxtst6 , network-manager
+Provides: latch-cli
+Filename: pool/main/l/latch-cli/latch-cli_1.4.1_amd64.deb
+Size: 36644178
+MD5sum: b8b26f952e9536fc575141ff461c3b80
+SHA1: b62f27ff43a757c98d2628d5a808c6a729220c9b
+SHA256: e1c0b3346677c05611159a15f5a147acb2b31cdb2c0cb553f40d0adefa9d2c7b
+Section: Network
+Priority: optional
+Description: Automatic VIT Wi-Fi login from the terminal
+
