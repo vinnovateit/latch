@@ -60,8 +60,6 @@ import java.awt.Dimension
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
 import java.awt.Toolkit
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
 
 /** Windows/GNOME close-button hover colour -- kept consistent for native feel. */
 private val CloseHoverRed = Color(0xFFE81123)
@@ -79,12 +77,9 @@ private const val PREFERRED_H = 700f
 /** Maximum fraction of screen usable height/width. */
 private const val MAX_SCREEN_FRACTION = 0.92f
 
-/** Maximum aspect ratio allowed: 4:3 (4 wide by 3 tall). */
-private const val MAX_ASPECT_RATIO = 4.0 / 3.0
-
-/** Minimum window dimensions. */
-private const val MIN_W = 360
-private const val MIN_H = 600
+/** Minimum window dimensions. See [WindowResizePolicy] for how they are applied. */
+private const val MIN_W = WindowResizePolicy.MIN_W
+private const val MIN_H = WindowResizePolicy.MIN_H
 
 private fun preferredWindowSize(): DpSize {
     return try {
@@ -103,8 +98,7 @@ private fun preferredWindowSize(): DpSize {
         )
 
         val h = (PREFERRED_H * fit).coerceAtLeast(MIN_H.toFloat()).coerceAtMost(usableH)
-        val maxAllowedW = (h * MAX_ASPECT_RATIO).toFloat()
-        val w = (PREFERRED_W * fit).coerceAtLeast(MIN_W.toFloat()).coerceAtMost(maxAllowedW).coerceAtMost(usableW)
+        val w = (PREFERRED_W * fit).coerceAtLeast(MIN_W.toFloat()).coerceAtMost(usableW)
 
         DpSize(w.dp, h.dp)
     } catch (e: Throwable) {
@@ -116,8 +110,34 @@ private fun preferredWindowSize(): DpSize {
  * The main desktop window.
  *
  * Uses an integrated custom title bar with moving/dragging abilities strictly
- * restricted to the title bar only. Does not allow full screen or maximize, and
- * enforces a maximum 4:3 aspect ratio (4 wide by 3 tall).
+ * restricted to the title bar only, and does not allow full screen or maximize.
+ *
+ * ## Who owns the window size
+ *
+ * The window manager does. Latch asks for a size when the window is created
+ * ([preferredWindowSize]) and advertises a minimum it can lay out at
+ * (`window.minimumSize`, which reaches the WM as a normal size hint). Everything
+ * after that -- tiling, maximising, a workspace or monitor change -- is the WM's
+ * decision, and Latch renders at whatever size it is handed.
+ *
+ * Latch sets its own size in exactly one situation: the user drags one of
+ * [WindowResizeHandles], which exist because an undecorated window has no OS
+ * resize border. Those go through [WindowResizePolicy].
+ *
+ * This used to be different, and the difference was a bug. A `componentResized`
+ * listener enforced a maximum 4:3 aspect ratio plus the minimums by calling
+ * `setSize` in response to *every* resize, including the ones the compositor had
+ * just assigned. Under a tiling window manager that is a loop: Hyprland assigns
+ * the tile, Latch answers with a narrower size, Hyprland reassigns the tile, and
+ * the two sides trade sizes indefinitely -- measured at roughly 20 resize events
+ * per second and 16% CPU, with the window visibly flickering between the two
+ * geometries and Compose laying out at the narrower one, leaving the rest of the
+ * window transparent.
+ *
+ * The 4:3 cap also contradicted the app it was capping: the desktop UI has had a
+ * 900dp wide layout with a navigation rail since `4c35ac0`, five weeks before the
+ * cap arrived in `c8ddbc7`, and `width <= height * 4/3` puts that layout out of
+ * reach for any window shorter than 675px.
  */
 @Composable
 internal fun LatchWindow(
@@ -159,32 +179,19 @@ internal fun LatchWindow(
         LaunchedEffect(Unit) {
             window.minimumSize = Dimension(MIN_W, MIN_H)
 
-            // Intercept OS maximize shortcuts (e.g. Super+Up, F11) and restore to normal
+            // Intercept OS maximize shortcuts (e.g. Super+Up, F11) and restore to normal.
+            // This is a discrete state, not a geometry negotiation: it fires once per
+            // maximise and settles. Tiling is not reported through it -- under Hyprland
+            // a tiled Latch stays at extendedState 0 -- so it does not fight a tiled
+            // window.
             window.addWindowStateListener { e ->
                 if ((e.newState and Frame.MAXIMIZED_BOTH) != 0) {
                     (window as? Frame)?.extendedState = Frame.NORMAL
                 }
             }
 
-            // Enforce max 4:3 aspect ratio (width <= height * 4 / 3) and minimum size bounds
-            window.addComponentListener(object : ComponentAdapter() {
-                private var adjusting = false
-
-                override fun componentResized(e: ComponentEvent) {
-                    if (adjusting) return
-                    val currentW = window.width
-                    val currentH = window.height
-
-                    val maxW = (currentH * 4) / 3
-                    if (currentW > maxW || currentW < MIN_W || currentH < MIN_H) {
-                        adjusting = true
-                        val clampedW = currentW.coerceIn(MIN_W, maxW)
-                        val clampedH = currentH.coerceAtLeast(MIN_H)
-                        window.setSize(clampedW, clampedH)
-                        adjusting = false
-                    }
-                }
-            })
+            // Deliberately no componentResized listener. Answering a resize with a
+            // resize is what fought the compositor; see the note on this function.
         }
 
         LaunchedEffect(visible, restoreTrigger) {
@@ -235,39 +242,30 @@ internal fun LatchWindow(
                         }
                     }
 
-                    // Window edge resize handles for border dragging with aspect ratio clamping
+                    // The window is undecorated, so these stand in for the OS resize
+                    // border. They fire only from a pointer drag, and they are the only
+                    // place Latch sets its own size.
+                    val currentBounds = {
+                        WindowBounds(window.x, window.y, window.width, window.height)
+                    }
+                    val apply = { b: WindowBounds ->
+                        window.setBounds(b.x, b.y, b.width, b.height)
+                    }
                     WindowResizeHandles(
                         onResizeRight = { dx ->
-                            val maxW = (window.height * 4) / 3
-                            val newW = (window.width + dx).coerceIn(MIN_W, maxW)
-                            window.setSize(newW, window.height)
+                            apply(WindowResizePolicy.resizeRight(currentBounds(), dx))
                         },
                         onResizeBottom = { dy ->
-                            val newH = (window.height + dy).coerceAtLeast(MIN_H)
-                            val maxW = (newH * 4) / 3
-                            val newW = window.width.coerceAtMost(maxW)
-                            window.setSize(newW, newH)
+                            apply(WindowResizePolicy.resizeBottom(currentBounds(), dy))
                         },
                         onResizeBottomRight = { dx, dy ->
-                            val newH = (window.height + dy).coerceAtLeast(MIN_H)
-                            val maxW = (newH * 4) / 3
-                            val newW = (window.width + dx).coerceIn(MIN_W, maxW)
-                            window.setSize(newW, newH)
+                            apply(WindowResizePolicy.resizeBottomRight(currentBounds(), dx, dy))
                         },
                         onResizeLeft = { dx ->
-                            val proposedW = window.width - dx
-                            val maxW = (window.height * 4) / 3
-                            val clampedW = proposedW.coerceIn(MIN_W, maxW)
-                            val actualDx = window.width - clampedW
-                            window.setBounds(window.x + actualDx, window.y, clampedW, window.height)
+                            apply(WindowResizePolicy.resizeLeft(currentBounds(), dx))
                         },
                         onResizeBottomLeft = { dx, dy ->
-                            val newH = (window.height + dy).coerceAtLeast(MIN_H)
-                            val maxW = (newH * 4) / 3
-                            val proposedW = window.width - dx
-                            val clampedW = proposedW.coerceIn(MIN_W, maxW)
-                            val actualDx = window.width - clampedW
-                            window.setBounds(window.x + actualDx, window.y, clampedW, newH)
+                            apply(WindowResizePolicy.resizeBottomLeft(currentBounds(), dx, dy))
                         },
                     )
                 }
