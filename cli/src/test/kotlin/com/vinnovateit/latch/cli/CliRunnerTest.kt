@@ -166,19 +166,32 @@ class CliRunnerTest {
     @Test
     fun `history is newest first with stable timestamps`() = runBlocking {
         val terminal = RecordingTerminal()
-        val older = CliSession(start = 1_000, end = 2_000, rx = 10, tx = 20, maxRx = 30, maxTx = 40)
-        val newer = CliSession(start = 3_000, end = 4_000, rx = 50, tx = 60, maxRx = 70, maxTx = 80)
+        val older = CliSession(start = 1_000, end = 2_000, rx = 10, tx = 20)
+        val newer = CliSession(start = 3_000, end = 4_000, rx = 50, tx = 60)
         val backend = FakeBackend(historyResult = OperationResult(listOf(older, newer)))
 
         val exitCode = CliRunner(terminal, { backend }).run(CliCommand.History)
 
         assertEquals(0, exitCode)
         assertEquals(
-            "start\tend\trx-bytes\ttx-bytes\tmax-rx-bps\tmax-tx-bps\n" +
-                "1970-01-01T00:00:03Z\t1970-01-01T00:00:04Z\t50\t60\t70\t80\n" +
-                "1970-01-01T00:00:01Z\t1970-01-01T00:00:02Z\t10\t20\t30\t40\n",
+            "start\tend\trx-bytes\ttx-bytes\n" +
+                "1970-01-01T00:00:03Z\t1970-01-01T00:00:04Z\t50\t60\n" +
+                "1970-01-01T00:00:01Z\t1970-01-01T00:00:02Z\t10\t20\n",
             terminal.output,
         )
+    }
+
+    @Test
+    fun `history does not report a fabricated peak throughput`() = runBlocking {
+        val terminal = RecordingTerminal()
+        val session = CliSession(start = 1_000, end = 2_000, rx = 10, tx = 20)
+        val backend = FakeBackend(historyResult = OperationResult(listOf(session)))
+
+        val exitCode = CliRunner(terminal, { backend }).run(CliCommand.History)
+
+        assertEquals(0, exitCode)
+        assertFalse(terminal.output.contains("max-rx"))
+        assertFalse(terminal.output.contains("max-tx"))
     }
 
     @Test

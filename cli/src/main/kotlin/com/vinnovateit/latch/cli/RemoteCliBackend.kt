@@ -22,12 +22,20 @@ internal class ProtocolCliBackend(
     override suspend fun status(): OperationResult<CliStatus> {
         val response = send(RuntimeCommand.STATUS, emptyMap())
         response.errorOrNull()?.let { return OperationResult(error = it) }
+        val owner = response.data["owner"]?.takeIf(String::isNotBlank)
+            ?: return OperationResult(error = "The owner returned invalid status.")
+        val connection = response.data["connection"]?.takeIf(String::isNotBlank)
+            ?: return OperationResult(error = "The owner returned invalid status.")
+        val latched = response.data["latched"]?.toBooleanStrictOrNull()
+            ?: return OperationResult(error = "The owner returned invalid status.")
         return OperationResult(
             CliStatus(
-                owner = response.data["owner"].orEmpty(),
-                connection = response.data["connection"].orEmpty(),
+                owner = owner,
+                connection = connection,
+                // Absence is meaningful here -- it means "not on any SSID" --
+                // so, unlike owner/connection/latched, a missing ssid is valid.
                 ssid = response.data["ssid"]?.takeIf(String::isNotEmpty),
-                latched = response.data["latched"]?.toBooleanStrictOrNull() ?: false,
+                latched = latched,
             ),
         )
     }
@@ -45,7 +53,7 @@ internal class ProtocolCliBackend(
             JSON.decodeFromString<List<RuntimeSessionRecord>>(response.data.getValue("sessions"))
         }.getOrElse { return OperationResult(error = "The owner returned invalid session history.") }
         return OperationResult(
-            records.map { CliSession(it.start, it.end, it.rx, it.tx, it.maxRx, it.maxTx) },
+            records.map { CliSession(it.start, it.end, it.rx, it.tx) },
         )
     }
 

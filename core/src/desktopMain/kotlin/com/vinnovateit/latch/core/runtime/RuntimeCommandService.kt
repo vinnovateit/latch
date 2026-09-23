@@ -19,8 +19,6 @@ data class RuntimeSessionRecord(
     val end: Long,
     val rx: Long,
     val tx: Long,
-    val maxRx: Long,
-    val maxTx: Long,
 )
 
 data class RuntimeSettingsSnapshot(val autoLogin: Boolean, val allowedSsids: Set<String>)
@@ -210,9 +208,6 @@ private class DesktopRuntimeTarget(private val runtime: DesktopEngineRuntime) : 
                 session.logoutTime,
                 session.downloadBytes,
                 session.uploadBytes,
-                // The portal reports totals only, never peak throughput.
-                0L,
-                0L,
             )
         }
 

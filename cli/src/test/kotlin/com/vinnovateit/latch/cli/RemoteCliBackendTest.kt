@@ -26,7 +26,7 @@ class RemoteCliBackendTest {
                 backend.status(),
             )
             assertEquals(
-                OperationResult(listOf(CliSession(1, 2, 3, 4, 5, 6))),
+                OperationResult(listOf(CliSession(1, 2, 3, 4))),
                 backend.history(),
             )
             assertEquals(
@@ -94,7 +94,7 @@ private class RemoteTarget(
     override suspend fun snapshot() = RuntimeSnapshot("connected", "VIT", true)
     override suspend fun login() = loginOperation
     override suspend fun logout() = RuntimeOperation(true)
-    override suspend fun history() = listOf(RuntimeSessionRecord(1, 2, 3, 4, 5, 6))
+    override suspend fun history() = listOf(RuntimeSessionRecord(1, 2, 3, 4))
     override suspend fun settings() = RuntimeSettingsSnapshot(true, setOf("VIT", "G-VIT"))
     override suspend fun setAutoLogin(enabled: Boolean) { autoLogin = enabled }
     override suspend fun setAllowedSsids(values: Set<String>) { ssids = values }
