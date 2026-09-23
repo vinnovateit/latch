@@ -133,7 +133,8 @@ interface ByteCounterSource {
 // ---------------------------------------------------------------------------
 
 interface CredentialStore {
-    fun save(userId: String, password: String)
+    /** Failure must be observable -- implementations must not swallow it. */
+    fun save(userId: String, password: String): Result<Unit>
     fun userId(): String?
     fun password(): String?
     fun exists(): Boolean

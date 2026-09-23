@@ -201,7 +201,7 @@ private class HealthCheckPlatform(
     }
     override val settingsStore: KeyValueStore = InMemoryKeyValueStore()
     override val credentials: CredentialStore = object : CredentialStore {
-        override fun save(userId: String, password: String) = Unit
+        override fun save(userId: String, password: String) = Result.success(Unit)
         override fun userId(): String? = "testuser"
         override fun password(): String? = "testpass"
         override fun exists(): Boolean = true

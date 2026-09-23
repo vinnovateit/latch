@@ -43,12 +43,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.core.view.WindowCompat
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.common.ui.LeafOverlay
+import com.vinnovateit.latch.core.credentials.RegistrationNumber
 import com.vinnovateit.latch.core.platform.android.StoredCredentials
 import com.vinnovateit.latch.features.home.MainActivity
 import com.vinnovateit.latch.ui.theme.LatchTheme
 import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
-
-private val REG_NO_REGEX = Regex("^[0-9]{2}[A-Z]{3}[0-9]{4}$")
 
 @Composable
 fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
@@ -101,12 +100,12 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
     }
 
     val handleSubmit: () -> Unit = {
-        val trimmedRegNo = regNo.trim().uppercase()
+        val trimmedRegNo = RegistrationNumber.normalize(regNo)
         when {
             trimmedRegNo.isBlank() || password.isBlank() -> {
                 triggerError(context.getString(R.string.credentials_error_message))
             }
-            !REG_NO_REGEX.matches(trimmedRegNo) -> {
+            !RegistrationNumber.isValid(trimmedRegNo) -> {
                 triggerError("Invalid Registration Number")
             }
             else -> {

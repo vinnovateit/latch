@@ -19,13 +19,80 @@ import javax.crypto.spec.SecretKeySpec
 private data class StoredCreds(val userId: String, val password: String)
 
 /**
+ * Seam over the `secret-tool` subprocess so tests can exercise every branch of
+ * [LinuxCredentialStore] without a real desktop keyring. [store] and [lookup]
+ * report failure as `false`/`null` rather than throwing, mirroring what the
+ * real `secret-tool` subprocess does (a non-zero exit, not an exception).
+ */
+internal interface SecretServiceBackend {
+    val isAvailable: Boolean
+    fun store(payload: String): Boolean
+    fun lookup(): String?
+    fun clear()
+}
+
+private class ProcessSecretServiceBackend : SecretServiceBackend {
+    override val isAvailable: Boolean by lazy {
+        try {
+            val process = ProcessBuilder("secret-tool", "--help").start()
+            process.waitFor(2, TimeUnit.SECONDS)
+            process.exitValue() == 0
+        } catch (e: Throwable) {
+            false
+        }
+    }
+
+    override fun store(payload: String): Boolean = try {
+        val process = ProcessBuilder("secret-tool", "store", "--label=Latch Credentials", "service", "Latch")
+            .redirectErrorStream(true)
+            .start()
+        process.outputStream.bufferedWriter().use {
+            it.write(payload)
+            it.flush()
+        }
+        process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0
+    } catch (e: Throwable) {
+        false
+    }
+
+    override fun lookup(): String? = try {
+        val process = ProcessBuilder("secret-tool", "lookup", "service", "Latch")
+            .redirectErrorStream(true)
+            .start()
+        process.outputStream.close()
+        val text = process.inputStream.bufferedReader().use { it.readText() }.trim()
+        if (process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0 && text.isNotEmpty()) text else null
+    } catch (e: Throwable) {
+        null
+    }
+
+    override fun clear() {
+        try {
+            val process = ProcessBuilder("secret-tool", "clear", "service", "Latch").start()
+            process.waitFor(2, TimeUnit.SECONDS)
+        } catch (e: Throwable) {
+            // Ignore
+        }
+    }
+}
+
+/**
  * Linux credential storage leveraging Secret Service API (`secret-tool`) when available,
  * with fallback to AES-256 GCM encrypted storage with strict POSIX 0600 file permissions.
+ *
+ * The fallback key is derived from machine/user identifiers plus a locally
+ * generated salt -- it is a local encrypted-at-rest fallback for machines
+ * without a usable Secret Service, not a hardware-backed key store or a
+ * secret only the user can produce. Anyone with read access to this process's
+ * user account and `/etc/machine-id` can, in principle, rederive it.
  */
-class LinuxCredentialStore(
+class LinuxCredentialStore internal constructor(
     private val file: File,
     private val logger: Logger,
+    private val secretService: SecretServiceBackend,
 ) : CredentialStore {
+    constructor(file: File, logger: Logger) : this(file, logger, ProcessSecretServiceBackend())
+
 
     private companion object {
         const val TAG = "LinuxCredentialStore"
@@ -36,16 +103,6 @@ class LinuxCredentialStore(
 
     private val json = Json { ignoreUnknownKeys = true }
     private var cache: StoredCreds? = null
-
-    private val secretToolAvailable: Boolean by lazy {
-        try {
-            val process = ProcessBuilder("secret-tool", "--help").start()
-            process.waitFor(2, TimeUnit.SECONDS)
-            process.exitValue() == 0
-        } catch (e: Throwable) {
-            false
-        }
-    }
 
     private fun getOrCreateSalt(): ByteArray {
         val saltFile = File(file.parentFile, ".creds_salt")
@@ -75,15 +132,24 @@ class LinuxCredentialStore(
         return SecretKeySpec(sha256, "AES")
     }
 
-    override fun save(userId: String, password: String) {
+    /**
+     * Secret Service, when it successfully stores the credential, is treated
+     * as the sole authoritative store: the fallback blob is removed only
+     * *after* that write is confirmed, so a mid-write crash never loses both
+     * copies at once. When Secret Service is unavailable or the write fails,
+     * the fallback is written and its own failure is what `save` reports.
+     */
+    override fun save(userId: String, password: String): Result<Unit> {
         val creds = StoredCreds(userId, password)
-        cache = creds
-        try {
-            val plainJson = json.encodeToString(creds)
-            if (secretToolAvailable) {
-                saveSecretTool(plainJson)
-            }
+        val plainJson = json.encodeToString(creds)
 
+        if (secretService.isAvailable && secretService.store(plainJson)) {
+            cache = creds
+            runCatching { file.delete() }
+            return Result.success(Unit)
+        }
+
+        return runCatching {
             val plain = plainJson.toByteArray(Charsets.UTF_8)
             val iv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -99,7 +165,10 @@ class LinuxCredentialStore(
                 val perms = setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
                 Files.setPosixFilePermissions(file.toPath(), perms)
             }
-        } catch (e: Throwable) {
+            Unit
+        }.onSuccess {
+            cache = creds
+        }.onFailure { e ->
             logger.e(TAG, "Failed to save credentials", e)
         }
     }
@@ -107,10 +176,15 @@ class LinuxCredentialStore(
     private fun read(): StoredCreds? {
         cache?.let { return it }
 
-        if (secretToolAvailable) {
-            readSecretTool()?.let {
-                cache = it
-                return it
+        if (secretService.isAvailable) {
+            secretService.lookup()?.let { text ->
+                val creds = try {
+                    json.decodeFromString<StoredCreds>(text)
+                } catch (_: Throwable) {
+                    StoredCreds(userId = "", password = text)
+                }
+                cache = creds
+                return creds
             }
         }
 
@@ -142,50 +216,9 @@ class LinuxCredentialStore(
 
     override fun clear() {
         cache = null
-        if (secretToolAvailable) {
-            clearSecretTool()
+        if (secretService.isAvailable) {
+            secretService.clear()
         }
         runCatching { file.delete() }
-    }
-
-    // --- Secret Tool helpers ---
-
-    private fun saveSecretTool(payload: String): Boolean = try {
-        val process = ProcessBuilder("secret-tool", "store", "--label=Latch Credentials", "service", "Latch")
-            .redirectErrorStream(true)
-            .start()
-        process.outputStream.bufferedWriter().use {
-            it.write(payload)
-            it.flush()
-        }
-        process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0
-    } catch (e: Throwable) {
-        false
-    }
-
-    private fun readSecretTool(): StoredCreds? = try {
-        val process = ProcessBuilder("secret-tool", "lookup", "service", "Latch")
-            .redirectErrorStream(true)
-            .start()
-        process.outputStream.close()
-        val text = process.inputStream.bufferedReader().use { it.readText() }.trim()
-        if (process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0 && text.isNotEmpty()) {
-            try {
-                json.decodeFromString<StoredCreds>(text)
-            } catch (_: Throwable) {
-                StoredCreds(userId = "", password = text)
-            }
-        } else null
-    } catch (e: Throwable) {
-        null
-    }
-
-    private fun clearSecretTool() {
-        try {
-            val process = ProcessBuilder("secret-tool", "clear", "service", "Latch").start()
-            process.waitFor(2, TimeUnit.SECONDS)
-        } catch (e: Throwable) {
-            // Ignore
-        }
     }
 }

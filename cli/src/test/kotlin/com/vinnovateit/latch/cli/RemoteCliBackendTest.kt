@@ -98,8 +98,9 @@ private class RemoteTarget(
     override suspend fun settings() = RuntimeSettingsSnapshot(true, setOf("VIT", "G-VIT"))
     override suspend fun setAutoLogin(enabled: Boolean) { autoLogin = enabled }
     override suspend fun setAllowedSsids(values: Set<String>) { ssids = values }
-    override suspend fun setCredentials(userId: String, password: String) {
+    override suspend fun setCredentials(userId: String, password: String): RuntimeOperation {
         this.userId = userId
         this.password = password
+        return RuntimeOperation(true)
     }
 }
