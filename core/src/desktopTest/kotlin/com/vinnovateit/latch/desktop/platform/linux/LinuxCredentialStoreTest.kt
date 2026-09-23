@@ -1,7 +1,17 @@
 package com.vinnovateit.latch.desktop.platform.linux
 
 import com.vinnovateit.latch.core.platform.NoOpLogger
+import com.vinnovateit.latch.desktop.platform.SecureFileWriter
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.PosixFilePermissions
+import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -67,23 +77,131 @@ class LinuxCredentialStoreTest {
     }
 
     @Test
-    fun `secret service write failure falls back to the encrypted file`() {
-        val secretService = FakeSecretService(available = true, storeSucceeds = false)
+    fun `an installed but unreachable secret service falls back to a file a new instance can read`() {
+        val secretService = FakeSecretService(available = true, storeSucceeds = false, reachable = false)
         val store = LinuxCredentialStore(file, NoOpLogger, secretService)
 
         val result = store.save("22BCE0001", "secret")
 
         assertTrue(result.isSuccess)
-        assertTrue(file.exists(), "the fallback must be written when the keyring write fails")
+        assertTrue(file.exists(), "with no provider answering, the fallback is the only store")
+        val reopened = LinuxCredentialStore(file, NoOpLogger, secretService)
+        assertEquals("secret", reopened.password())
     }
 
     @Test
-    fun `secret service failure and an unwritable fallback location report failure`() {
+    fun `a rejected keyring write fails and is not shadowed by the stale keyring entry`() {
+        val secretService = FakeSecretService(available = true, storeSucceeds = false, reachable = true)
+        secretService.storedPayload = """{"userId":"22BCE0001","password":"old-secret"}"""
+        val store = LinuxCredentialStore(file, NoOpLogger, secretService)
+
+        val result = store.save("22BCE0001", "new-secret")
+
+        assertTrue(result.isFailure, "a fallback here would be shadowed by the old keyring entry, so save must fail")
+        assertFalse(file.exists(), "no fallback may be written behind a reachable keyring")
+        assertEquals("old-secret", store.password(), "a failed save must not change this instance's view")
+        assertEquals("old-secret", LinuxCredentialStore(file, NoOpLogger, secretService).password())
+    }
+
+    @Test
+    fun `a rejected keyring write leaves an existing fallback credential usable`() {
+        LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false)).save("22BCE0001", "old-secret")
+        val original = file.readBytes()
+        val secretService = FakeSecretService(available = true, storeSucceeds = false, reachable = true)
+
+        val result = LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "new-secret")
+
+        assertTrue(result.isFailure)
+        assertTrue(original.contentEquals(file.readBytes()), "the previous fallback must be untouched")
+        assertEquals("old-secret", LinuxCredentialStore(file, NoOpLogger, secretService).password())
+    }
+
+    @Test
+    fun `a salt that cannot be persisted fails the save and leaves no blob behind`() {
+        val writer = SecureFileWriter(ownerOnly = true, move = { source, target ->
+            if (target.fileName.toString() == ".creds_salt") throw IOException("simulated salt write failure")
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)
+        })
+        val store = LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false), writer)
+
+        val result = store.save("22BCE0001", "secret")
+
+        assertTrue(result.isFailure, "a blob encrypted with an unpersisted salt could never be decrypted again")
+        assertFalse(file.exists())
+        assertFalse(File(directory, ".creds_salt").exists())
+        assertFalse(store.exists())
+        assertEquals(emptyList(), leftoverTempFiles())
+    }
+
+    @Test
+    fun `a failed fallback replacement keeps the previous credential file intact`() {
+        LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false)).save("22BCE0001", "old-secret")
+        val original = file.readBytes()
+        val writer = SecureFileWriter(ownerOnly = true, move = { _, _ -> throw IOException("simulated rename failure") })
+        val store = LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false), writer)
+
+        val result = store.save("22BCE0001", "new-secret")
+
+        assertTrue(result.isFailure)
+        assertTrue(original.contentEquals(file.readBytes()))
+        assertEquals("old-secret", store.password(), "the cache must not claim the unsaved credentials")
+        assertEquals("old-secret", LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false)).password())
+        assertEquals(emptyList(), leftoverTempFiles())
+    }
+
+    @Test
+    fun `a temp file that cannot be restricted to its owner fails the save before any secret is written`() {
+        val writer = SecureFileWriter(ownerOnly = true, createTemp = { dir, prefix ->
+            Files.createTempFile(dir, prefix, ".tmp", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-r--r--")))
+        })
+        val store = LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false), writer)
+
+        val result = store.save("22BCE0001", "secret")
+
+        assertTrue(result.isFailure)
+        assertFalse(file.exists())
+        assertEquals(emptyList(), leftoverTempFiles())
+    }
+
+    @Test
+    fun `saved fallback and salt files are owner-only`() {
+        LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false)).save("22BCE0001", "secret")
+
+        assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(file.toPath())))
+        val salt = File(directory, ".creds_salt").toPath()
+        assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(salt)))
+    }
+
+    @Test
+    fun `a fallback blob written in the existing on-disk format is still readable`() {
+        val salt = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        File(directory, ".creds_salt").writeBytes(salt)
+        file.writeBytes(legacyEncrypt("""{"userId":"22BCE0001","password":"legacy-secret"}""", salt))
+
+        val store = LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false))
+
+        assertEquals("22BCE0001", store.userId())
+        assertEquals("legacy-secret", store.password())
+    }
+
+    @Test
+    fun `saving over an existing fallback reuses its salt`() {
+        LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false)).save("22BCE0001", "old-secret")
+        val salt = File(directory, ".creds_salt").readBytes()
+
+        LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false)).save("22BCE0001", "new-secret")
+
+        assertTrue(salt.contentEquals(File(directory, ".creds_salt").readBytes()))
+        assertEquals("new-secret", LinuxCredentialStore(file, NoOpLogger, FakeSecretService(available = false)).password())
+    }
+
+    @Test
+    fun `an unreachable secret service and an unwritable fallback location report failure`() {
         val readOnlyDir = File(directory, "readonly").apply { mkdirs() }
         val guardedFile = File(readOnlyDir, "credentials.bin")
         readOnlyDir.setWritable(false)
         try {
-            val secretService = FakeSecretService(available = true, storeSucceeds = false)
+            val secretService = FakeSecretService(available = true, storeSucceeds = false, reachable = false)
             val store = LinuxCredentialStore(guardedFile, NoOpLogger, secretService)
 
             val result = store.save("22BCE0001", "secret")
@@ -123,11 +241,28 @@ class LinuxCredentialStoreTest {
         assertNull(secretService.storedPayload)
         assertFalse(store.exists())
     }
+
+    private fun leftoverTempFiles(): List<String> =
+        directory.listFiles().orEmpty().map { it.name }.filter { it.endsWith(".tmp") }
+
+    /** Encrypts exactly as the fallback format has been written since the salt file was introduced. */
+    private fun legacyEncrypt(json: String, salt: ByteArray): ByteArray {
+        val machineId = File("/etc/machine-id").takeIf { it.exists() }?.readText()?.trim()
+            ?: File("/var/lib/dbus/machine-id").takeIf { it.exists() }?.readText()?.trim()
+            ?: (System.getProperty("user.name") + "LatchLinuxCredsSalt")
+        val user = System.getProperty("user.name").orEmpty()
+        val key = MessageDigest.getInstance("SHA-256").digest("$machineId:$user:".toByteArray(Charsets.UTF_8) + salt)
+        val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        return iv + cipher.doFinal(json.toByteArray(Charsets.UTF_8))
+    }
 }
 
 private class FakeSecretService(
     var available: Boolean,
     var storeSucceeds: Boolean = false,
+    var reachable: Boolean = available,
 ) : SecretServiceBackend {
     var storedPayload: String? = null
     var storeCalls = 0
@@ -141,6 +276,8 @@ private class FakeSecretService(
         storedPayload = payload
         return true
     }
+
+    override fun isReachable(): Boolean = reachable
 
     override fun lookup(): String? {
         lookupCalls++
