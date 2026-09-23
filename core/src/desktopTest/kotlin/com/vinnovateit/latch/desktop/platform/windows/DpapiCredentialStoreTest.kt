@@ -1,7 +1,10 @@
 package com.vinnovateit.latch.desktop.platform.windows
 
 import com.vinnovateit.latch.core.platform.NoOpLogger
+import com.vinnovateit.latch.desktop.platform.SecureFileWriter
 import java.io.File
+import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -54,6 +57,51 @@ class DpapiCredentialStoreTest {
         assertTrue(result.isFailure)
         assertFalse(file.exists())
     }
+
+    @Test
+    fun `a failed replacement keeps the previous payload and the cached credentials`() {
+        DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend()).save("22BCE0001", "old-secret")
+        val original = file.readBytes()
+        val failingWriter = SecureFileWriter(ownerOnly = false, move = { _, _ -> throw IOException("simulated rename failure") })
+        val store = DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend(), failingWriter)
+        assertEquals("old-secret", store.password())
+
+        val result = store.save("22BCE0001", "new-secret")
+
+        assertTrue(result.isFailure)
+        assertTrue(original.contentEquals(file.readBytes()), "the previous protected payload must be untouched")
+        assertEquals("old-secret", store.password(), "the cache may only move after the replacement succeeds")
+        assertEquals("old-secret", DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend()).password())
+        assertEquals(emptyList(), leftoverTempFiles())
+    }
+
+    @Test
+    fun `a filesystem without atomic rename fails the save instead of replacing non-atomically`() {
+        DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend()).save("22BCE0001", "old-secret")
+        val original = file.readBytes()
+        val writer = SecureFileWriter(ownerOnly = false, move = { source, target ->
+            throw AtomicMoveNotSupportedException(source.toString(), target.toString(), "simulated")
+        })
+
+        val result = DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend(), writer).save("22BCE0001", "new-secret")
+
+        assertTrue(result.isFailure)
+        assertTrue(original.contentEquals(file.readBytes()))
+        assertEquals(emptyList(), leftoverTempFiles())
+    }
+
+    @Test
+    fun `a successful save replaces the previous payload for a new instance`() {
+        DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend()).save("22BCE0001", "old-secret")
+
+        DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend()).save("22BCE0001", "new-secret")
+
+        assertEquals("new-secret", DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend()).password())
+        assertEquals(emptyList(), leftoverTempFiles())
+    }
+
+    private fun leftoverTempFiles(): List<String> =
+        directory.listFiles().orEmpty().map { it.name }.filter { it.endsWith(".tmp") }
 
     @Test
     fun `a corrupt blob is cleared rather than surfacing a decryption exception`() {
