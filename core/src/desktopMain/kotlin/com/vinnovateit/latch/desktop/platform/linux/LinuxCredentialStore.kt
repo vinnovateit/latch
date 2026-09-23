@@ -6,6 +6,8 @@ import com.vinnovateit.latch.desktop.platform.SecureFileWriter
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
@@ -13,6 +15,7 @@ import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlin.concurrent.thread
 
 @Serializable
 private data class StoredCreds(val userId: String, val password: String)
@@ -24,79 +27,97 @@ private data class StoredCreds(val userId: String, val password: String)
  * real `secret-tool` subprocess does (a non-zero exit, not an exception).
  */
 internal interface SecretServiceBackend {
-    val isAvailable: Boolean
-    fun store(payload: String): Boolean
-
     /**
-     * Whether a Secret Service provider actually answers on the session bus,
-     * as opposed to the tool merely being installed. Consulted only after a
-     * failed [store], to tell "no keyring here" from "the keyring refused".
+     * Whether a Secret Service provider actually answers on the session bus.
+     * False both when `secret-tool` is not installed and when it is installed
+     * but has no provider or session to talk to -- the two cases where the
+     * encrypted fallback is the right store.
      */
     fun isReachable(): Boolean
+    fun store(payload: String): Boolean
     fun lookup(): String?
     fun clear()
 }
 
-private class ProcessSecretServiceBackend : SecretServiceBackend {
-    override val isAvailable: Boolean by lazy {
-        try {
-            val process = ProcessBuilder("secret-tool", "--help").start()
-            process.waitFor(2, TimeUnit.SECONDS)
-            process.exitValue() == 0
-        } catch (e: Throwable) {
-            false
-        }
-    }
+/**
+ * Drives `secret-tool`. Every call is bounded by [timeoutMillis]: output is
+ * drained on separate threads so a process that never exits cannot block the
+ * caller, and a process still running at the deadline is killed and treated
+ * as a failure. [service] is the `service` attribute value Latch stores under.
+ */
+internal class ProcessSecretServiceBackend(
+    private val executable: String = "secret-tool",
+    private val service: String = "Latch",
+    private val timeoutMillis: Long = 3_000,
+) : SecretServiceBackend {
 
-    override fun store(payload: String): Boolean = try {
-        val process = ProcessBuilder("secret-tool", "store", "--label=Latch Credentials", "service", "Latch")
-            .redirectErrorStream(true)
-            .start()
-        process.outputStream.bufferedWriter().use {
-            it.write(payload)
-            it.flush()
-        }
-        process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0
-    } catch (e: Throwable) {
-        false
+    private sealed interface Outcome {
+        data object NotRun : Outcome
+        data object TimedOut : Outcome
+        class Exited(val code: Int, val stdout: String, val stderr: String) : Outcome
     }
 
     /**
      * Looks up an attribute Latch never stores. A reachable service answers
      * "not found" with exit 1 and nothing on stderr; an unreachable one (no
-     * session bus, no provider) exits non-zero with an error message. Using a
-     * never-stored attribute keeps the probe from reading or unlocking the
-     * real credential entry.
+     * session bus, no provider) exits non-zero with an error message, and a
+     * missing tool never starts. Using a never-stored attribute keeps the
+     * probe from reading, unlocking, or changing the real credential entry.
+     *
+     * `secret-tool --help` is not a usable signal: it exits 2 whether or not
+     * a provider exists, which is what kept Secret Service from ever being
+     * selected before.
      */
-    override fun isReachable(): Boolean = try {
-        val process = ProcessBuilder("secret-tool", "lookup", "service", "Latch", "probe", "reachability").start()
-        process.outputStream.close()
-        process.inputStream.close()
-        val error = process.errorStream.bufferedReader().use { it.readText() }.trim()
-        process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 1 && error.isEmpty()
-    } catch (e: Throwable) {
-        false
+    override fun isReachable(): Boolean {
+        val outcome = run(listOf("lookup", "service", service, "probe", "reachability"))
+        return outcome is Outcome.Exited && (outcome.code == 0 || (outcome.code == 1 && outcome.stderr.isEmpty()))
     }
 
-    override fun lookup(): String? = try {
-        val process = ProcessBuilder("secret-tool", "lookup", "service", "Latch")
-            .redirectErrorStream(true)
-            .start()
-        process.outputStream.close()
-        val text = process.inputStream.bufferedReader().use { it.readText() }.trim()
-        if (process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0 && text.isNotEmpty()) text else null
-    } catch (e: Throwable) {
-        null
+    override fun store(payload: String): Boolean {
+        val outcome = run(listOf("store", "--label=Latch Credentials", "service", service), input = payload)
+        return outcome is Outcome.Exited && outcome.code == 0
+    }
+
+    override fun lookup(): String? {
+        val outcome = run(listOf("lookup", "service", service))
+        return (outcome as? Outcome.Exited)?.takeIf { it.code == 0 }?.stdout?.takeIf { it.isNotEmpty() }
     }
 
     override fun clear() {
-        try {
-            val process = ProcessBuilder("secret-tool", "clear", "service", "Latch").start()
-            process.waitFor(2, TimeUnit.SECONDS)
-        } catch (e: Throwable) {
-            // Ignore
-        }
+        run(listOf("clear", "service", service))
     }
+
+    private fun run(arguments: List<String>, input: String? = null): Outcome {
+        val process = try {
+            ProcessBuilder(listOf(executable) + arguments).start()
+        } catch (_: IOException) {
+            return Outcome.NotRun
+        }
+        var stdout = ""
+        var stderr = ""
+        val readers = listOf(
+            thread(isDaemon = true) { stdout = drain(process.inputStream) },
+            thread(isDaemon = true) { stderr = drain(process.errorStream) },
+        )
+        try {
+            process.outputStream.bufferedWriter().use { writer -> input?.let(writer::write) }
+        } catch (_: IOException) {
+            // The process exited without reading its input; its exit code says why.
+        }
+        if (!process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)) {
+            process.destroyForcibly()
+            return Outcome.TimedOut
+        }
+        readers.forEach { it.join(timeoutMillis) }
+        return Outcome.Exited(process.exitValue(), stdout.trim(), stderr.trim())
+    }
+
+    private fun drain(stream: InputStream): String =
+        try {
+            stream.bufferedReader().use { it.readText() }
+        } catch (_: IOException) {
+            ""
+        }
 }
 
 /**
@@ -179,25 +200,27 @@ class LinuxCredentialStore internal constructor(
      * - Secret Service is genuinely unavailable (tool missing, or no provider
      *   answering): the encrypted fallback is written atomically, and `save`
      *   succeeds only once it is durably on disk.
-     * - Secret Service answers but refused the write (locked keyring, dismissed
-     *   prompt): `save` fails and nothing is touched. Reads prefer Secret
-     *   Service, so a fallback written here would be shadowed by any older
-     *   keyring entry the next time the keyring is usable.
+     * - Secret Service answers but the write fails (locked keyring, dismissed
+     *   prompt, timeout): `save` fails and the fallback is not touched. Reads
+     *   prefer Secret Service, so a fallback written here would be shadowed
+     *   by any older keyring entry the next time the keyring is usable.
+     *
+     * A timed-out write is reported as a failure even though the killed
+     * `secret-tool` may already have committed it; either way the keyring
+     * then holds a complete credential, never a partial one.
      */
     override fun save(userId: String, password: String): Result<Unit> {
         val creds = StoredCreds(userId, password)
         val plainJson = json.encodeToString(creds)
 
-        if (secretService.isAvailable) {
+        if (secretService.isReachable()) {
             if (secretService.store(plainJson)) {
                 cache = creds
                 runCatching { file.delete() }
                 return Result.success(Unit)
             }
-            if (secretService.isReachable()) {
-                logger.e(TAG, "Secret Service rejected the credential write; keeping existing credentials")
-                return Result.failure(IllegalStateException("Secret Service rejected the credential write."))
-            }
+            logger.e(TAG, "Secret Service rejected the credential write; keeping existing credentials")
+            return Result.failure(IllegalStateException("Secret Service rejected the credential write."))
         }
 
         return runCatching {
@@ -218,16 +241,14 @@ class LinuxCredentialStore internal constructor(
     private fun read(): StoredCreds? {
         cache?.let { return it }
 
-        if (secretService.isAvailable) {
-            secretService.lookup()?.let { text ->
-                val creds = try {
-                    json.decodeFromString<StoredCreds>(text)
-                } catch (_: Throwable) {
-                    StoredCreds(userId = "", password = text)
-                }
-                cache = creds
-                return creds
+        secretService.lookup()?.let { text ->
+            val creds = try {
+                json.decodeFromString<StoredCreds>(text)
+            } catch (_: Throwable) {
+                StoredCreds(userId = "", password = text)
             }
+            cache = creds
+            return creds
         }
 
         if (!file.exists()) return null
@@ -259,9 +280,7 @@ class LinuxCredentialStore internal constructor(
 
     override fun clear() {
         cache = null
-        if (secretService.isAvailable) {
-            secretService.clear()
-        }
+        secretService.clear()
         runCatching { file.delete() }
     }
 }
