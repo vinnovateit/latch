@@ -6,6 +6,30 @@ that release's body, so a release is only as good as its entry in this file. Add
 the section in the same commit that bumps the version; the release job fails
 before it builds anything if the section is missing.
 
+## 1.4.1
+
+Reliability and credential-storage hardening release for the desktop app and CLI.
+
+### What's new
+
+- **Desktop**: captive portal session history sync, with stats built from it; history resyncs over any internet connection
+- **Desktop**: native window controls and a resizable window
+
+### What's fixed
+
+- **Linux**: credentials are now stored in the system keyring (Secret Service) when one is available. Earlier versions never detected it and always used the encrypted fallback file. Existing credentials keep working and move to the keyring the next time you save them.
+- **Linux**: a save the keyring refuses (for example, while it is locked) is now reported as a failure instead of being written somewhere it would be ignored
+- **Linux**: the portable desktop and CLI archives shipped their launchers without execute permission
+- Credential saves on Linux and Windows now replace the stored file atomically, and a failed save is always reported instead of showing "Credentials saved."
+- The CLI no longer starts the background service when first-run credential setup fails
+- CLI and desktop coordinate more reliably when both are running, including under bursts of CLI commands
+- Desktop: onboarding waits for credentials, the app menu lines up with the window controls, the wide power button is round, and tiling window managers no longer trigger resize loops
+- Updated bundled dependencies, including Bouncy Castle 1.86
+
+No action is needed after updating.
+
+Download the compatible version for your machine from the assets below.
+
 ## 1.4.0
 
 The CLI's first public release. Install it from the package manager for your
