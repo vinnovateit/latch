@@ -15,16 +15,27 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# Nothing here writes to the repository: it only checks out and builds.
+permissions:
+  contents: read
+
+# Keyed on the workflow name, so this never cancels an Android CI run for the
+# same ref. Pushes to main are left to finish; see android.yml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   desktop:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'

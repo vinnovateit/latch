@@ -6,16 +6,29 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# Nothing here writes to the repository: it checks out, builds, and uploads a
+# lint report through the Actions runtime token rather than GITHUB_TOKEN.
+permissions:
+  contents: read
+
+# A newer commit on the same PR makes the older run obsolete, so drop it.
+# Pushes to main are left to finish, because main's per-commit check history is
+# the signal that the branch is green.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
