@@ -14,6 +14,7 @@
   "merged": false,
   "merged_at": null,
   "draft": false,
+  "changed_files": 3,
   "head": {
     "label": "vinnovateit:latch-cli-1.4.1",
     "ref": "latch-cli-1.4.1",

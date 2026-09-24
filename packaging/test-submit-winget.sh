@@ -347,6 +347,50 @@ rerun_after_partial_supersede_converges() {
         check "closes the old one" mutated "PATCH $UP/pulls/439934"
 }
 
+failed_branch_delete_after_close_is_visible() {
+    state "" "1.4.1:439934" "439934"
+    submission 1.4.2 500006
+    supersession 439934 1.4.1
+    grep -v "^DELETE $FK/git/refs/heads/latch-cli-1.4.1 " "$case_dir/routes" >"$case_dir/routes.tmp" && mv "$case_dir/routes.tmp" "$case_dir/routes"
+    route DELETE "$FK/git/refs/heads/latch-cli-1.4.1" 500 "$(json err '{"message":"Server Error"}')"
+    run 1.4.2
+    check "fails" expect_exit 1 &&
+        check "old PR was closed first" mutated "PATCH $UP/pulls/439934" &&
+        check "classifies" says "Deleting vinnovateit/winget-pkgs:latch-cli-1.4.1: HTTP 500"
+}
+
+rerun_after_closed_pr_with_leftover_branch_cleans_up() {
+    # The state the previous case leaves: 1.4.2 open, 1.4.1 closed, but its
+    # branch still on the fork. The rerun must not stop at "1.4.2 is open".
+    state "" "1.4.1: 1.4.2:500006" "500006"
+    route DELETE "$FK/git/refs/heads/latch-cli-1.4.1" 204 -
+    run 1.4.2
+    check "exit 0" expect_exit 0 &&
+        check "keeps the current PR" says "keep #500006 for 1.4.2" &&
+        check "deletes the leftover branch" mutated "DELETE $FK/git/refs/heads/latch-cli-1.4.1" &&
+        check "opens nothing" mutation_count "POST $UP/pulls" 0 &&
+        check "closes nothing" not mutated "PATCH $UP/pulls/500006" &&
+        check "only that deletion" [ "$(mutations | wc -l)" = 1 ]
+}
+
+files_beyond_the_first_page_are_not_trusted() {
+    state "" "1.4.1:439934" "439934"
+    # The first page of files shows exactly our three manifests, but GitHub
+    # counts 150 changed files: the rest are on pages the script never reads.
+    json "pull-439934" "$(pull 439934 1.4.1 | jq '.changed_files = 150')" >/dev/null
+    run 1.4.2
+    check "fails" expect_exit 1 &&
+        check "explains" says "does not look like a submission from this automation" &&
+        check "no mutations" no_mutations
+}
+
+right_count_wrong_files_are_not_trusted() {
+    state "" "1.4.1:439934" "439934"
+    json "files-439934" "$(files 1.4.1 | jq '.[2].filename = "manifests/v/VinnovateIT/LatchCLI/1.4.1/Other.yaml"')" >/dev/null
+    run 1.4.2
+    check "fails" expect_exit 1 && check "no mutations" no_mutations
+}
+
 pr_created_by_a_racing_run_is_reused() {
     state "" "" ""
     submission 1.4.2 500004
@@ -413,6 +457,10 @@ for case_name in \
     failure_while_opening_pr_is_visible \
     rerun_after_success_is_noop \
     rerun_after_partial_supersede_converges \
+    failed_branch_delete_after_close_is_visible \
+    rerun_after_closed_pr_with_leftover_branch_cleans_up \
+    files_beyond_the_first_page_are_not_trusted \
+    right_count_wrong_files_are_not_trusted \
     pr_created_by_a_racing_run_is_reused \
     stale_branches_without_prs_are_rebuilt_and_removed \
     upstream_has_version_is_noop \

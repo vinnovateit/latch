@@ -24,6 +24,9 @@ FORK="vinnovateit/winget-pkgs"
 FORK_OWNER="vinnovateit"
 PACKAGE_ROOT="manifests/v/VinnovateIT/LatchCLI"
 BRANCH_PREFIX="latch-cli-"
+# The only files a submission from this automation changes, per version
+# (generate-cli-package-metadata.sh writes exactly these).
+MANIFEST_NAMES=("$PACKAGE_ID.yaml" "$PACKAGE_ID.installer.yaml" "$PACKAGE_ID.locale.en-US.yaml")
 
 usage() {
     echo "Usage: $0 [--dry-run] <version> <manifest-dir>" >&2
@@ -202,6 +205,11 @@ discover_foreign() {
 
 # An older PR is closed only when every one of these holds; any doubt leaves it
 # alone and stops the run before a competing PR is opened.
+#
+# The file check does not rely on paging through the file list: GitHub's own
+# changed_files count on the PR must equal the number of manifests we
+# generate, and the listed files must be exactly those manifests. A PR with
+# any further file, even one past the first page, fails the count.
 verify_owned() {
     local version=$1 number=$2
     api GET "repos/$UPSTREAM/pulls/$number"
@@ -214,13 +222,16 @@ verify_owned() {
         and .base.repo.full_name == $upstream
         and .head.repo.full_name == $fork
         and .head.ref == $branch
-        and .title == $title' "$API_BODY" >/dev/null ||
+        and .title == $title
+        and .changed_files == $expected_count' \
+        --argjson expected_count "${#MANIFEST_NAMES[@]}" "$API_BODY" >/dev/null ||
         return 1
+    local expected
+    expected=$(printf '%s\n' "${MANIFEST_NAMES[@]}" | jq -R --arg dir "$PACKAGE_ROOT/$version/" '$dir + .' | jq -s 'sort')
     api GET "repos/$UPSTREAM/pulls/$number/files?per_page=100"
     expect "Reading the files of PR #$number" 200
-    jq -e --arg dir "$PACKAGE_ROOT/$version/" '
-        type == "array" and length > 0
-        and all(.[]; (.filename | type) == "string" and (.filename | startswith($dir)))' "$API_BODY" >/dev/null
+    jq -e --argjson expected "$expected" '
+        type == "array" and ([.[].filename] | sort) == $expected' "$API_BODY" >/dev/null
 }
 
 # --- Mutations --------------------------------------------------------------
@@ -421,9 +432,18 @@ main() {
             die "#${owned_pr[$v]} ($v) is on $FORK:$BRANCH_PREFIX$v but does not look like a submission from this automation; not touching it or opening a competing PR."
     done
 
+    # Our older branches with no open PR: left behind when a PR was closed,
+    # or when a previous run closed one but failed to delete its branch.
+    local -a stale=()
+    for v in ${owned_versions[@]+"${owned_versions[@]}"}; do
+        if [[ -z ${owned_pr[$v]:-} ]] && version_lt "$v" "$version"; then
+            stale+=("$v")
+        fi
+    done
+
     if [[ -n ${owned_pr[$version]:-} ]]; then
         new_pr=${owned_pr[$version]}
-        if ((${#older[@]} == 0)); then
+        if ((${#older[@]} == 0 && ${#stale[@]} == 0)); then
             log "  none: $version already has open PR #$new_pr"
             return 0
         fi
@@ -438,12 +458,9 @@ main() {
         supersede "$v" "${owned_pr[$v]}" "$version" "$new_pr"
     done
 
-    # Branches of ours for older versions whose PRs are no longer open.
-    for v in ${owned_versions[@]+"${owned_versions[@]}"}; do
-        if [[ -z ${owned_pr[$v]:-} ]] && version_lt "$v" "$version"; then
-            log "  remove stale branch $FORK:$BRANCH_PREFIX$v (no open PR)"
-            mutating "delete $FORK:$BRANCH_PREFIX$v" && delete_branch "$v"
-        fi
+    for v in ${stale[@]+"${stale[@]}"}; do
+        log "  remove stale branch $FORK:$BRANCH_PREFIX$v (no open PR)"
+        mutating "delete $FORK:$BRANCH_PREFIX$v" && delete_branch "$v"
     done
     return 0
 }
