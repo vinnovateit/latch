@@ -180,6 +180,28 @@ jobs:
           Copy-Item cli\build\distributions\*.zip staging\
           Get-ChildItem staging
 
+      # Installs the exact file about to be uploaded: database open, silent
+      # per-user install, installed files and version, silent uninstall, and
+      # a silent upgrade from the previous published release. Failing here
+      # stops the release before the MSI reaches anyone.
+      - name: Qualify the staged MSI on Windows
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          packaging/qualify-windows-msi.ps1 -Msi staging\Latch-Setup.msi -Version $env:VERSION `
+            -BaselineRepo $env:GITHUB_REPOSITORY -LogDir msi-logs
+
+      - name: Upload Windows Installer logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-msi-logs
+          path: msi-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v7
         with:

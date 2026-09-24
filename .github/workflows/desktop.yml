@@ -91,6 +91,61 @@ jobs:
         shell: pwsh
         run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml, core\build\test-results\desktopTest\TEST-*.SecureRuntimeFilesTest.xml | Select-String '<testsuite |<testcase '
 
+  # Builds the release MSI exactly as release.yml does, stages it under the
+  # release asset name, and installs it for real: database open, silent
+  # per-user install, installed files and version, silent uninstall, and a
+  # silent major upgrade from the newest older published release with the
+  # package staged where the updater stages it. The legacy probe records what
+  # the pre-fix staging location (inside the install directory) does to that
+  # upgrade. Installer logs are uploaded only if something failed.
+  windows-msi:
+
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build Desktop MSI
+        run: .\gradlew.bat :desktop:packageReleaseMsi
+
+      - name: Stage the MSI as release.yml does
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          $msi = @(Get-ChildItem desktop\build\compose\binaries\main-release\msi\*.msi)
+          if ($msi.Count -ne 1) {
+            throw "Expected exactly one Desktop MSI, found $($msi.Count)"
+          }
+          Copy-Item $msi.FullName staging\Latch-Setup.msi
+
+      - name: Qualify the MSI on Windows
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Select-String -Path gradle.properties -Pattern '^latchVersion=(.+)$').Matches[0].Groups[1].Value
+          packaging/qualify-windows-msi.ps1 -Msi staging\Latch-Setup.msi -Version $version `
+            -BaselineRepo $env:GITHUB_REPOSITORY -ProbeLegacyStaging -LogDir msi-logs
+
+      - name: Upload Windows Installer logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-msi-logs
+          path: msi-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # Builds the Linux release tarballs and runs them extracted, as release.yml
   # does before publishing, so a packaging regression shows up on the PR
   # rather than on the release tag. The desktop launch needs a display, hence
