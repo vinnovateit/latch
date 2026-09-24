@@ -205,7 +205,7 @@ private class HealthCheckPlatform(
         override fun userId(): String? = "testuser"
         override fun password(): String? = "testpass"
         override fun exists(): Boolean = true
-        override fun clear() = Unit
+        override fun clear() = Result.success(Unit)
     }
     override val counters: ByteCounterSource = HealthNoCounters
     override val notifier: UserNotifier = object : UserNotifier {

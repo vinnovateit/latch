@@ -7,6 +7,7 @@ import com.vinnovateit.latch.desktop.platform.SecureFileWriter
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.nio.file.Files
 
 @Serializable
 private data class StoredCreds(val userId: String, val password: String)
@@ -80,8 +81,11 @@ class DpapiCredentialStore internal constructor(
 
     override fun exists(): Boolean = read() != null
 
-    override fun clear() {
+    override fun clear(): Result<Unit> = runCatching {
         cache = null
-        runCatching { file.delete() }
+        Files.deleteIfExists(file.toPath())
+        Unit
+    }.onFailure { e ->
+        logger.e(TAG, "Failed to remove credentials", e)
     }
 }

@@ -232,14 +232,122 @@ class LinuxCredentialStoreTest {
 
     @Test
     fun `clear removes both the keyring entry and the fallback file`() {
-        val secretService = FakeSecretService(reachable = true, storeSucceeds = true)
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "old-secret")
+        secretService.reachable = true
+        secretService.storedPayload = """{"userId":"22BCE0001","password":"secret"}"""
         val store = LinuxCredentialStore(file, NoOpLogger, secretService)
-        store.save("22BCE0001", "secret")
 
-        store.clear()
+        val result = store.clear()
 
+        assertTrue(result.isSuccess)
         assertNull(secretService.storedPayload)
-        assertFalse(store.exists())
+        assertFalse(file.exists())
+        assertFalse(LinuxCredentialStore(file, NoOpLogger, secretService).exists())
+    }
+
+    @Test
+    fun `clear fails when the keyring entry survives, but still removes the fallback file`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "old-secret")
+        secretService.reachable = true
+        secretService.clearSucceeds = false
+        secretService.storedPayload = """{"userId":"22BCE0001","password":"kr-pass-7f3a"}"""
+        val store = LinuxCredentialStore(file, NoOpLogger, secretService)
+
+        val result = store.clear()
+
+        assertTrue(result.isFailure, "a surviving keyring entry must not be reported as cleared")
+        val message = result.exceptionOrNull()?.message.orEmpty()
+        assertFalse("kr-pass-7f3a" in message || "22BCE0001" in message, "the failure must not carry credential values")
+        assertFalse(file.exists(), "the removal that could happen still happens")
+        assertTrue(LinuxCredentialStore(file, NoOpLogger, secretService).exists())
+    }
+
+    @Test
+    fun `clear with an unreachable keyring removes the fallback file and succeeds`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "secret")
+
+        val result = LinuxCredentialStore(file, NoOpLogger, secretService).clear()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, secretService.clearCalls, "an unreachable keyring is not asked to clear")
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun `clear fails when the fallback file cannot be removed`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "secret")
+        directory.setWritable(false)
+        try {
+            val result = LinuxCredentialStore(file, NoOpLogger, secretService).clear()
+
+            assertTrue(result.isFailure, "a credential file that is still on disk must not be reported as cleared")
+            assertTrue(file.exists())
+        } finally {
+            directory.setWritable(true)
+        }
+    }
+
+    @Test
+    fun `a missing salt keeps the fallback blob, which reads again once the salt is back`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "secret")
+        val salt = File(directory, ".creds_salt")
+        val savedSalt = salt.readBytes()
+        assertTrue(salt.delete())
+
+        assertNull(LinuxCredentialStore(file, NoOpLogger, secretService).password())
+        assertTrue(file.exists(), "a blob that is only missing its salt must not be destroyed")
+
+        salt.writeBytes(savedSalt)
+        assertEquals("secret", LinuxCredentialStore(file, NoOpLogger, secretService).password())
+    }
+
+    @Test
+    fun `an unreadable salt keeps the fallback blob, which reads again once the salt is readable`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "secret")
+        val salt = File(directory, ".creds_salt")
+        salt.setReadable(false, false)
+        try {
+            if (salt.canRead()) return // running as root: permissions cannot make it unreadable
+
+            assertNull(LinuxCredentialStore(file, NoOpLogger, secretService).password())
+            assertTrue(file.exists(), "a blob whose salt is temporarily unreadable must not be destroyed")
+        } finally {
+            salt.setReadable(true, true)
+        }
+        assertEquals("secret", LinuxCredentialStore(file, NoOpLogger, secretService).password())
+    }
+
+    @Test
+    fun `an unreadable fallback file is kept rather than deleted`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "secret")
+        file.setReadable(false, false)
+        try {
+            if (file.canRead()) return // running as root
+
+            assertNull(LinuxCredentialStore(file, NoOpLogger, secretService).password())
+            assertTrue(file.exists())
+        } finally {
+            file.setReadable(true, true)
+        }
+        assertEquals("secret", LinuxCredentialStore(file, NoOpLogger, secretService).password())
+    }
+
+    @Test
+    fun `a blob that fails authentication with its own salt is still cleared`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "secret")
+        val tampered = file.readBytes().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+        file.writeBytes(tampered)
+
+        assertNull(LinuxCredentialStore(file, NoOpLogger, secretService).password())
+        assertFalse(file.exists(), "a blob that is conclusively invalid for this machine and salt is removed")
     }
 
     private fun leftoverTempFiles(): List<String> =
@@ -264,8 +372,10 @@ private class FakeSecretService(
     var storeSucceeds: Boolean = false,
 ) : SecretServiceBackend {
     var storedPayload: String? = null
+    var clearSucceeds = true
     var storeCalls = 0
     var lookupCalls = 0
+    var clearCalls = 0
 
     override fun store(payload: String): Boolean {
         storeCalls++
@@ -281,7 +391,10 @@ private class FakeSecretService(
         return storedPayload
     }
 
-    override fun clear() {
+    override fun clear(): Boolean {
+        clearCalls++
+        if (!clearSucceeds) return false
         storedPayload = null
+        return true
     }
 }

@@ -156,7 +156,7 @@ private class DebouncePlatform(
         override fun userId(): String? = "testuser"
         override fun password(): String? = "testpass"
         override fun exists(): Boolean = true
-        override fun clear() = Unit
+        override fun clear() = Result.success(Unit)
     }
     override val counters: ByteCounterSource = DebounceNoCounters
     override val notifier: UserNotifier = object : UserNotifier {

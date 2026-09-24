@@ -172,6 +172,45 @@ class ProcessSecretServiceBackendTest {
         assertNull(LinuxCredentialStore(file, NoOpLogger, backend(reachableKeyring())).userId())
     }
 
+    @Test
+    fun `clear on a reachable keyring removes the entry and reports success`() {
+        if (isWindows) return
+        val backend = backend(reachableKeyring())
+        LinuxCredentialStore(file, NoOpLogger, backend).save("22BCE0001", "test-pass")
+
+        assertTrue(LinuxCredentialStore(file, NoOpLogger, backend).clear().isSuccess)
+        assertNull(LinuxCredentialStore(file, NoOpLogger, backend).userId())
+    }
+
+    @Test
+    fun `clear with nothing stored succeeds although secret-tool clear exits 1`() {
+        if (isWindows) return
+        assertTrue(LinuxCredentialStore(file, NoOpLogger, backend(reachableKeyring())).clear().isSuccess)
+    }
+
+    /**
+     * Measured against gnome-keyring 50: with the collection locked,
+     * `secret-tool clear` exits 1 with an empty stderr -- exactly as when
+     * nothing matched -- and the entry survives; `search` still lists it.
+     */
+    @Test
+    fun `clear on a locked keyring whose entry survives reports failure`() {
+        if (isWindows) return
+        val backend = backend(
+            """
+            case "${'$'}1" in
+              lookup) exit 1 ;;
+              clear) exit 1 ;;
+              search) echo '[/org/freedesktop/secrets/collection/login/1]'; echo 'label = Latch Credentials'; exit 0 ;;
+            esac
+            """,
+        )
+
+        val result = LinuxCredentialStore(file, NoOpLogger, backend).clear()
+
+        assertTrue(result.isFailure, "an entry the locked keyring kept must not be reported as cleared")
+    }
+
     /** Behaves like `secret-tool` over an unlocked keyring, keeping one entry in a file. */
     private fun reachableKeyring(): String {
         val entry = File(directory, "keyring-entry").path
@@ -181,7 +220,12 @@ class ProcessSecretServiceBackendTest {
               lookup)
                 if [ "${'$'}4" = "probe" ] || [ ! -f '$entry' ]; then exit 1; fi
                 cat '$entry'; exit 0 ;;
-              clear) rm -f '$entry'; exit 0 ;;
+              clear)
+                if [ ! -f '$entry' ]; then exit 1; fi
+                rm -f '$entry'; exit 0 ;;
+              search)
+                if [ -f '$entry' ]; then echo '[/org/freedesktop/secrets/collection/login/1]'; fi
+                exit 0 ;;
             esac
             """
     }

@@ -1,15 +1,31 @@
 package com.vinnovateit.latch.core.runtime
 
+import com.vinnovateit.latch.desktop.platform.SecureFileWriter
 import java.io.File
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
 import java.security.SecureRandom
 import java.util.Base64
 import kotlinx.serialization.json.Json
 
-class SecureRuntimeFiles(private val dataDir: File) {
+/**
+ * The runtime owner's lock, metadata and IPC token.
+ *
+ * The token authenticates every IPC request and the metadata says which
+ * process owns the runtime, so a torn write of either breaks ownership: other
+ * processes would find the lock held and no usable owner behind it. Both are
+ * written through [SecureFileWriter], the same all-or-nothing replacement the
+ * credential stores use, and a filesystem that cannot rename atomically fails
+ * the write -- the owner then fails to start cleanly instead of publishing a
+ * partial token. On POSIX filesystems the temp file is owner-only before the
+ * token is written into it.
+ */
+class SecureRuntimeFiles internal constructor(
+    private val dataDir: File,
+    private val writer: SecureFileWriter,
+) {
+    constructor(dataDir: File) : this(dataDir, SecureFileWriter(ownerOnly = supportsPosix(dataDir.apply { mkdirs() })))
+
     val lockFile: File get() = dataDir.resolve(".runtime.lock")
     val metadataFile: File get() = dataDir.resolve(".runtime.json")
     val tokenFile: File get() = dataDir.resolve(".runtime.token")
@@ -47,31 +63,13 @@ class SecureRuntimeFiles(private val dataDir: File) {
     }
 
     private fun atomicWrite(destination: File, content: String) {
-        destination.parentFile?.mkdirs()
-        val temporary = Files.createTempFile(destination.parentFile.toPath(), destination.name, ".tmp")
-        try {
-            Files.writeString(temporary, content, Charsets.UTF_8)
-            restrictToOwner(temporary.toFile())
-            try {
-                Files.move(
-                    temporary,
-                    destination.toPath(),
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING,
-                )
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(temporary, destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            }
-            restrictToOwner(destination)
-        } finally {
-            Files.deleteIfExists(temporary)
-        }
+        writer.replace(destination, content.toByteArray(Charsets.UTF_8))
+        restrictToOwner(destination)
     }
 
     private fun restrictToOwner(file: File) {
         val path = file.toPath()
-        val posix = runCatching { Files.getFileStore(path).supportsFileAttributeView("posix") }.getOrDefault(false)
-        if (posix) {
+        if (supportsPosix(file)) {
             Files.setPosixFilePermissions(
                 path,
                 setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
@@ -84,3 +82,6 @@ class SecureRuntimeFiles(private val dataDir: File) {
         }
     }
 }
+
+private fun supportsPosix(file: File): Boolean =
+    runCatching { Files.getFileStore(file.toPath()).supportsFileAttributeView("posix") }.getOrDefault(false)

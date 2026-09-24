@@ -22,5 +22,10 @@ class AndroidCredentialStore(private val context: Context) : CredentialStore {
 
     override fun exists(): Boolean = StoredCredentials.credentialsExist(context)
 
-    override fun clear() = StoredCredentials.clearCredentials(context)
+    override fun clear(): Result<Unit> =
+        if (StoredCredentials.clearCredentials(context)) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IllegalStateException("Stored credentials could not be removed."))
+        }
 }

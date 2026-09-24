@@ -146,10 +146,24 @@ object StoredCredentials {
         return exists
     }
 
-    fun clearCredentials(context: Context) {
-        val prefs = getEncryptedPrefs(context)
-        prefs?.edit()?.clear()?.apply()
-        context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-            .edit().putBoolean("has_credentials", false).apply()
+    /**
+     * Blocks on disk I/O; call off the main thread. False when the credentials
+     * could not be confirmed removed, including when the encrypted store
+     * cannot be opened at all.
+     */
+    fun clearCredentials(context: Context): Boolean {
+        val prefs = getEncryptedPrefs(context) ?: return false
+        return removeCredentials(prefs, context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE))
+    }
+
+    /**
+     * The mirror of [persistCredentials]: `commit()` so a failed write is seen,
+     * and `has_credentials` is cleared only once the credentials themselves
+     * are gone -- otherwise the flag would claim nothing is stored while the
+     * credentials remain.
+     */
+    fun removeCredentials(credentialPrefs: SharedPreferences, appPrefs: SharedPreferences): Boolean {
+        if (!credentialPrefs.edit().clear().commit()) return false
+        return appPrefs.edit().putBoolean("has_credentials", false).commit()
     }
 }

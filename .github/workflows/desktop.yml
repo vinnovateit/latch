@@ -60,7 +60,8 @@ jobs:
 
   # Real Windows DPAPI round trip. The job above can only drive
   # DpapiCredentialStore through a fake backend, since Crypt32 does not exist
-  # on Linux; this runs the production store on a Windows runner. The tests
+  # on Linux; this runs the production store on a Windows runner, along with
+  # the runtime token/metadata writes, which share the same atomic writer. The tests
   # are selected by name, so Gradle fails the job if the filter ever stops
   # matching rather than letting it pass with nothing run.
   windows-dpapi:
@@ -81,14 +82,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: DPAPI credential store on Windows
-        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*"
+        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest"
 
       # Gradle prints nothing per test. The timings show the real round trip
       # ran (it spawns a second JVM), rather than the off-Windows early return.
       - name: Show which DPAPI tests ran
         if: always()
         shell: pwsh
-        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml | Select-String '<testsuite |<testcase '
+        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml, core\build\test-results\desktopTest\TEST-*.SecureRuntimeFilesTest.xml | Select-String '<testsuite |<testcase '
 
   # Builds the Linux release tarballs and runs them extracted, as release.yml
   # does before publishing, so a packaging regression shows up on the PR

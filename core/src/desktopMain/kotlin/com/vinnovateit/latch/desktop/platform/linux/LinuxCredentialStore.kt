@@ -8,6 +8,7 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.nio.file.Files
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
@@ -36,7 +37,9 @@ internal interface SecretServiceBackend {
     fun isReachable(): Boolean
     fun store(payload: String): Boolean
     fun lookup(): String?
-    fun clear()
+
+    /** Removes Latch's entry; true only when no Latch entry remains afterwards. */
+    fun clear(): Boolean
 }
 
 /**
@@ -83,8 +86,19 @@ internal class ProcessSecretServiceBackend(
         return (outcome as? Outcome.Exited)?.takeIf { it.code == 0 }?.stdout?.takeIf { it.isNotEmpty() }
     }
 
-    override fun clear() {
+    /**
+     * `secret-tool clear` exits 1 with nothing on stderr both when no entry
+     * matched and when a locked keyring refused the delete and the entry
+     * survives, so its exit status cannot confirm removal. `search` still
+     * lists a locked entry, without prompting, so an empty search afterwards
+     * is the confirmation.
+     */
+    override fun clear(): Boolean {
         run(listOf("clear", "service", service))
+        val remaining = run(listOf("search", "service", service))
+        return remaining is Outcome.Exited &&
+            remaining.code == 0 &&
+            remaining.stdout.lineSequence().none { it.startsWith("[/") }
     }
 
     private fun run(arguments: List<String>, input: String? = null): Outcome {
@@ -156,14 +170,6 @@ class LinuxCredentialStore internal constructor(
         if (!saltFile.exists() || saltFile.length() < 16) return null
         return saltFile.readBytes()
     }
-
-    /**
-     * Reads keep the historical tolerance of an unreadable salt file. A
-     * missing salt means no blob can be decrypted, which the caller treats
-     * like any other unreadable blob.
-     */
-    private fun saltForRead(): ByteArray? =
-        runCatching { persistedSalt() }.getOrElse { SALT.toByteArray(Charsets.UTF_8) }
 
     /**
      * A save must never encrypt with a salt that is not durably on disk: that
@@ -252,24 +258,49 @@ class LinuxCredentialStore internal constructor(
         }
 
         if (!file.exists()) return null
+        val bytes = try {
+            file.readBytes()
+        } catch (e: IOException) {
+            logger.e(TAG, "Credential file could not be read; keeping it", e)
+            return null
+        }
+        if (bytes.size <= GCM_IV_LENGTH) return null
+
+        // A missing or unreadable salt makes the blob undecryptable for now,
+        // not corrupt: restoring the salt file (or its permissions) makes it
+        // readable again. So the blob is kept and reads report no credentials
+        // until then, rather than destroying what may still be recoverable.
+        // An unreadable salt keeps the historical tolerance of trying the
+        // constant salt, which is what an old save used in the same situation.
+        val salt = runCatching { persistedSalt() }
+        val saltBytes = salt.getOrNull()
+        if (saltBytes == null) {
+            if (salt.isFailure) {
+                runCatching { decrypt(bytes, SALT.toByteArray(Charsets.UTF_8)) }.getOrNull()?.let {
+                    cache = it
+                    return it
+                }
+            }
+            logger.e(TAG, "Credential salt is missing or unreadable; keeping the encrypted credentials")
+            return null
+        }
+
         return try {
-            val bytes = file.readBytes()
-            if (bytes.size <= GCM_IV_LENGTH) return null
-
-            val iv = bytes.copyOfRange(0, GCM_IV_LENGTH)
-            val encrypted = bytes.copyOfRange(GCM_IV_LENGTH, bytes.size)
-
-            val salt = checkNotNull(saltForRead()) { "Credential salt is missing" }
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, deriveKey(salt), GCMParameterSpec(GCM_TAG_LENGTH, iv))
-            val decrypted = cipher.doFinal(encrypted)
-
-            json.decodeFromString<StoredCreds>(decrypted.toString(Charsets.UTF_8)).also { cache = it }
+            decrypt(bytes, saltBytes).also { cache = it }
         } catch (e: Throwable) {
             logger.e(TAG, "Credential blob unreadable; clearing it", e)
             runCatching { file.delete() }
             null
         }
+    }
+
+    private fun decrypt(bytes: ByteArray, salt: ByteArray): StoredCreds {
+        val iv = bytes.copyOfRange(0, GCM_IV_LENGTH)
+        val encrypted = bytes.copyOfRange(GCM_IV_LENGTH, bytes.size)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, deriveKey(salt), GCMParameterSpec(GCM_TAG_LENGTH, iv))
+        val decrypted = cipher.doFinal(encrypted)
+        return json.decodeFromString<StoredCreds>(decrypted.toString(Charsets.UTF_8))
     }
 
     override fun userId(): String? = read()?.userId
@@ -278,9 +309,25 @@ class LinuxCredentialStore internal constructor(
 
     override fun exists(): Boolean = read() != null
 
-    override fun clear() {
+    /**
+     * Removes every copy of the credentials Latch can reach, and fails if any
+     * of them remains. Both removals are attempted even when one fails.
+     *
+     * An unreachable Secret Service (tool missing, no provider answering) is
+     * skipped: an entry there can be neither read nor removed until it is
+     * reachable again. The salt is left in place -- it is not a credential and
+     * decrypts nothing without the blob, and the next fallback save reuses it.
+     */
+    override fun clear(): Result<Unit> {
         cache = null
-        secretService.clear()
-        runCatching { file.delete() }
+        val keyringCleared = !secretService.isReachable() || secretService.clear()
+        val fileRemoved = runCatching { Files.deleteIfExists(file.toPath()) }.isSuccess && !file.exists()
+        val failure = when {
+            !keyringCleared -> "Secret Service still holds the saved credentials."
+            !fileRemoved -> "The encrypted credential file could not be removed."
+            else -> return Result.success(Unit)
+        }
+        logger.e(TAG, "Failed to clear credentials: $failure")
+        return Result.failure(IllegalStateException(failure))
     }
 }

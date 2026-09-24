@@ -138,7 +138,13 @@ interface CredentialStore {
     fun userId(): String?
     fun password(): String?
     fun exists(): Boolean
-    fun clear()
+
+    /**
+     * Fails if a copy of the credentials this store owns could still remain,
+     * so a caller never reports credentials as removed when they are not.
+     * Failure messages never include credential values.
+     */
+    fun clear(): Result<Unit>
 }
 
 // ---------------------------------------------------------------------------
