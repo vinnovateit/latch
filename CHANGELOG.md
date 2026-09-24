@@ -6,6 +6,21 @@ that release's body, so a release is only as good as its entry in this file. Add
 the section in the same commit that bumps the version; the release job fails
 before it builds anything if the section is missing.
 
+## 1.4.2
+
+Hardening release for the desktop app, the CLI and the Linux installer.
+
+### What's fixed
+
+- **Linux installer**: `install.sh` could fall back to a download from 1.3.8 that no longer exists, and could pick up the CLI archive instead of the desktop one. It now always installs the latest desktop release, and stops with a clear message if it cannot find it
+- **Linux**: saved credentials are no longer deleted when their encryption salt file is missing or unreadable. They become readable again once the file is restored
+- The authentication token that the CLI and desktop app share is now private to your user from the moment it is written, and runtime files are never replaced partially
+- Release builds are now checked on Windows against the real credential store, and on Linux by running the final downloadable archives
+
+No action is needed after updating.
+
+Download the compatible version for your machine from the assets below.
+
 ## 1.4.1
 
 Reliability and credential-storage hardening release for the desktop app and CLI.
