@@ -17,8 +17,8 @@ import kotlin.test.assertTrue
  * Exercises failure-propagation through [DpapiCredentialStore] with a fake
  * [DpapiBackend] rather than the real Windows Crypt32 API, which does not
  * exist on the Linux CI runners this module is built and tested on. This
- * proves the save/read contract; it does not exercise the real DPAPI round
- * trip, which only a Windows machine can do.
+ * proves the save/read contract; the real DPAPI round trip is
+ * [DpapiCredentialStoreWindowsTest], which runs on the Windows CI job.
  */
 class DpapiCredentialStoreTest {
     private lateinit var directory: File
