@@ -89,3 +89,38 @@ jobs:
         if: always()
         shell: pwsh
         run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml | Select-String '<testsuite |<testcase '
+
+  # Builds the Linux release tarballs and runs them extracted, as release.yml
+  # does before publishing, so a packaging regression shows up on the PR
+  # rather than on the release tag. The desktop launch needs a display, hence
+  # xvfb-run. install.sh is tested against stubbed curl/sudo and the tarball.
+  linux-packages:
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build Linux tarballs
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktop:packageReleaseTarGz :cli:packageCliTarGz
+
+      - name: Smoke-test extracted tarballs and install.sh
+        run: |
+          command -v xvfb-run >/dev/null || { sudo apt-get update && sudo apt-get install --yes xvfb; }
+          version="$(sed -n 's/^latchVersion=//p' gradle.properties)"
+          desktop="desktop/build/distributions/latch-$version-linux-x64.tar.gz"
+          xvfb-run -a packaging/smoke-linux-tarballs.sh "$version" "$desktop" \
+            "cli/build/distributions/latch-cli-$version-linux-x64.tar.gz"
+          packaging/test-install-script.sh "$desktop"
