@@ -58,13 +58,14 @@ jobs:
       - name: Build and Test
         run: ./gradlew :desktop:compileKotlinDesktop :core:desktopTest :desktop:desktopTest :cli:build :desktop:smoke
 
-  # Builds the Linux release tarballs and runs them extracted, as release.yml
-  # does before publishing, so a packaging regression shows up on the PR
-  # rather than on the release tag. The desktop launch needs a display, hence
-  # xvfb-run. install.sh is tested against stubbed curl/sudo and the tarball.
-  linux-packages:
+  # Real Windows DPAPI round trip. The job above can only drive
+  # DpapiCredentialStore through a fake backend, since Crypt32 does not exist
+  # on Linux; this runs the production store on a Windows runner. The tests
+  # are selected by name, so Gradle fails the job if the filter ever stops
+  # matching rather than letting it pass with nothing run.
+  windows-dpapi:
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 20
 
     steps:
@@ -79,16 +80,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Build Linux tarballs
-        run: |
-          chmod +x gradlew
-          ./gradlew :desktop:packageReleaseTarGz :cli:packageCliTarGz
+      - name: DPAPI credential store on Windows
+        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*"
 
-      - name: Smoke-test extracted tarballs and install.sh
-        run: |
-          command -v xvfb-run >/dev/null || { sudo apt-get update && sudo apt-get install --yes xvfb; }
-          version="$(sed -n 's/^latchVersion=//p' gradle.properties)"
-          desktop="desktop/build/distributions/latch-$version-linux-x64.tar.gz"
-          xvfb-run -a packaging/smoke-linux-tarballs.sh "$version" "$desktop" \
-            "cli/build/distributions/latch-cli-$version-linux-x64.tar.gz"
-          packaging/test-install-script.sh "$desktop"
+      # Gradle prints nothing per test. The timings show the real round trip
+      # ran (it spawns a second JVM), rather than the off-Windows early return.
+      - name: Show which DPAPI tests ran
+        if: always()
+        shell: pwsh
+        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml | Select-String '<testsuite |<testcase '
