@@ -11,7 +11,31 @@ set -e
 # ==============================================================================
 
 REPO="vinnovateit/latch"
-DEFAULT_TAR_URL="https://github.com/${REPO}/releases/latest/download/latch-1.3.8-linux-x64.tar.gz"
+
+# Prints the download URL of the newest release's desktop tarball.
+#
+# Asks the GitHub API first. That API is rate-limited per IP, so when it gives
+# nothing the version is read from where github.com's latest-release page
+# redirects (.../releases/tag/v<version>) instead. Either way the version comes
+# from the published release, so there is no version number in this script to
+# go stale. Only the desktop tarball matches: the CLI tarball is published
+# alongside it and is not what this script installs.
+resolve_tar_url() {
+    url=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+        | grep '"browser_download_url"' | grep '/latch-[0-9][^"/]*-linux-x64\.tar\.gz"' \
+        | cut -d '"' -f 4 | head -n 1) || true
+    if [ -n "$url" ]; then
+        echo "$url"
+        return 0
+    fi
+
+    latest=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null) || true
+    tag=${latest##*/}
+    case "$tag" in
+        v[0-9]*) echo "https://github.com/${REPO}/releases/download/${tag}/latch-${tag#v}-linux-x64.tar.gz" ;;
+        *) return 1 ;;
+    esac
+}
 
 echo "==== Installing Latch Desktop by VinnovateIT ===="
 
@@ -24,12 +48,13 @@ if [ -n "$LATCH_LOCAL_TAR" ]; then
     echo "--> Using local tarball: $LATCH_LOCAL_TAR"
     TMP_TAR="$LATCH_LOCAL_TAR"
 else
-    TAR_URL=""
-    if command -v curl >/dev/null 2>&1; then
-        TAR_URL=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4 | head -n 1 || true)
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "ERROR: curl is required to download Latch." >&2
+        exit 1
     fi
-    if [ -z "$TAR_URL" ]; then
-        TAR_URL="$DEFAULT_TAR_URL"
+    if ! TAR_URL=$(resolve_tar_url); then
+        echo "ERROR: Could not find the latest Latch release on GitHub. Check your connection, or download the tarball from https://github.com/${REPO}/releases and install it with LATCH_LOCAL_TAR." >&2
+        exit 1
     fi
 
     TMP_TAR=$(mktemp /tmp/latch-XXXXXX.tar.gz)

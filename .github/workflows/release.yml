@@ -88,6 +88,19 @@ jobs:
             :cli:packageCliDeb \
             :cli:packageCliRpm
 
+      # Runs what was archived rather than the build image: v1.4.0 shipped
+      # tarballs whose launchers were not executable while the image was fine.
+      # Failing here stops the release before anything is uploaded.
+      - name: Smoke-test extracted Linux tarballs and install.sh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          command -v xvfb-run >/dev/null || sudo apt-get install --yes xvfb
+          desktop="desktop/build/distributions/latch-$VERSION-linux-x64.tar.gz"
+          xvfb-run -a packaging/smoke-linux-tarballs.sh "$VERSION" "$desktop" \
+            "cli/build/distributions/latch-cli-$VERSION-linux-x64.tar.gz"
+          packaging/test-install-script.sh "$desktop"
+
       - name: Smoke-test bundled CLI
         run: |
           cli/build/cli-package/image/latch-cli/bin/latch-cli --version
