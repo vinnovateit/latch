@@ -39,12 +39,26 @@ object AppPaths {
     val logsDir: File get() = File(dataDir, "logs").apply { mkdirs() }
 
     /**
-     * Downloaded update MSIs. Deliberately not a temp file: the JVM exits
-     * moments after handing the path to msiexec, so anything cleaned up on JVM
-     * shutdown would be racing the installer that still needs to read it.
-     * Swept on startup instead -- see GithubUpdater.cleanStaleDownloads.
+     * Downloaded update packages. Deliberately not a temp *file*: the JVM
+     * exits moments after handing the path to msiexec, so anything cleaned up
+     * on JVM shutdown would be racing the installer that still needs to read
+     * it. Swept on startup instead -- see GithubUpdater.cleanStaleDownloads.
+     *
+     * On Windows this must stay outside the install directory, which by
+     * default is %LOCALAPPDATA%\Latch -- the same folder as [dataDir]. Every
+     * Latch MSI removes its install directory recursively on uninstall
+     * (jpackage's RemoveFolderEx), and a major upgrade uninstalls the old
+     * product before installing the new one. A package staged under
+     * [dataDir] sits inside what that step deletes, while msiexec is still
+     * installing from it; the /qb fallback then points at a file that may no
+     * longer exist. The per-user temp directory is outside any install
+     * location and still private to the user.
      */
-    val updatesDir: File get() = File(dataDir, "updates").apply { mkdirs() }
+    val updatesDir: File
+        get() = when {
+            isWindows -> File(System.getenv("TEMP") ?: System.getProperty("java.io.tmpdir"), "Latch-updates")
+            else -> File(dataDir, "updates")
+        }.apply { mkdirs() }
 
     /** DPAPI-encrypted credential blob. */
     val credentialsFile: File get() = File(dataDir, "credentials.bin")
