@@ -32,11 +32,38 @@ fi
 
 root=$(mktemp -d)
 desktop_pid=""
+
+# Every process launched here inherits HOME=$root/home, so any process still
+# carrying it once the launches are over was left behind by one of them.
+stragglers() {
+    local proc
+    for proc in /proc/[0-9]*; do
+        grep -qzxF "HOME=$root/home" "$proc/environ" 2>/dev/null && echo "${proc#/proc/}"
+    done
+    return 0
+}
+
+# A straggler still writing into the temp root made `rm -rf` fail with
+# "Directory not empty" after every check had passed, so leftovers are named
+# (for diagnosis) and killed before the root is removed.
 cleanup() {
     if [ -n "$desktop_pid" ] && kill -0 "$desktop_pid" 2>/dev/null; then
         kill -KILL "$desktop_pid" 2>/dev/null || true
     fi
-    rm -rf "$root"
+    local pids
+    pids=$(stragglers)
+    if [ -n "$pids" ]; then
+        echo "note: processes left running by the smoke launches:" >&2
+        # shellcheck disable=SC2086
+        ps -o pid=,args= -p "$(echo $pids | tr ' ' ',')" >&2 || true
+        # shellcheck disable=SC2086
+        kill -KILL $pids 2>/dev/null || true
+    fi
+    for _ in 1 2 3 4 5; do
+        rm -rf "$root" 2>/dev/null && return 0
+        sleep 1
+    done
+    echo "warning: could not remove $root" >&2
 }
 trap cleanup EXIT
 
