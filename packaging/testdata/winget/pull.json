@@ -1,0 +1,33 @@
+{
+  "url": "https://api.github.com/repos/microsoft/winget-pkgs/pulls/439934",
+  "html_url": "https://github.com/microsoft/winget-pkgs/pull/439934",
+  "number": 439934,
+  "state": "open",
+  "title": "New version: VinnovateIT.LatchCLI version 1.4.1",
+  "user": {
+    "login": "rugbedbugg",
+    "type": "User"
+  },
+  "body": "Automated submission from the [Latch release workflow](https://github.com/vinnovateit/latch/blob/main/.github/workflows/release.yml).\n\n- Installer: https://github.com/vinnovateit/latch/releases/download/v1.4.1/latch-cli-1.4.1-windows-x64.zip\n- Release: https://github.com/vinnovateit/latch/releases/tag/v1.4.1\n\nChecksums in the manifest are generated from the published release assets.\n ###### Microsoft Reviewers: [Open in CodeFlow](https://microsoft.github.io/open-pr/?codeflow=https://github.com/microsoft/winget-pkgs/pull/439934)",
+  "created_at": "2026-09-23T18:20:58Z",
+  "closed_at": null,
+  "merged": false,
+  "merged_at": null,
+  "draft": false,
+  "head": {
+    "label": "vinnovateit:latch-cli-1.4.1",
+    "ref": "latch-cli-1.4.1",
+    "sha": "946ea85d1dd77773fa1a8a2a410b5389ca89e184",
+    "repo": {
+      "full_name": "vinnovateit/winget-pkgs",
+      "fork": true
+    }
+  },
+  "base": {
+    "label": "microsoft:master",
+    "ref": "master",
+    "repo": {
+      "full_name": "microsoft/winget-pkgs"
+    }
+  }
+}

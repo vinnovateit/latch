@@ -316,10 +316,18 @@ jobs:
           git commit -m "Publish Latch $TAG to the APT and DNF repositories"
           git push origin gh-pages
 
+  # WinGet gets one pending submission for the newest release, not one PR per
+  # tag: submit-winget.sh reconciles with what is already open or published
+  # before it opens anything. Serialised across releases so two tags close
+  # together cannot both see "nothing pending"; GitHub keeps only the newest
+  # waiting run, so a burst of releases coalesces to its latest version.
   submit-winget:
     name: Submit to winget
     needs: [prepare, release]
     runs-on: ubuntu-latest
+    concurrency:
+      group: winget-submission
+      cancel-in-progress: false
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
@@ -333,9 +341,14 @@ jobs:
           gh release download "$TAG" --pattern '*-package-metadata.zip' --dir .
           unzip -q "latch-cli-$VERSION-package-metadata.zip" -d package-metadata
 
+      # The reconciliation logic runs against a fake GitHub before it is
+      # trusted with the real one.
+      - name: Test the winget submission logic
+        run: packaging/test-submit-winget.sh
+
       # A repository-scoped token cannot push to a fork in another org, so this
       # needs a PAT with public_repo rather than GITHUB_TOKEN.
-      - name: Open the winget pull request
+      - name: Reconcile and submit to winget
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}
