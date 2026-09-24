@@ -82,3 +82,10 @@ jobs:
 
       - name: DPAPI credential store on Windows
         run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*"
+
+      # Gradle prints nothing per test. The timings show the real round trip
+      # ran (it spawns a second JVM), rather than the off-Windows early return.
+      - name: Show which DPAPI tests ran
+        if: always()
+        shell: pwsh
+        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml | Select-String '<testsuite |<testcase '
