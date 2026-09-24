@@ -59,12 +59,15 @@ $Summary = [System.Collections.Generic.List[string]]::new()
 
 $installer = New-Object -ComObject WindowsInstaller.Installer
 
+# The leading comma returns the COM result as one object. Without it the
+# pipeline unrolls enumerable results: an empty RelatedProducts list would
+# arrive as $null rather than as a list with Count 0.
 function Get-ComProperty($obj, [string] $name, [object[]] $arguments = @()) {
-    $obj.GetType().InvokeMember($name, [Reflection.BindingFlags]::GetProperty, $null, $obj, $arguments)
+    , $obj.GetType().InvokeMember($name, [Reflection.BindingFlags]::GetProperty, $null, $obj, $arguments)
 }
 
 function Invoke-ComMethod($obj, [string] $name, [object[]] $arguments = @()) {
-    $obj.GetType().InvokeMember($name, [Reflection.BindingFlags]::InvokeMethod, $null, $obj, $arguments)
+    , $obj.GetType().InvokeMember($name, [Reflection.BindingFlags]::InvokeMethod, $null, $obj, $arguments)
 }
 
 function Write-Result([string] $line) {
