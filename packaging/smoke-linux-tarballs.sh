@@ -32,11 +32,38 @@ fi
 
 root=$(mktemp -d)
 desktop_pid=""
+
+# Every process launched here inherits HOME=$root/home, so any process still
+# carrying it once the launches are over was left behind by one of them.
+stragglers() {
+    local proc
+    for proc in /proc/[0-9]*; do
+        grep -qzxF "HOME=$root/home" "$proc/environ" 2>/dev/null && echo "${proc#/proc/}"
+    done
+    return 0
+}
+
+# A straggler still writing into the temp root made `rm -rf` fail with
+# "Directory not empty" after every check had passed, so leftovers are named
+# (for diagnosis) and killed before the root is removed.
 cleanup() {
     if [ -n "$desktop_pid" ] && kill -0 "$desktop_pid" 2>/dev/null; then
         kill -KILL "$desktop_pid" 2>/dev/null || true
     fi
-    rm -rf "$root"
+    local pids
+    pids=$(stragglers)
+    if [ -n "$pids" ]; then
+        echo "note: processes left running by the smoke launches:" >&2
+        # shellcheck disable=SC2086
+        ps -o pid=,args= -p "$(echo $pids | tr ' ' ',')" >&2 || true
+        # shellcheck disable=SC2086
+        kill -KILL $pids 2>/dev/null || true
+    fi
+    for _ in 1 2 3 4 5; do
+        rm -rf "$root" 2>/dev/null && return 0
+        sleep 1
+    done
+    echo "warning: could not remove $root" >&2
 }
 trap cleanup EXIT
 
@@ -51,20 +78,21 @@ data_dir="$root/data/Latch"
 
 # The same isolated environment for every launch. The latch.dataDir override is
 # not set here, so the XDG location is what isolates the data directory.
+isolated_env=(
+    PATH=/usr/bin:/bin
+    LANG=C.UTF-8
+    HOME="$root/home"
+    XDG_CONFIG_HOME="$root/config"
+    XDG_DATA_HOME="$root/data"
+    XDG_CACHE_HOME="$root/cache"
+    XDG_STATE_HOME="$root/state"
+    XDG_RUNTIME_DIR="$root/run"
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$root/no-bus"
+    DISPLAY="${DISPLAY:-}"
+    XAUTHORITY="${XAUTHORITY:-}"
+)
 isolated() {
-    env -i \
-        PATH=/usr/bin:/bin \
-        LANG=C.UTF-8 \
-        HOME="$root/home" \
-        XDG_CONFIG_HOME="$root/config" \
-        XDG_DATA_HOME="$root/data" \
-        XDG_CACHE_HOME="$root/cache" \
-        XDG_STATE_HOME="$root/state" \
-        XDG_RUNTIME_DIR="$root/run" \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=$root/no-bus" \
-        DISPLAY="${DISPLAY:-}" \
-        XAUTHORITY="${XAUTHORITY:-}" \
-        "$@"
+    env -i "${isolated_env[@]}" "$@"
 }
 
 # Extracts an archive into its own directory and prints the single top-level
@@ -146,7 +174,10 @@ desktop_image=$(extract "$desktop_archive" "$root/desktop")
 check_image "$desktop_image" Latch
 
 # Hidden, so it starts as a tray process; with no credentials it never logs in.
-isolated "$desktop_image/bin/Latch" --hidden >"$root/desktop.log" 2>&1 &
+# Started as a plain command, not through isolated(): a backgrounded function
+# runs in a subshell, so $! would be that subshell and the kill below would
+# never reach the app.
+env -i "${isolated_env[@]}" "$desktop_image/bin/Latch" --hidden >"$root/desktop.log" 2>&1 &
 desktop_pid=$!
 for _ in $(seq 1 90); do
     grep -q '"DESKTOP"' "$data_dir/.runtime.json" 2>/dev/null && break
@@ -173,9 +204,13 @@ for _ in $(seq 1 15); do
     kill -0 "$desktop_pid" 2>/dev/null || break
     sleep 1
 done
-kill -KILL "$desktop_pid" 2>/dev/null || true
+if kill -0 "$desktop_pid" 2>/dev/null; then
+    echo "note: the desktop app ignored SIGTERM for 15s; killing it" >&2
+    kill -KILL "$desktop_pid" 2>/dev/null || true
+fi
 wait "$desktop_pid" 2>/dev/null || true
 desktop_pid=""
+echo "  desktop app stopped"
 if grep -q 'Permission denied' "$root/desktop.log"; then
     fail "the desktop log reports a permission error"
 fi
