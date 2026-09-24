@@ -140,7 +140,7 @@ private class FakePlatform(
         override fun userId(): String? = null
         override fun password(): String? = null
         override fun exists(): Boolean = false
-        override fun clear() = Unit
+        override fun clear() = Result.success(Unit)
     }
     override val counters: ByteCounterSource = NoCounters
     override val notifier: UserNotifier = object : UserNotifier {

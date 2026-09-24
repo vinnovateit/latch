@@ -45,8 +45,9 @@ class FakeCredentialStore(private var stored: Pair<String, String>? = null) : Cr
     override fun userId(): String? = stored?.first
     override fun password(): String? = stored?.second
     override fun exists(): Boolean = stored != null
-    override fun clear() {
+    override fun clear(): Result<Unit> {
         stored = null
+        return Result.success(Unit)
     }
 }
 

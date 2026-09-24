@@ -9,10 +9,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Exercises the synchronous persistence step behind
- * [StoredCredentials.saveCredentials] with in-memory preferences whose
- * `commit()` result is controlled, since EncryptedSharedPreferences and the
- * Android Keystore are unavailable in JVM unit tests.
+ * Exercises the synchronous persistence and removal steps behind
+ * [StoredCredentials.saveCredentials] and [StoredCredentials.clearCredentials]
+ * with in-memory preferences whose `commit()` result is controlled, since
+ * EncryptedSharedPreferences and the Android Keystore are unavailable in JVM
+ * unit tests.
  */
 class StoredCredentialsPersistenceTest {
 
@@ -61,16 +62,55 @@ class StoredCredentialsPersistenceTest {
         assertEquals(1, credentials.commitCalls)
         assertEquals(1, appPrefs.commitCalls)
     }
+
+    @Test
+    fun removingCredentialsCommitsAndClearsTheFlag() {
+        val credentials = FakePreferences(commitSucceeds = true)
+        val appPrefs = FakePreferences(commitSucceeds = true)
+        StoredCredentials.persistCredentials(credentials, appPrefs, "22BCE0001", "test-pass")
+
+        val removed = StoredCredentials.removeCredentials(credentials, appPrefs)
+
+        assertTrue(removed)
+        assertTrue(credentials.values.isEmpty())
+        assertEquals(false, appPrefs.values["has_credentials"])
+        assertEquals(0, credentials.applyCalls + appPrefs.applyCalls)
+    }
+
+    @Test
+    fun aFailedCredentialRemovalIsReportedAndKeepsTheFlagSet() {
+        val credentials = FakePreferences(commitSucceeds = true)
+        val appPrefs = FakePreferences(commitSucceeds = true)
+        StoredCredentials.persistCredentials(credentials, appPrefs, "22BCE0001", "test-pass")
+        credentials.commitSucceeds = false
+
+        val removed = StoredCredentials.removeCredentials(credentials, appPrefs)
+
+        assertFalse(removed)
+        assertEquals("test-pass", credentials.values["password"])
+        assertEquals("the flag must not claim credentials are gone while they remain", true, appPrefs.values["has_credentials"])
+    }
+
+    @Test
+    fun aFailedFlagCommitOnRemovalIsReported() {
+        val credentials = FakePreferences(commitSucceeds = true)
+        val appPrefs = FakePreferences(commitSucceeds = true)
+        StoredCredentials.persistCredentials(credentials, appPrefs, "22BCE0001", "test-pass")
+        appPrefs.commitSucceeds = false
+
+        assertFalse(StoredCredentials.removeCredentials(credentials, appPrefs))
+    }
 }
 
 /** Stages edits and publishes them only when `commit()` is set to succeed. */
-private class FakePreferences(private val commitSucceeds: Boolean) : SharedPreferences {
+private class FakePreferences(var commitSucceeds: Boolean) : SharedPreferences {
     val values = mutableMapOf<String, Any?>()
     var commitCalls = 0
     var applyCalls = 0
 
     override fun edit(): SharedPreferences.Editor = object : SharedPreferences.Editor {
         private val staged = mutableMapOf<String, Any?>()
+        private var clearRequested = false
         override fun putString(key: String, value: String?) = also { staged[key] = value }
         override fun putStringSet(key: String, values: MutableSet<String>?) = also { staged[key] = values }
         override fun putInt(key: String, value: Int) = also { staged[key] = value }
@@ -78,14 +118,18 @@ private class FakePreferences(private val commitSucceeds: Boolean) : SharedPrefe
         override fun putFloat(key: String, value: Float) = also { staged[key] = value }
         override fun putBoolean(key: String, value: Boolean) = also { staged[key] = value }
         override fun remove(key: String) = also { staged[key] = null }
-        override fun clear() = also { values.clear() }
+        override fun clear() = also { clearRequested = true }
         override fun commit(): Boolean {
             commitCalls++
-            if (commitSucceeds) values.putAll(staged)
+            if (commitSucceeds) publish()
             return commitSucceeds
         }
         override fun apply() {
             applyCalls++
+            publish()
+        }
+        private fun publish() {
+            if (clearRequested) values.clear()
             values.putAll(staged)
         }
     }
