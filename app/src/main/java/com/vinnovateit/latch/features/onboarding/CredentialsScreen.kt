@@ -32,13 +32,18 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -51,8 +56,16 @@ import com.vinnovateit.latch.features.home.MainActivity
 import com.vinnovateit.latch.ui.theme.LatchTheme
 import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 
+/**
+ * [onBackClick] shows a back button in edit mode, reached from Settings like the
+ * other pushed screens. First-run setup has none: onboarding leads here.
+ */
 @Composable
-fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
+fun CredentialsScreen(
+    editMode: Boolean,
+    onCredentialsSaved: () -> Unit,
+    onBackClick: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var regNo by remember { mutableStateOf("") }
@@ -290,6 +303,33 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
                         modifier = Modifier.padding(horizontal = 8.dp)
                     )
                 }
+            }
+        }
+
+        if (editMode && onBackClick != null) {
+            val haptic = LocalHapticFeedback.current
+            // Same control and placement as the Settings and Stats back buttons.
+            // Drawn after the form so it stays tappable over scrolled content.
+            FilledIconButton(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Start))
+                    .padding(start = 12.dp, top = 4.dp)
+                    .size(40.dp)
+                    .clip(CircleShape),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onBackClick()
+                },
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
 
