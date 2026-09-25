@@ -518,8 +518,12 @@ private fun DesktopCanvasBar(
     ) {
         val maxVal = maxUsage()
         val currentFrac = if (maxVal > 0f && total > 0L) {
-            (total.toFloat() / maxVal).coerceIn(0.04f, 0.96f)
-        } else 0.04f
+            val linearRatio = (total.toDouble() / maxVal.toDouble()).coerceIn(0.0, 1.0)
+            val scaledRatio = kotlin.math.sqrt(linearRatio).toFloat()
+            (0.04f + 0.92f * scaledRatio).coerceIn(0.04f, 0.96f)
+        } else {
+            0.04f
+        }
         val cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx())
         val strokeWidth = 1.5.dp.toPx()
         val inset = if (isAmoled) strokeWidth / 2 else 0f
