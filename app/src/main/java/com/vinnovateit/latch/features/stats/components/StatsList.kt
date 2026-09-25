@@ -3,30 +3,29 @@ package com.vinnovateit.latch.features.stats.components
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.core.model.LiveConnectionStatus
@@ -34,8 +33,8 @@ import com.vinnovateit.latch.core.model.PortalSessionRecord
 import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.formatDate
-import com.vinnovateit.latch.core.stats.formatDisplayDate
 import com.vinnovateit.latch.features.stats.StatsViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -59,9 +58,13 @@ fun StatsList(
   val chartItems by statsViewModel.chartItems.collectAsStateWithLifecycle()
   val isHistoryLoaded by statsViewModel.isHistoryLoaded.collectAsStateWithLifecycle()
   var selectedDayTimestamp by remember { mutableStateOf<Long?>(null) }
+  var sessionsDayTimestamp by remember { mutableStateOf<Long?>(null) }
+  LaunchedEffect(selectedDayTimestamp) {
+    delay(300)
+    sessionsDayTimestamp = selectedDayTimestamp
+  }
   val todayKey = remember { formatDate(System.currentTimeMillis(), "yyyy-MM-dd") }
-  val selectedDateKey = selectedDayTimestamp?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
-  val isToday = selectedDateKey == todayKey
+  val selectedDateKey = sessionsDayTimestamp?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
 
   val displayedSessions = remember(portalHistory, selectedDateKey) {
     portalHistory.filter { session ->
@@ -74,6 +77,8 @@ fun StatsList(
   val chartPalette by SettingsManager.chartPalette.collectAsStateWithLifecycle()
   val (dlColor, ulColor) = com.vinnovateit.latch.common.util.StatsColorPalettes.resolveColors(chartPalette)
   val layoutDirection = LocalLayoutDirection.current
+  val density = LocalDensity.current
+  var sessionsBlockReservedPx by remember { mutableIntStateOf(0) }
 
   LazyColumn(
     modifier = modifier,
@@ -125,50 +130,35 @@ fun StatsList(
       }
     }
 
-    item {
-      val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())} Sessions"
-      Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onBackground,
-        textAlign = TextAlign.Left,
+    item(key = "sessions_block") {
+      DisposableEffect(Unit) {
+        onDispose { sessionsBlockReservedPx = 0 }
+      }
+      Box(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(horizontal = 16.dp, vertical = 8.dp)
-      )
-    }
-
-    if (displayedSessions.isNotEmpty()) {
-      itemsIndexed(
-        items = displayedSessions,
-        key = { index, session -> "${session.loginTime}_${session.uploadBytes}_${session.downloadBytes}_$index" },
-        contentType = { _, _ -> "session_item" }
-      ) { index, session ->
-        TodaySessionListItem(
-          session = session,
-          shape = groupedItemShape(index, displayedSessions.size),
-          isAmoled = isAmoled,
-          dlColor = dlColor,
-          ulColor = ulColor
-        )
-      }
-    } else {
-      item {
-        val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())}."
-        Surface(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-          shape = RoundedCornerShape(16.dp),
-          color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ) {
-          Text(
-            text = emptyText,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(16.dp)
-          )
+          .heightIn(min = with(density) { sessionsBlockReservedPx.toDp() })
+          .onGloballyPositioned { coords ->
+            if (coords.size.height > sessionsBlockReservedPx) {
+              sessionsBlockReservedPx = coords.size.height
+            }
+          }
+      ) {
+        if (displayedSessions.isNotEmpty()) {
+          Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+          ) {
+            displayedSessions.forEachIndexed { index, session ->
+              TodaySessionListItem(
+                session = session,
+                shape = groupedItemShape(index, displayedSessions.size),
+                isAmoled = isAmoled,
+                dlColor = dlColor,
+                ulColor = ulColor
+              )
+            }
+          }
         }
       }
     }

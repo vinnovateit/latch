@@ -1,7 +1,6 @@
 package com.vinnovateit.latch.features.stats.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -160,22 +159,19 @@ fun DayAggregateListItem(
     ListItem(
       modifier = Modifier.fillMaxWidth(),
       content = {
-        Box(
-          modifier = Modifier.fillMaxWidth()
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
           Text(
             text = record.dateFormatted,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
-            color = if (record.isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.align(Alignment.CenterStart)
+            color = if (record.isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
           )
           if (record.durationFormatted.isNotBlank()) {
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
               text = record.durationFormatted,
               style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-              modifier = Modifier.align(Alignment.Center)
+              color = MaterialTheme.colorScheme.onSurfaceVariant
             )
           }
         }
@@ -202,6 +198,15 @@ fun DayAggregateListItem(
               "${record.uploadFormatted.first} ${record.uploadFormatted.second}",
               style = MaterialTheme.typography.labelSmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+          }
+          if (record.sessionCount > 0) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+              text = if (record.sessionCount == 1) "1 Session" else "${record.sessionCount} Sessions",
+              style = MaterialTheme.typography.labelSmall,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.primary
             )
           }
         }

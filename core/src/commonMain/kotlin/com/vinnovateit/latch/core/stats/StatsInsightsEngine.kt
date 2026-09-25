@@ -29,7 +29,7 @@ fun formatInsightDate(timestamp: Long, nowMillis: Long = System.currentTimeMilli
     val nowCal = Calendar.getInstance().apply { timeInMillis = nowMillis }
     val currentYear = nowCal.get(Calendar.YEAR)
 
-    val pattern = if (recordYear == currentYear) "dd MMM" else "dd MMM yyyy"
+    val pattern = if (recordYear == currentYear) "d MMM" else "d MMM yyyy"
     return SimpleDateFormat(pattern, Locale.US).format(cal.time)
 }
 
