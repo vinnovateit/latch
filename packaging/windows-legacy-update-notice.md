@@ -1,5 +1,7 @@
 Windows users on Latch 1.4.2 or earlier: please install this update by hand, once.
 
-The update button in your version cannot install it. Download LatchSetup.msi from https://github.com/vinnovateit/latch/releases/latest and run it. Choosing "Download update" in the app only restarts it.
+Exit Latch completely first, including from the system tray. Then download LatchSetup.msi from https://github.com/vinnovateit/latch/releases/latest and run it.
 
-Installing resets your settings and saved credentials this one time, so sign in again afterwards. Later updates install from the app and keep them.
+The "Download update" button in your current version cannot install this release; choosing it will only restart Latch.
+
+Your saved settings and credentials will reset during this one-time upgrade, so sign in again afterwards. Future updates will install normally and preserve your data.

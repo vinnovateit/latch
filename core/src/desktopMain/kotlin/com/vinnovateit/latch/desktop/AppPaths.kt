@@ -75,14 +75,16 @@ object AppPaths {
      * it. Swept on startup instead -- see GithubUpdater.cleanStaleDownloads.
      *
      * On Windows this must stay outside the install directory, which by
-     * default is %LOCALAPPDATA%\Latch -- the same folder as [dataDir]. Every
-     * Latch MSI removes its install directory recursively on uninstall
-     * (jpackage's RemoveFolderEx), and a major upgrade uninstalls the old
-     * product before installing the new one. A package staged under
-     * [dataDir] sits inside what that step deletes, while msiexec is still
-     * installing from it; the /qb fallback then points at a file that may no
-     * longer exist. The per-user temp directory is outside any install
-     * location and still private to the user.
+     * default is %LOCALAPPDATA%\Latch. Every Latch MSI removes its install
+     * directory recursively on uninstall (jpackage's RemoveFolderEx), and a
+     * major upgrade uninstalls the old product before installing the new
+     * one, so a package staged inside it is deleted while msiexec is still
+     * installing from it. Builds up to 1.4.2 did exactly that: they staged
+     * under their data directory, which was then that same folder. The data
+     * directory has since moved out ([windowsDataDir]), but the installer can
+     * be pointed anywhere (dirChooser), so staging uses the per-user temp
+     * directory, which is outside any install location and still private to
+     * the user.
      */
     val updatesDir: File
         get() = when {
