@@ -64,6 +64,18 @@ class DesktopPlatformServices(
 
     override val logger: Logger = FileLogger(AppPaths.logsDir, echoLogsToStdout)
 
+    init {
+        AppPaths.legacyMigration?.takeUnless { it.isEmpty }?.let { result ->
+            if (result.moved.isNotEmpty()) {
+                logger.d("AppPaths", "Moved pre-1.4.3 data into ${AppPaths.dataDir}: ${result.moved.joinToString()}")
+            }
+            if (result.kept.isNotEmpty()) {
+                logger.w("AppPaths", "Left in the pre-1.4.3 data directory (already present, or not movable): ${result.kept.joinToString()}")
+            }
+            result.note?.let { logger.w("AppPaths", it) }
+        }
+    }
+
     override val buildInfo: BuildInfo = DesktopBuildInfo
 
     override val capabilities: PlatformCapabilities = DesktopCapabilities

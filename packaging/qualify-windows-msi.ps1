@@ -14,7 +14,9 @@ valid, installable, upgradable, removable Windows Installer package:
   3. a silent uninstall succeeds and takes those files with it;
   4. with -BaselineRepo, a silent major upgrade from the newest older
      published release succeeds with the package staged where the updater
-     stages it -- the path the auto-update incident went down.
+     stages it -- the path the auto-update incident went down;
+  5. user data in Latch's data directory survives both the uninstall and the
+     upgrade.
 
 Only native tooling is used: the WindowsInstaller.Installer COM object and
 msiexec. Latch.exe is never launched -- an installed build registers itself
@@ -51,6 +53,12 @@ $LatchExe = Join-Path $InstallDir 'Latch.exe'
 $StagingDir = Join-Path $env:TEMP 'Latch-updates'
 # Where updaters up to v1.4.2 staged the package: inside the install directory.
 $LegacyStagingDir = Join-Path $InstallDir 'updates'
+# Mirrors AppPaths.dataDir on Windows: outside every install directory, so
+# neither an upgrade nor an uninstall may touch it.
+$DataDir = Join-Path (Join-Path $env:LOCALAPPDATA 'VinnovateIT') 'Latch'
+# A stand-in for settings, credentials and history. Only this file is ever
+# removed here, never the directory: on a developer machine it holds real data.
+$DataSentinel = Join-Path $DataDir 'qualification-sentinel.txt'
 
 $Msi = (Resolve-Path -LiteralPath $Msi).Path
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -219,6 +227,18 @@ function Uninstall-Product([string] $productCode, [string] $logName, [string] $w
     Write-Result "  ${what}: msiexec exit 0"
 }
 
+function Set-DataSentinel {
+    New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+    Set-Content -LiteralPath $DataSentinel -Value 'user data stand-in'
+}
+
+function Assert-DataSurvived([string] $what) {
+    if (-not (Test-Path -LiteralPath $DataSentinel -PathType Leaf)) {
+        throw "User data in $DataDir did not survive the $what"
+    }
+    Write-Result "  user data in $DataDir survived the $what"
+}
+
 # Leaves the runner as it found it, whatever state a failure left behind.
 function Remove-EverythingLatch {
     Get-Process -Name 'Latch' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -230,6 +250,7 @@ function Remove-EverythingLatch {
     foreach ($dir in @($InstallDir, $StagingDir)) {
         Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
     }
+    Remove-Item -LiteralPath $DataSentinel -Force -ErrorAction SilentlyContinue
 }
 
 function Get-BaselineMsi {
@@ -242,7 +263,7 @@ function Get-BaselineMsi {
         $v = $null
         if (-not [version]::TryParse(($release.tag_name -replace '^v', ''), [ref]$v)) { continue }
         if ($v -ge $current) { continue }
-        $asset = @($release.assets | Where-Object name -EQ 'Latch-Setup.msi') +
+        $asset = @($release.assets | Where-Object name -In 'LatchSetup.msi', 'Latch-Setup.msi') +
             @($release.assets | Where-Object name -Like '*.msi') | Select-Object -First 1
         if ($null -eq $asset) { continue }
         [pscustomobject]@{ Version = $v; Tag = $release.tag_name; Asset = $asset }
@@ -286,8 +307,10 @@ try {
     Install-LatchPackage $Msi 'install.log' 'silent install'
     Assert-Installed $productCode $Version
     Assert-NoLatchProcess
+    Set-DataSentinel
     Uninstall-Product $productCode 'uninstall.log' 'silent uninstall'
     Assert-Removed $productCode
+    Assert-DataSurvived 'uninstall'
 
     if ($BaselineRepo) {
         $baseline = Get-BaselineMsi
@@ -316,10 +339,11 @@ try {
         Write-Result "Upgrade from $($baseline.Version) (package staged in $StagingDir):"
         Install-LatchPackage $baseline.Path 'baseline-install.log' "baseline $($baseline.Version) install"
         Assert-Installed $baselineCode $baseline.Version
-        # Stands in for user data: Latch keeps settings, credentials and
-        # history in %LOCALAPPDATA%\Latch, which is also the install directory.
+        # Where builds up to 1.4.2 kept user data: the install directory.
+        # Recorded, not asserted -- the old product's uninstall removes it.
         $sentinel = Join-Path $InstallDir 'qualification-sentinel.txt'
         Set-Content -LiteralPath $sentinel -Value 'user data stand-in'
+        Set-DataSentinel
 
         New-Item -ItemType Directory -Force -Path $StagingDir | Out-Null
         $package = Join-Path $StagingDir $staged
@@ -330,11 +354,11 @@ try {
         if (-not (Test-Path -LiteralPath $package)) { throw "The staged package was deleted during the upgrade" }
         Write-Result "  baseline product removed; staged package intact"
         if (-not (Test-Path -LiteralPath $sentinel)) {
-            Write-Host "::warning::A file in %LOCALAPPDATA%\Latch did not survive the upgrade (the old product's uninstall removes its install directory recursively, and the data directory is the same folder)."
-            Write-Result "  user-data stand-in in the install directory survived the upgrade: False"
+            Write-Result "  pre-1.4.3 data location (the install directory) survived the upgrade: False, as expected"
         } else {
-            Write-Result "  user-data stand-in in the install directory survived the upgrade: True"
+            Write-Result "  pre-1.4.3 data location (the install directory) survived the upgrade: True"
         }
+        Assert-DataSurvived 'upgrade'
         Assert-NoLatchProcess
         Uninstall-Product $productCode 'upgrade-uninstall.log' 'silent uninstall after upgrade'
         Assert-Removed $productCode
