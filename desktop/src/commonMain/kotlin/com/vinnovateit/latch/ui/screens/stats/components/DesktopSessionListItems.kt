@@ -2,6 +2,7 @@ package com.vinnovateit.latch.ui.screens.stats.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -143,27 +144,24 @@ fun DayAggregateListItem(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         border = if (isAmoled) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
     ) {
-        val sessionLabel = if (record.sessionCount == 1) "1 session" else "${record.sessionCount} sessions"
-
         ListItem(
             headlineContent = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Text(
                         text = record.dateFormatted,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (record.isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.align(Alignment.CenterStart),
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                    ) {
+                    if (record.durationFormatted.isNotBlank()) {
                         Text(
-                            text = sessionLabel,
+                            text = record.durationFormatted,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.Center),
                         )
                     }
                 }
@@ -190,13 +188,6 @@ fun DayAggregateListItem(
                             "${record.uploadFormatted.first} ${record.uploadFormatted.second}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (record.durationFormatted.isNotBlank()) {
-                        Text(
-                            text = record.durationFormatted,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
                         )
                     }
                 }

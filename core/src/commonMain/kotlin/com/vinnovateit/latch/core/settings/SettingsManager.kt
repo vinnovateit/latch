@@ -35,6 +35,7 @@ object SettingsManager {
     // Desktop-only additions.
     private const val KEY_ALLOWED_SSIDS = "allowed_ssids"
     private const val KEY_HAS_SEEN_ONBOARDING = "hasSeenOnboarding"
+    private const val KEY_MINIMIZE_TO_TRAY = "minimize_to_tray"
 
     /**
      * Whether we have already applied the default "start at login" behaviour.
@@ -58,6 +59,7 @@ object SettingsManager {
     private const val DEFAULT_CHART_PALETTE = "Material Dynamic"
     private const val DEFAULT_PALETTE_STYLE = "TonalSpot"
     private const val DEFAULT_HAPTICS_ENABLED = true
+    private const val DEFAULT_MINIMIZE_TO_TRAY = false
 
     /**
      * SSID fragments Latch is allowed to authenticate against, matched as
@@ -109,6 +111,9 @@ object SettingsManager {
     private val _hapticsEnabled = MutableStateFlow(DEFAULT_HAPTICS_ENABLED)
     val hapticsEnabled: StateFlow<Boolean> = _hapticsEnabled
 
+    private val _minimizeToTray = MutableStateFlow(DEFAULT_MINIMIZE_TO_TRAY)
+    val minimizeToTray: StateFlow<Boolean> = _minimizeToTray
+
     private val _settingsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
     val settingsChanged: SharedFlow<Unit> = _settingsChanged
 
@@ -130,6 +135,7 @@ object SettingsManager {
         _allowedSsids.value = store.getStringSet(KEY_ALLOWED_SSIDS, DEFAULT_ALLOWED_SSIDS)
         _hasSeenOnboarding.value = store.getBoolean(KEY_HAS_SEEN_ONBOARDING, false)
         _hapticsEnabled.value = store.getBoolean(KEY_HAPTICS_ENABLED, DEFAULT_HAPTICS_ENABLED)
+        _minimizeToTray.value = store.getBoolean(KEY_MINIMIZE_TO_TRAY, DEFAULT_MINIMIZE_TO_TRAY)
     }
 
     fun setAutoLogin(enabled: Boolean) {
@@ -199,6 +205,12 @@ object SettingsManager {
         _hapticsEnabled.value = enabled
     }
 
+    fun setMinimizeToTray(enabled: Boolean) {
+        store.putBoolean(KEY_MINIMIZE_TO_TRAY, enabled)
+        _minimizeToTray.value = enabled
+        notifyChanged()
+    }
+
     /**
      * Restores every setting to its default, in the store and in the flows.
      *
@@ -218,6 +230,7 @@ object SettingsManager {
         setAllowedSsids(DEFAULT_ALLOWED_SSIDS)
         setHasSeenOnboarding(false)
         setHapticsEnabled(DEFAULT_HAPTICS_ENABLED)
+        setMinimizeToTray(DEFAULT_MINIMIZE_TO_TRAY)
     }
 
     var autostartDefaultApplied: Boolean

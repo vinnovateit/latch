@@ -87,15 +87,14 @@ fun SettingsScreen(
     val autoLogin by SettingsManager.autoLogin.collectAsStateWithLifecycle()
     val theme by SettingsManager.theme.collectAsStateWithLifecycle()
     val accentColor by SettingsManager.accentColor.collectAsStateWithLifecycle()
-    val paletteStyle by SettingsManager.paletteStyle.collectAsStateWithLifecycle()
     val useMonochrome by SettingsManager.useMonochrome.collectAsStateWithLifecycle()
     val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
     val speedUnits by SettingsManager.speedUnits.collectAsStateWithLifecycle()
+    val minimizeToTray by SettingsManager.minimizeToTray.collectAsStateWithLifecycle()
     val isDark = LocalIsDarkTheme.current
 
     var showThemeDialog by remember { mutableStateOf(false) }
     var showAccentDialog by remember { mutableStateOf(false) }
-    var showPaletteStyleDialog by remember { mutableStateOf(false) }
     var showUnitsDialog by remember { mutableStateOf(false) }
     var showClearStatsDialog by remember { mutableStateOf(false) }
 
@@ -129,7 +128,6 @@ fun SettingsScreen(
                         SettingsItem(
                             title = "Auto-login",
                             subtitle = "Login automatically when a VIT WIFI is available nearby",
-                            leadingIcon = LatchIcons.Login,
                             trailingContent = {
                                 Switch(
                                     checked = autoLogin,
@@ -141,7 +139,6 @@ fun SettingsScreen(
                         SettingsItem(
                             title = stringResource(Res.string.update_credentials),
                             subtitle = "Change the registration number or password Latch uses",
-                            leadingIcon = LatchIcons.Autorenew,
                             onClick = onNavigateToCredentials,
                         )
                     }
@@ -153,11 +150,6 @@ fun SettingsScreen(
                         SettingsItem(
                             title = "Theme",
                             subtitle = theme,
-                            leadingIcon = when (theme) {
-                                "Light" -> LatchIcons.LightMode
-                                "Dark" -> LatchIcons.DarkMode
-                                else -> LatchIcons.DesktopWindows
-                            },
                             onClick = { showThemeDialog = true },
                         )
                         SettingsRowGap()
@@ -168,7 +160,6 @@ fun SettingsScreen(
                                 AccentSeeds.parseHexOrNull(accentColor) != null -> "Custom ($accentColor)"
                                 else -> accentColor
                             },
-                            leadingIcon = LatchIcons.InvertColors,
                             onClick = { showAccentDialog = true },
                             trailingContent = {
                                 AccentSwatch(
@@ -176,23 +167,6 @@ fun SettingsScreen(
                                     useMonochrome = useMonochrome,
                                 )
                             },
-                        )
-                        SettingsRowGap()
-                        SettingsItem(
-                            title = "Palette style",
-                            subtitle = when (paletteStyle) {
-                                "TonalSpot" -> "Tonal Spot"
-                                "Expressive" -> "Expressive"
-                                "FruitSalad" -> "Fruit Salad"
-                                "Spritz" -> "Spritz"
-                                "Rainbow" -> "Rainbow"
-                                "Vibrant" -> "Vibrant"
-                                "Fidelity" -> "Fidelity"
-                                "Content" -> "Content"
-                                else -> paletteStyle
-                            },
-                            leadingIcon = LatchIcons.Palette,
-                            onClick = { showPaletteStyleDialog = true },
                         )
                     }
 
@@ -203,27 +177,24 @@ fun SettingsScreen(
                         SettingsItem(
                             title = "Speed units",
                             subtitle = speedUnits,
-                            leadingIcon = LatchIcons.BarChart,
                             onClick = { showUnitsDialog = true },
                         )
                         SettingsRowGap()
                         SettingsItem(
                             title = "Clear session history",
                             subtitle = "Delete all recorded sessions and usage totals",
-                            leadingIcon = LatchIcons.Restore,
                             onClick = { showClearStatsDialog = true },
                         )
                     }
 
                     // -------------------------------------------------------------
-                    // System (only where autostart is actually supported)
+                    // System
                     // -------------------------------------------------------------
-                    if (platform.capabilities.supportsAutostart) {
-                        SettingsSection(title = "System") {
+                    SettingsSection(title = "System") {
+                        if (platform.capabilities.supportsAutostart) {
                             SettingsItem(
                                 title = "Run at startup",
                                 subtitle = "Launch Latch automatically when you sign in",
-                                leadingIcon = LatchIcons.DesktopWindows,
                                 trailingContent = {
                                     Switch(
                                         checked = autostartEnabled,
@@ -237,7 +208,18 @@ fun SettingsScreen(
                                     )
                                 },
                             )
+                            SettingsRowGap()
                         }
+                        SettingsItem(
+                            title = "Minimize to tray",
+                            subtitle = "Send Latch to the system tray when minimized",
+                            trailingContent = {
+                                Switch(
+                                    checked = minimizeToTray,
+                                    onCheckedChange = { SettingsManager.setMinimizeToTray(it) },
+                                )
+                            },
+                        )
                     }
 
                     Spacer(Modifier.height(32.dp))
@@ -315,26 +297,6 @@ fun SettingsScreen(
             )
         }
 
-        if (showPaletteStyleDialog) {
-            SettingsSelectionDialog(
-                title = "Palette style",
-                description = "Choose how Material You generates colors from your seed color.",
-                options = listOf(
-                    SelectionOption("TonalSpot", LatchIcons.Palette, "Tonal Spot"),
-                    SelectionOption("Expressive", LatchIcons.Palette, "Expressive"),
-                    SelectionOption("FruitSalad", LatchIcons.Palette, "Fruit Salad"),
-                    SelectionOption("Spritz", LatchIcons.Palette, "Spritz"),
-                    SelectionOption("Rainbow", LatchIcons.Palette, "Rainbow"),
-                    SelectionOption("Vibrant", LatchIcons.Palette, "Vibrant"),
-                    SelectionOption("Fidelity", LatchIcons.Palette, "Fidelity"),
-                    SelectionOption("Content", LatchIcons.Palette, "Content"),
-                ),
-                selected = paletteStyle,
-                onSelect = { SettingsManager.setPaletteStyle(it) },
-                onDismiss = { showPaletteStyleDialog = false },
-            )
-        }
-
         if (showUnitsDialog) {
             SettingsSelectionDialog(
                 title = "Speed units",
@@ -396,7 +358,6 @@ internal fun UpdatePanel(
         SettingsItem(
             title = "Software updates",
             subtitle = statusText,
-            leadingIcon = LatchIcons.SystemUpdateAlt,
             trailingContent = {
                 if (state is UpdateState.Checking) {
                     LoadingIndicator(modifier = Modifier.size(24.dp))

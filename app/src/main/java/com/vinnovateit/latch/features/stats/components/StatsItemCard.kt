@@ -1,7 +1,6 @@
 package com.vinnovateit.latch.features.stats.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -167,16 +166,12 @@ fun DayAggregateListItem(
             fontWeight = FontWeight.Bold,
             color = if (record.isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
           )
-          Spacer(modifier = Modifier.width(6.dp))
-          Surface(
-            shape = RoundedCornerShape(4.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
-          ) {
+          if (record.durationFormatted.isNotBlank()) {
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = if (record.sessionCount == 1) "1 session" else "${record.sessionCount} sessions",
+              text = record.durationFormatted,
               style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.onSecondaryContainer,
-              modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+              color = MaterialTheme.colorScheme.onSurfaceVariant
             )
           }
         }
@@ -205,11 +200,13 @@ fun DayAggregateListItem(
               color = MaterialTheme.colorScheme.onSurfaceVariant
             )
           }
-          if (record.durationFormatted.isNotBlank()) {
+          if (record.sessionCount > 0) {
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
-              text = record.durationFormatted,
+              text = if (record.sessionCount == 1) "1 Session" else "${record.sessionCount} Sessions",
               style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.outline
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.primary
             )
           }
         }

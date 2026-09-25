@@ -1,26 +1,40 @@
 package com.vinnovateit.latch.features.home
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
-import android.graphics.BlurMaskFilter
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,18 +45,38 @@ import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.QuestionMark
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Wifi
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.*
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -56,24 +90,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.os.Build
-import android.provider.Settings
-import com.vinnovateit.latch.platform.LatchAppGraph
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.common.ui.LeafOverlay
-import com.vinnovateit.latch.common.util.TooltipHint
 import com.vinnovateit.latch.core.model.LiveDataPoint
 import com.vinnovateit.latch.core.model.SessionSummary
-import com.vinnovateit.latch.features.home.components.SpectrumCard
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.features.home.components.SpectrumCard
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
 import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus
-import com.vinnovateit.latch.ui.theme.*
+import com.vinnovateit.latch.platform.LatchAppGraph
+import com.vinnovateit.latch.ui.theme.LatchTheme
+import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
+import com.vinnovateit.latch.ui.theme.ModernizFontFamily
+import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -353,6 +385,7 @@ fun LandscapeHomeScreen(
 
 
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PowerButtonOverlay(
     onConnectClick: () -> Unit,
@@ -364,23 +397,46 @@ fun PowerButtonOverlay(
         (LocalResources.current.displayMetrics.widthPixels * 0.48f).toDp()
     }
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.93f else 1.0f,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "powerButtonScale"
+    )
+
+    val iconScale by animateFloatAsState(
+        targetValue = if (isConnected) 1.08f else 0.92f,
+        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+        label = "powerIconScale"
+    )
+
     val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
-    val colorScheme = MaterialTheme.colorScheme
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    val targetContainerColor = when {
+        isAmoled -> Color.Black
+        isConnected -> primaryColor
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
 
     val containerColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isAmoled) Color.Black else if (isConnected) colorScheme.primary else colorScheme.primaryContainer,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+        targetValue = targetContainerColor,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "powerBtnContainerColor"
     )
 
+    val targetContentColor = when {
+        isAmoled -> if (isConnected) primaryColor else primaryColor.copy(alpha = 0.4f)
+        isConnected -> MaterialTheme.colorScheme.onPrimary
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
+
     val contentColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isAmoled) {
-            if (isConnected) colorScheme.primary else colorScheme.onSurface
-        } else {
-            if (isConnected) colorScheme.onPrimary else colorScheme.onPrimaryContainer
-        },
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+        targetValue = targetContentColor,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "powerBtnContentColor"
     )
 
@@ -390,21 +446,42 @@ fun PowerButtonOverlay(
     ) {
         Button(
             onClick = onConnectClick,
-            modifier = Modifier.fillMaxSize().clip(CircleShape),
+            interactionSource = interactionSource,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = buttonScale
+                    scaleY = buttonScale
+                }
+                .clip(CircleShape),
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = contentColor),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
-            border = if (isAmoled) androidx.compose.foundation.BorderStroke(4.dp, if (isConnected) colorScheme.primary else colorScheme.outline) else null
+            elevation = ButtonDefaults.buttonElevation(
+                defaultElevation = if (isConnected && !isAmoled) 6.dp else 0.dp,
+                pressedElevation = 0.dp
+            ),
+            border = if (isAmoled) {
+                androidx.compose.foundation.BorderStroke(
+                    4.dp,
+                    if (isConnected) primaryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                )
+            } else null
         ) {
             Icon(
                 imageVector = Icons.Rounded.PowerSettingsNew,
                 contentDescription = "Power Button",
-                modifier = Modifier.size(80.dp)
+                modifier = Modifier
+                    .size(80.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    }
             )
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LandscapePowerButton(
     modifier: Modifier = Modifier,
@@ -412,50 +489,75 @@ fun LandscapePowerButton(
     isConnected: Boolean
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val pressedFromInteraction by interactionSource.collectIsPressedAsState()
-    var pressedManual by remember { mutableStateOf(false) }
-    val isPressed = pressedFromInteraction || pressedManual
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1.0f,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "landscapePowerBtnScale"
+    )
 
     val cornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 24.dp else 50.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        targetValue = if (isPressed) 24.dp else 48.dp,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
         label = "cornerRadiusAnim"
+    )
+
+    val iconScale by animateFloatAsState(
+        targetValue = if (isConnected) 1.08f else 0.92f,
+        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+        label = "landscapePowerIconScale"
     )
 
     val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
     val isAmoled = usePureBlack && com.vinnovateit.latch.ui.theme.LocalIsDarkTheme.current
-    val colorScheme = MaterialTheme.colorScheme
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    val targetContainerColor = when {
+        isAmoled -> Color.Black
+        isConnected -> primaryColor
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
 
     val containerColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isAmoled) Color.Black else if (isConnected) colorScheme.primary else colorScheme.primaryContainer,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
-        label = "powerBtnContainerColor"
+        targetValue = targetContainerColor,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "landscapePowerBtnContainerColor"
     )
 
+    val targetContentColor = when {
+        isAmoled -> if (isConnected) primaryColor else primaryColor.copy(alpha = 0.4f)
+        isConnected -> MaterialTheme.colorScheme.onPrimary
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
+
     val contentColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (isAmoled) {
-            if (isConnected) colorScheme.primary else colorScheme.onSurface
-        } else {
-            if (isConnected) colorScheme.onPrimary else colorScheme.onPrimaryContainer
-        },
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
-        label = "powerBtnContentColor"
+        targetValue = targetContentColor,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "landscapePowerBtnContentColor"
     )
 
     Button(
         onClick = onConnectClick,
         interactionSource = interactionSource,
         modifier = modifier
-            .pointerInput(Unit) {
-                detectTapGestures(onPress = {
-                    pressedManual = true
-                    try { awaitRelease() } finally { pressedManual = false }
-                })
+            .graphicsLayer {
+                scaleX = buttonScale
+                scaleY = buttonScale
             },
         shape = RoundedCornerShape(cornerRadius),
         colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = contentColor),
         contentPadding = PaddingValues(0.dp),
-        border = if (isAmoled) androidx.compose.foundation.BorderStroke(4.dp, if (isConnected) colorScheme.primary else colorScheme.outline) else null
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = if (isConnected && !isAmoled) 4.dp else 0.dp,
+            pressedElevation = 0.dp
+        ),
+        border = if (isAmoled) {
+            androidx.compose.foundation.BorderStroke(
+                4.dp,
+                if (isConnected) primaryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+            )
+        } else null
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -464,7 +566,12 @@ fun LandscapePowerButton(
             Icon(
                 imageVector = Icons.Rounded.PowerSettingsNew,
                 contentDescription = "Power Button",
-                modifier = Modifier.fillMaxSize(fraction = 0.5f)
+                modifier = Modifier
+                    .fillMaxSize(fraction = 0.5f)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    }
             )
         }
     }
@@ -482,6 +589,7 @@ fun TopBarSection(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showPill by remember(isConnected) { mutableStateOf(true) }
+    val haptic = LocalHapticFeedback.current
 
     LaunchedEffect(isConnected, triggerStatusPill) {
         showPill = true
@@ -502,15 +610,21 @@ fun TopBarSection(
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_latch),
-                    contentDescription = null,
+                    contentDescription = "Latch",
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(36.dp),
                 )
                 Spacer(Modifier.width(12.dp))
                 AnimatedVisibility(
                     visible = showPill,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(200)),
+                    enter = slideInHorizontally(
+                        initialOffsetX = { -it },
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                    ) + fadeIn(tween(200)),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { -it },
+                        animationSpec = tween(180)
+                    ) + fadeOut(tween(150)),
                     label = "TopBarTitlePill",
                 ) {
                     Surface(
@@ -533,45 +647,72 @@ fun TopBarSection(
             }
         },
         actions = {
-            Box {
-                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(48.dp)) {
+            Box(modifier = Modifier.padding(end = 8.dp)) {
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuExpanded = true
+                    },
+                    modifier = Modifier.size(48.dp),
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Menu,
                         contentDescription = "Menu",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(28.dp),
                     )
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     modifier = Modifier.width(200.dp),
                 ) {
                     DropdownMenuItem(
                         text = { Text("Settings", fontSize = 15.sp, fontFamily = SatoshiFontFamily) },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuExpanded = false
                             onPreferencesClick()
                         },
-                        leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = "Settings") }
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     )
                     DropdownMenuItem(
                         text = { Text("How It Works", fontSize = 15.sp, fontFamily = SatoshiFontFamily) },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuExpanded = false
                             onHowItWorksClick()
                         },
-                        leadingIcon = { Icon(Icons.Rounded.QuestionMark, contentDescription = "How It Works") }
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.QuestionMark,
+                                contentDescription = "How It Works",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     )
                     DropdownMenuItem(
                         text = { Text("Meet The Team", fontSize = 15.sp, fontFamily = SatoshiFontFamily) },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuExpanded = false
                             onMeetTheTeamClick()
                         },
-                        leadingIcon = { Icon(Icons.Rounded.Groups, contentDescription = "Meet The Team") }
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.Groups,
+                                contentDescription = "Meet The Team",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     )
                 }
             }
@@ -600,6 +741,7 @@ fun HowItWorksBottomSheet(onDismiss: () -> Unit) {
                 text = "How it Works",
                 style = MaterialTheme.typography.headlineMedium,
                 fontFamily = ModernizFontFamily,
+                color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 32.dp)

@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.vinnovateit.latch.core.settings.SettingsManager
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
@@ -152,6 +154,7 @@ internal fun LatchWindow(
         position = WindowPosition(Alignment.Center),
         size = initialSize,
     )
+    val minimizeToTray by SettingsManager.minimizeToTray.collectAsState()
 
     LaunchedEffect(visible, restoreTrigger) {
         if (visible) {
@@ -180,6 +183,7 @@ internal fun LatchWindow(
             window.minimumSize = Dimension(MIN_W, MIN_H)
 
             // Intercept OS maximize shortcuts (e.g. Super+Up, F11) and restore to normal.
+            // When minimizeToTray is enabled, intercept OS minimize and hide to tray.
             // This is a discrete state, not a geometry negotiation: it fires once per
             // maximise and settles. Tiling is not reported through it -- under Hyprland
             // a tiled Latch stays at extendedState 0 -- so it does not fight a tiled
@@ -187,6 +191,9 @@ internal fun LatchWindow(
             window.addWindowStateListener { e ->
                 if ((e.newState and Frame.MAXIMIZED_BOTH) != 0) {
                     (window as? Frame)?.extendedState = Frame.NORMAL
+                }
+                if (minimizeToTray && (e.newState and Frame.ICONIFIED) != 0) {
+                    onCloseRequest()
                 }
             }
 
@@ -225,7 +232,13 @@ internal fun LatchWindow(
                                 .height(TitleBarHeight),
                         ) {
                             LatchTitleBar(
-                                onMinimize = { state.isMinimized = true },
+                                onMinimize = {
+                                    if (minimizeToTray) {
+                                        onCloseRequest()
+                                    } else {
+                                        state.isMinimized = true
+                                    }
+                                },
                                 onClose = onCloseRequest,
                                 menuActions = appMenu.actions,
                             )

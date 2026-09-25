@@ -15,14 +15,14 @@ class StatsInsightsEngineTest {
         }
         val fixedNow = cal.timeInMillis
 
-        // Same year (2026) -> "08 Mar"
+        // Same year (2026) -> "8 Mar"
         val formattedSameYear = formatInsightDate(fixedNow, fixedNow)
-        assertEquals("08 Mar", formattedSameYear)
+        assertEquals("8 Mar", formattedSameYear)
 
-        // Previous year (2025) -> "08 Mar 2025"
+        // Previous year (2025) -> "8 Mar 2025"
         cal.set(2025, Calendar.MARCH, 8, 12, 0, 0)
         val formattedOlderYear = formatInsightDate(cal.timeInMillis, fixedNow)
-        assertEquals("08 Mar 2025", formattedOlderYear)
+        assertEquals("8 Mar 2025", formattedOlderYear)
     }
 
     @Test
@@ -32,14 +32,14 @@ class StatsInsightsEngineTest {
         }
         val fixedNow = cal.timeInMillis
 
-        // Same year (2026) -> "08 Mar"
+        // Same year (2026) -> "8 Mar"
         val formattedSameYear = formatDisplayDate(fixedNow, fixedNow)
-        assertEquals("08 Mar", formattedSameYear)
+        assertEquals("8 Mar", formattedSameYear)
 
-        // Previous year (2025) -> "08 Mar 2025"
+        // Previous year (2025) -> "8 Mar 2025"
         cal.set(2025, Calendar.MARCH, 8, 12, 0, 0)
         val formattedOlderYear = formatDisplayDate(cal.timeInMillis, fixedNow)
-        assertEquals("08 Mar 2025", formattedOlderYear)
+        assertEquals("8 Mar 2025", formattedOlderYear)
     }
 
     @Test
@@ -71,7 +71,7 @@ class StatsInsightsEngineTest {
         )
 
         val insights = computeStatsInsights(listOf(session1, session2), cal.timeInMillis)
-        assertEquals("02 Mar", insights.highestUsageDayDate)
+        assertEquals("2 Mar", insights.highestUsageDayDate)
         assertEquals(5_000_000_000L, insights.highestUsageDayBytes)
         assertEquals(2, insights.activeDaysCount)
         assertEquals(3_500_000_000L, insights.dailyAverageBytes) // (2GB + 5GB)/2

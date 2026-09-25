@@ -127,7 +127,7 @@ internal fun LatchDetailHeader(
         modifier = modifier
             .fillMaxWidth()
             .height(64.dp)
-            .padding(start = 12.dp),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {

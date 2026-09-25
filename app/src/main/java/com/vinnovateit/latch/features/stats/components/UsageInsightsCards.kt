@@ -34,11 +34,13 @@ fun UsageInsightsCards(
             label = "Peak usage window",
             value = insights.peakUsageTimeWindow
         )
-        GameStatRow(
-            label = "Active streak",
-            value = "${insights.currentStreakDays}",
-            unit = if (insights.currentStreakDays == 1) "day" else "days"
-        )
+        if (insights.currentStreakDays > 0) {
+            GameStatRow(
+                label = "Active streak",
+                value = "${insights.currentStreakDays}",
+                unit = if (insights.currentStreakDays == 1) "day" else "days"
+            )
+        }
         GameStatRow(
             label = "Max streak",
             value = "${insights.longestStreakDays}",

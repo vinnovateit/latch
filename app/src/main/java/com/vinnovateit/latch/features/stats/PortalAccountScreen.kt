@@ -4,9 +4,9 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
 import android.view.ViewGroup
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,8 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.portal.PortalHistoryClient
+import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.platform.LatchAppGraph
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 

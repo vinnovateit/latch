@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
-import androidx.compose.material.icons.rounded.ArrowOutward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.QuestionMark
@@ -75,7 +74,8 @@ fun SpectrumCard(
       .padding(top = topPadding)
       .padding(horizontal = 24.dp)
       .padding(bottom = 24.dp)
-      .fillMaxSize(),
+      .fillMaxSize()
+      .clickable { onNavigateToStats() },
     shape = RoundedCornerShape(28.dp),
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     border = if (isAmoledTheme) androidx.compose.foundation.BorderStroke(4.dp, MaterialTheme.colorScheme.primary) else null,
@@ -84,7 +84,6 @@ fun SpectrumCard(
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .clickable { onNavigateToStats() }
           .padding(start = 16.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -94,12 +93,6 @@ fun SpectrumCard(
             text = stringResource(id = R.string.home_network_statistics),
             fontFamily = ModernizFontFamily,
             color = MaterialTheme.colorScheme.primary,
-          )
-          Icon(
-            imageVector = Icons.Rounded.ArrowOutward,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 2.dp, top = 1.dp).size(14.dp)
           )
         }
         val latestUsage = session?.history?.lastOrNull()?.usage
@@ -220,7 +213,7 @@ private fun StatusIndicator(connectionStatus: ConnectionStatus) {
                     Icon(
                       imageVector = if (isUnsupported) Icons.Rounded.QuestionMark else Icons.Rounded.Error,
                       contentDescription = stringResource(R.string.status_login_failed),
-                      tint = MaterialTheme.colorScheme.primary,
+                      tint = MaterialTheme.colorScheme.error,
                       modifier = Modifier.size(64.dp)
                     )
                 }

@@ -80,6 +80,6 @@ fun formatDisplayDate(millis: Long, nowMillis: Long = System.currentTimeMillis()
     val nowCal = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }
     val currentYear = nowCal.get(java.util.Calendar.YEAR)
 
-    val pattern = if (recordYear == currentYear) "dd MMM" else "dd MMM yyyy"
+    val pattern = if (recordYear == currentYear) "d MMM" else "d MMM yyyy"
     return SimpleDateFormat(pattern, Locale.US).format(Date(millis))
 }

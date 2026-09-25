@@ -541,6 +541,10 @@ internal object LatchIcons {
         icon("arrow_forward_ios", "M6.23 20.23L8 22l10-10L8 2 6.23 3.77 14.46 12z")
     }
 
+    val ArrowDropDown: ImageVector by lazy {
+        icon("arrow_drop_down", "M7 10l5 5 5-5z")
+    }
+
     val Widgets: ImageVector by lazy {
         icon("widgets", "M13 13v8h8v-8h-8zM3 21h8v-8H3v8zM3 3v8h8V3H3zm13.66-1.31L11 7.34 16.66 13l5.66-5.66-5.66-5.65z")
     }

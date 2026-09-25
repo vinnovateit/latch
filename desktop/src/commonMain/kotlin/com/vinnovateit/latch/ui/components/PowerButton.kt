@@ -2,6 +2,7 @@ package com.vinnovateit.latch.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -22,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,8 +39,10 @@ private data class PowerButtonStyle(
     val container: Color,
     val content: Color,
     val border: Color?,
+    val iconScale: Float,
 )
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun powerButtonStyle(isConnected: Boolean): PowerButtonStyle {
     val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
@@ -46,10 +51,7 @@ private fun powerButtonStyle(isConnected: Boolean): PowerButtonStyle {
 
     val container by animateColorAsState(
         targetValue = if (isAmoled) Color.Black else if (isConnected) colorScheme.primary else colorScheme.primaryContainer,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "btnContainer",
     )
     val content by animateColorAsState(
@@ -58,17 +60,20 @@ private fun powerButtonStyle(isConnected: Boolean): PowerButtonStyle {
         } else {
             if (isConnected) colorScheme.onPrimary else colorScheme.onPrimaryContainer
         },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "btnContent",
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = if (isConnected) 1.08f else 0.92f,
+        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+        label = "btnIconScale",
     )
 
     return PowerButtonStyle(
         container = container,
         content = content,
         border = if (isAmoled) (if (isConnected) colorScheme.primary else colorScheme.outline) else null,
+        iconScale = iconScale,
     )
 }
 
@@ -76,6 +81,7 @@ private fun powerButtonStyle(isConnected: Boolean): PowerButtonStyle {
 // Circular (compact) variant
 // ---------------------------------------------------------------------------
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun CircularPowerButton(
     isConnected: Boolean,
@@ -85,13 +91,26 @@ internal fun CircularPowerButton(
 ) {
     val style = powerButtonStyle(isConnected)
     val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.93f else 1.0f,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "btnScale",
+    )
 
     Surface(
         onClick = onClick,
-        modifier = modifier.size(diameter),
+        modifier = modifier
+            .size(diameter)
+            .graphicsLayer {
+                scaleX = buttonScale
+                scaleY = buttonScale
+            },
         shape = CircleShape,
         color = style.container,
         border = style.border?.let { BorderStroke(2.dp, it) },
+        shadowElevation = if (isConnected && style.border == null) 6.dp else 0.dp,
         interactionSource = interactionSource,
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -99,7 +118,12 @@ internal fun CircularPowerButton(
                 imageVector = LatchIcons.PowerSettingsNew,
                 contentDescription = if (isConnected) "Disconnect" else "Connect",
                 tint = style.content,
-                modifier = Modifier.size(diameter * 0.45f),
+                modifier = Modifier
+                    .size(diameter * 0.45f)
+                    .graphicsLayer {
+                        scaleX = style.iconScale
+                        scaleY = style.iconScale
+                    },
             )
         }
     }
@@ -124,6 +148,7 @@ internal fun CircularPowerButton(
 private const val RESTING_CORNER_PERCENT = 50
 private const val PRESSED_CORNER_PERCENT = 24
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MorphingPowerButton(
     isConnected: Boolean,
@@ -143,6 +168,12 @@ internal fun MorphingPowerButton(
         label = "btnCorner",
     )
 
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1.0f,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "btnScale",
+    )
+
     // A percentage radius only draws a circle on a square, and the slot this sits
     // in is not square in a short window, so take the smaller side and centre in
     // it rather than stretching into a pill.
@@ -154,10 +185,16 @@ internal fun MorphingPowerButton(
 
         Surface(
             onClick = onClick,
-            modifier = Modifier.size(side),
+            modifier = Modifier
+                .size(side)
+                .graphicsLayer {
+                    scaleX = buttonScale
+                    scaleY = buttonScale
+                },
             shape = RoundedCornerShape(percent = cornerPercent),
             color = style.container,
             border = style.border?.let { BorderStroke(2.dp, it) },
+            shadowElevation = if (isConnected && style.border == null) 4.dp else 0.dp,
             interactionSource = interactionSource,
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -165,7 +202,12 @@ internal fun MorphingPowerButton(
                     imageVector = LatchIcons.PowerSettingsNew,
                     contentDescription = if (isConnected) "Disconnect" else "Connect",
                     tint = style.content,
-                    modifier = Modifier.fillMaxSize(0.45f),
+                    modifier = Modifier
+                        .fillMaxSize(0.45f)
+                        .graphicsLayer {
+                            scaleX = style.iconScale
+                            scaleY = style.iconScale
+                        },
                 )
             }
         }

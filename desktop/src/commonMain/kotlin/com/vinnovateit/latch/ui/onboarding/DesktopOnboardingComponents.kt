@@ -16,17 +16,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -43,11 +46,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.vinnovateit.latch.desktop.VinnovateItLogo
 import com.vinnovateit.latch.ui.components.LatchIcons
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -167,6 +172,7 @@ fun DesktopOnboardingBottomBar(
     isForwardEnabled: Boolean,
     onNextClicked: () -> Unit,
     onFinishClicked: () -> Unit,
+    onBackClicked: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val morphAnimationSpec = tween<Float>(durationMillis = 600, easing = FastOutSlowInEasing)
@@ -207,12 +213,40 @@ fun DesktopOnboardingBottomBar(
                     modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    Icon(
-                        imageVector = VinnovateItLogo,
-                        contentDescription = "VinnovateIT",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(width = 110.dp, height = 36.dp),
-                    )
+                    if (pagerState.currentPage == 0) {
+                        Icon(
+                            imageVector = VinnovateItLogo,
+                            contentDescription = "VinnovateIT",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(width = 110.dp, height = 36.dp),
+                        )
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (onBackClicked != null) {
+                                IconButton(
+                                    onClick = onBackClicked,
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = LatchIcons.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = "Step ${pagerState.currentPage} of ${pagerState.pageCount - 1}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = satoshiFontFamily(),
+                            )
+                        }
+                    }
                 }
 
                 val isLastPage = pagerState.currentPage == pagerState.pageCount - 1

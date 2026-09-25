@@ -1,11 +1,7 @@
 package com.vinnovateit.latch.features.onboarding.components
 
-import android.app.Activity
-import android.content.Intent
 import android.content.res.Configuration
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -43,18 +39,24 @@ fun OnboardingScreen(
     onNavigateToCredentials: () -> Unit
 ) {
     val context = LocalContext.current
-    var credentialsHandled by remember { mutableStateOf(false) }
+    var credentialsHandled by remember { mutableStateOf(StoredCredentials.credentialsExist(context)) }
     val scope = rememberCoroutineScope()
-    var permissionGranted by remember { mutableStateOf(false) }
+    var permissionGranted by remember {
+        mutableStateOf(
+            android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
     val hapticFeedback = LocalHapticFeedback.current
     val offsetX = remember { Animatable(0f) }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
-        if (StoredCredentials.credentialsExist(context)) {
-            credentialsHandled = true
-        }
+        credentialsHandled = StoredCredentials.credentialsExist(context)
         onPauseOrDispose { }
     }
 
@@ -126,15 +128,46 @@ fun OnboardingScreen(
 
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { slides.size })
 
+    // System back gesture / button navigates backwards through onboarding pages
+    BackHandler(enabled = pagerState.currentPage > 0) {
+        scope.launch {
+            pagerState.animateScrollToPage(pagerState.currentPage - 1)
+        }
+    }
+
     LaunchedEffect(pagerState.isScrollInProgress, credentialsHandled, permissionGranted) {
         if (pagerState.isScrollInProgress) {
-            if (pagerState.currentPage == 2 && pagerState.targetPage > 2 && !permissionGranted) { scope.launch { pagerState.scrollToPage(2) } }
-            if (pagerState.currentPage == 3 && pagerState.targetPage > 3 && !credentialsHandled) { scope.launch { pagerState.scrollToPage(3) } }
+            if (pagerState.currentPage <= 2 && pagerState.targetPage > 2 && !permissionGranted) {
+                scope.launch { pagerState.scrollToPage(2) }
+            }
+            if (pagerState.currentPage <= 3 && pagerState.targetPage > 3 && !credentialsHandled) {
+                scope.launch { pagerState.scrollToPage(3) }
+            }
+        }
+    }
+
+    val triggerShake: () -> Unit = {
+        scope.launch {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+            offsetX.snapTo(0f)
+            offsetX.animateTo(20f, tween(50))
+            offsetX.animateTo(-20f, tween(50))
+            offsetX.animateTo(10f, tween(50))
+            offsetX.animateTo(-10f, tween(50))
+            offsetX.animateTo(0f, tween(50))
+        }
+    }
+
+    val onBackClicked: () -> Unit = {
+        scope.launch {
+            if (pagerState.currentPage > 0) {
+                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+            }
         }
     }
 
     if (isLandscape) {
-        // --- NEW LANDSCAPE-ONLY UI ---
+        // --- LANDSCAPE UI ---
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
@@ -142,7 +175,7 @@ fun OnboardingScreen(
             val onNextClicked: () -> Unit = {
                 scope.launch {
                     if ((pagerState.currentPage == 2 && !permissionGranted) || (pagerState.currentPage == 3 && !credentialsHandled)) {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        triggerShake()
                         return@launch
                     }
                     if (pagerState.currentPage < slides.size - 1) {
@@ -159,21 +192,19 @@ fun OnboardingScreen(
             Box(Modifier.fillMaxSize()) {
                 HorizontalPager(
                     state = pagerState,
-                    userScrollEnabled = when (pagerState.currentPage) {
-                        2 -> permissionGranted
-                        3 -> credentialsHandled
-                        else -> true
-                    },
+                    userScrollEnabled = true,
                     modifier = Modifier.fillMaxSize()
                 ) { pageIndex ->
-                        when (pageIndex) {
-                            0 -> WelcomeToLatchPageLandscape()
-                            2 -> NotificationPermissionPageLandscape(slides[pageIndex], onPermissionGranted = { permissionGranted = true })
-                            3 -> SetUpAccountPageLandscape(slides[pageIndex], onCredentialsClick = {
-                                onNavigateToCredentials()
-                            })
-                            else -> StandardSlidePageLandscape(slides[pageIndex])
-                        }
+                    when (pageIndex) {
+                        0 -> WelcomeToLatchPageLandscape()
+                        2 -> NotificationPermissionPageLandscape(slides[pageIndex], onPermissionGranted = { permissionGranted = true })
+                        3 -> SetUpAccountPageLandscape(
+                            slide = slides[pageIndex],
+                            credentialsExist = credentialsHandled,
+                            onCredentialsClick = onNavigateToCredentials
+                        )
+                        else -> StandardSlidePageLandscape(slides[pageIndex])
+                    }
                 }
 
                 LandscapeFloatingNavControls(
@@ -185,12 +216,15 @@ fun OnboardingScreen(
                     },
                     onNextClicked = onNextClicked,
                     onFinishClicked = onFinishClicked,
-                    modifier = Modifier.align(Alignment.BottomCenter)
+                    onBackClicked = onBackClicked,
+                    modifier = Modifier
+                        .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                        .align(Alignment.BottomCenter)
                 )
             }
         }
     } else {
-        // --- ORIGINAL UNCHANGED PORTRAIT UI ---
+        // --- PORTRAIT UI ---
         Scaffold(
             bottomBar = {
                 LatchSetupBottomBar(
@@ -203,12 +237,7 @@ fun OnboardingScreen(
                     onNextClicked = {
                         scope.launch {
                             if ((pagerState.currentPage == 2 && !permissionGranted) || (pagerState.currentPage == 3 && !credentialsHandled)) {
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                                offsetX.animateTo(20f, tween(50))
-                                offsetX.animateTo(-20f, tween(50))
-                                offsetX.animateTo(10f, tween(50))
-                                offsetX.animateTo(-10f, tween(50))
-                                offsetX.animateTo(0f, tween(50))
+                                triggerShake()
                                 return@launch
                             }
 
@@ -227,6 +256,7 @@ fun OnboardingScreen(
                             }
                         }
                     },
+                    onBackClicked = onBackClicked,
                     modifier = Modifier
                         .offset { IntOffset(offsetX.value.roundToInt(), 0) }
                         .navigationBarsPadding()
@@ -235,23 +265,21 @@ fun OnboardingScreen(
         ) { paddingValues ->
             HorizontalPager(
                 state = pagerState,
-                userScrollEnabled = when (pagerState.currentPage) {
-                    2 -> permissionGranted
-                    3 -> credentialsHandled
-                    else -> true
-                },
+                userScrollEnabled = true,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
             ) { pageIndex ->
-                    when (pageIndex) {
-                        0 -> WelcomeToLatchPage()
-                        2 -> NotificationPermissionPage(slides[pageIndex], onPermissionGranted = { permissionGranted = true })
-                        3 -> SetUpAccountPage(slides[pageIndex], onCredentialsClick = {
-                            onNavigateToCredentials()
-                        })
-                        else -> StandardSlidePage(slides[pageIndex])
-                    }
+                when (pageIndex) {
+                    0 -> WelcomeToLatchPage()
+                    2 -> NotificationPermissionPage(slides[pageIndex], onPermissionGranted = { permissionGranted = true })
+                    3 -> SetUpAccountPage(
+                        slide = slides[pageIndex],
+                        credentialsExist = credentialsHandled,
+                        onCredentialsClick = onNavigateToCredentials
+                    )
+                    else -> StandardSlidePage(slides[pageIndex])
+                }
             }
         }
     }

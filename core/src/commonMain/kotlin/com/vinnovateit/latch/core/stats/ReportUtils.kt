@@ -19,7 +19,7 @@ fun generatePortalHtmlReport(
     val writer = outputStream.bufferedWriter()
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
     val dayKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    val dayDisplayFormat = SimpleDateFormat("dd MMM, EEE", Locale.US)
+    val dayDisplayFormat = SimpleDateFormat("d MMM, EEE", Locale.US)
     val generatedAt = dateFormat.format(Date())
 
     val totalBytes = sessions.sumOf { if (it.totalBytes > 0) it.totalBytes else (it.uploadBytes + it.downloadBytes) }

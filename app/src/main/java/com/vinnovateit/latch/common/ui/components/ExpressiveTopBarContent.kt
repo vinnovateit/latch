@@ -28,13 +28,11 @@ fun ExpressiveTopBarContent(
   modifier: Modifier = Modifier,
   subtitle: String? = null,
   containerHeightRange: Pair<Dp, Dp> = 88.dp to 56.dp,
-  titlePaddingRange: Pair<Dp, Dp> = 40.dp to 58.dp,
+  titlePaddingStart: Dp = 72.dp,
   collapsedTitleVerticalBias: Float = -1f,
   supportingContent: (@Composable () -> Unit)? = null
 ) {
   val clampedFraction = collapseFraction.coerceIn(0f, 1f)
-  val titleScale = lerp(1.1f, 0.8f, clampedFraction)
-  val titlePaddingStart = lerp(titlePaddingRange.first, titlePaddingRange.second, clampedFraction)
   val titleVerticalBias = lerp(1f, collapsedTitleVerticalBias, clampedFraction)
   val animatedTitleAlignment = BiasAlignment(horizontalBias = -1f, verticalBias = titleVerticalBias)
   val titleContainerHeight = lerp(containerHeightRange.first, containerHeightRange.second, clampedFraction)
@@ -54,11 +52,7 @@ fun ExpressiveTopBarContent(
           text = title,
           style = MaterialTheme.typography.headlineMedium,
           fontFamily = ModernizFontFamily,
-          color = MaterialTheme.colorScheme.primary,
-          modifier = Modifier.graphicsLayer {
-            scaleX = titleScale
-            scaleY = titleScale
-          }
+          color = MaterialTheme.colorScheme.primary
         )
         if (!subtitle.isNullOrEmpty()) {
           Text(
