@@ -1,6 +1,10 @@
 package com.vinnovateit.latch.desktop
 
+import com.vinnovateit.latch.desktop.LegacyDataMigration.DatabaseState
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -12,6 +16,7 @@ import kotlin.test.assertTrue
 /**
  * Moving pre-1.4.3 Windows data out of the MSI's install directory. OS-agnostic,
  * so the Windows CI job runs it against a real Windows filesystem as well.
+ * Which database a process then opens is covered by [DatabaseLocationTest].
  */
 class LegacyDataMigrationTest {
     private lateinit var root: File
@@ -30,23 +35,32 @@ class LegacyDataMigrationTest {
         root.deleteRecursively()
     }
 
-    private fun write(dir: File, name: String, text: String) = File(dir, name).apply {
+    private fun write(dir: File, name: String, text: String = "old $name") = File(dir, name).apply {
         parentFile.mkdirs()
         writeText(text)
     }
 
+    private fun databaseSet(dir: File) =
+        listOf("latch_database", "latch_database-wal", "latch_database-shm").forEach { write(dir, it) }
+
+    /** A rename that fails for the named file (held open by a scanner, say), in either direction. */
+    private fun failingFor(vararg names: String): (Path, Path) -> Unit = { source, target ->
+        if (source.fileName.toString() in names) throw IOException("${source.fileName} is held open")
+        Files.move(source, target)
+    }
+
+    private fun namesIn(dir: File) = dir.list().orEmpty().filter { it.startsWith("latch_database") }.sorted()
+
+    // --- settings and credentials -----------------------------------------------
+
     @Test
-    fun `settings, credentials and the database move to the new directory intact`() {
-        for (name in listOf("credentials.bin", "settings.json", "latch_database", "latch_database-wal", "latch_database-shm")) {
-            write(legacy, name, "old $name")
-        }
+    fun `settings and credentials move to the new directory intact`() {
+        write(legacy, "credentials.bin")
+        write(legacy, "settings.json")
 
         val result = LegacyDataMigration.migrate(legacy, current)
 
-        assertEquals(
-            listOf("credentials.bin", "settings.json", "latch_database-wal", "latch_database-shm", "latch_database"),
-            result.moved,
-        )
+        assertEquals(listOf("credentials.bin", "settings.json"), result.moved)
         for (name in result.moved) {
             assertEquals("old $name", File(current, name).readText())
             assertFalse(File(legacy, name).exists(), "$name must be moved, not copied")
@@ -55,13 +69,11 @@ class LegacyDataMigrationTest {
 
     @Test
     fun `a second run moves nothing`() {
-        write(legacy, "settings.json", "old")
+        write(legacy, "settings.json")
         LegacyDataMigration.migrate(legacy, current)
 
-        val again = LegacyDataMigration.migrate(legacy, current)
-
-        assertTrue(again.isEmpty)
-        assertEquals("old", File(current, "settings.json").readText())
+        assertTrue(LegacyDataMigration.migrate(legacy, current).isEmpty)
+        assertEquals("old settings.json", File(current, "settings.json").readText())
     }
 
     @Test
@@ -77,56 +89,15 @@ class LegacyDataMigrationTest {
     }
 
     @Test
-    fun `an old journal never joins a database already in the new directory`() {
-        write(legacy, "latch_database", "old db")
-        write(legacy, "latch_database-wal", "old wal")
-        write(current, "latch_database", "live db")
+    fun `settings still move while the database set cannot`() {
+        write(legacy, "settings.json")
+        databaseSet(legacy)
 
-        val result = LegacyDataMigration.migrate(legacy, current)
+        assertEquals(listOf("settings.json"), LegacyDataMigration.migrate(legacy, current).moved)
+        val database = LegacyDataMigration.migrateDatabase(legacy, current, failingFor("latch_database-wal"))
 
-        assertFalse(File(current, "latch_database-wal").exists())
-        assertEquals("live db", File(current, "latch_database").readText())
-        assertEquals(listOf("latch_database-wal", "latch_database"), result.kept)
-    }
-
-    @Test
-    fun `an interrupted database move is completed by the next run`() {
-        // The first run moved the journal and stopped before the database.
-        write(current, "latch_database-wal", "old wal")
-        write(legacy, "latch_database-shm", "old shm")
-        write(legacy, "latch_database", "old db")
-
-        LegacyDataMigration.migrate(legacy, current)
-
-        assertEquals("old db", File(current, "latch_database").readText())
-        assertEquals("old shm", File(current, "latch_database-shm").readText())
-        assertEquals("old wal", File(current, "latch_database-wal").readText())
-    }
-
-    @Test
-    fun `a journal that cannot be moved keeps the database with it`() {
-        write(legacy, "latch_database", "old db")
-        write(legacy, "latch_database-wal", "old wal")
-        write(legacy, "latch_database-shm", "old shm")
-        write(legacy, "settings.json", "old settings")
-        val lockedWal: (java.nio.file.Path, java.nio.file.Path) -> Unit = { source, target ->
-            if (source.fileName.toString() == "latch_database-wal") throw java.io.IOException("held open by a scanner")
-            java.nio.file.Files.move(source, target)
-        }
-
-        val result = LegacyDataMigration.migrate(legacy, current, lockedWal)
-
-        assertEquals(listOf("settings.json"), result.moved, "other files still move")
-        assertEquals(listOf("latch_database-wal", "latch_database-shm", "latch_database"), result.kept)
-        assertFalse(File(current, "latch_database").exists(), "the database must not move without its journal")
-        assertEquals("old db", File(legacy, "latch_database").readText())
-        assertEquals("old wal", File(legacy, "latch_database-wal").readText())
-
-        // Once the file is free, the next start moves the set together.
-        LegacyDataMigration.migrate(legacy, current)
-        for (name in listOf("latch_database", "latch_database-wal", "latch_database-shm")) {
-            assertTrue(File(current, name).exists(), "$name moved on the retry")
-        }
+        assertEquals(DatabaseState.RETRY_WITH_LEGACY, database.state)
+        assertTrue(File(current, "settings.json").exists())
     }
 
     @Test
@@ -134,20 +105,150 @@ class LegacyDataMigrationTest {
         write(legacy, "logs/latch.0.log", "log")
         write(legacy, "Latch.exe", "binary")
 
-        val result = LegacyDataMigration.migrate(legacy, current)
-
-        assertTrue(result.isEmpty)
+        assertTrue(LegacyDataMigration.migrate(legacy, current).isEmpty)
+        assertEquals(DatabaseState.NONE, LegacyDataMigration.migrateDatabase(legacy, current).state)
         assertTrue(File(legacy, "Latch.exe").exists())
+    }
+
+    // --- the database set -------------------------------------------------------
+
+    @Test
+    fun `the whole database set moves and the migration is complete`() {
+        databaseSet(legacy)
+
+        val result = LegacyDataMigration.migrateDatabase(legacy, current)
+
+        assertEquals(DatabaseState.COMPLETE, result.state)
+        assertEquals(listOf("latch_database-wal", "latch_database-shm", "latch_database"), result.moved)
+        assertEquals(listOf("latch_database", "latch_database-shm", "latch_database-wal"), namesIn(current))
+        assertEquals(emptyList(), namesIn(legacy))
+    }
+
+    @Test
+    fun `a journal that cannot be moved keeps the whole set in the old place`() {
+        databaseSet(legacy)
+
+        val result = LegacyDataMigration.migrateDatabase(legacy, current, failingFor("latch_database-wal"))
+
+        assertEquals(DatabaseState.RETRY_WITH_LEGACY, result.state)
+        assertEquals(emptyList(), namesIn(current), "nothing of the set may sit in the new place")
+        assertEquals(listOf("latch_database", "latch_database-shm", "latch_database-wal"), namesIn(legacy))
+    }
+
+    @Test
+    fun `a later file that cannot be moved brings the earlier ones back`() {
+        // The -wal moves, then the -shm fails: the -wal is renamed back.
+        databaseSet(legacy)
+
+        val shmLocked = LegacyDataMigration.migrateDatabase(legacy, current, failingFor("latch_database-shm"))
+
+        assertEquals(DatabaseState.RETRY_WITH_LEGACY, shmLocked.state)
+        assertEquals(emptyList(), namesIn(current))
+        assertEquals("old latch_database-wal", File(legacy, "latch_database-wal").readText())
+
+        // The database itself locked: both journals are brought back.
+        val dbLocked = LegacyDataMigration.migrateDatabase(legacy, current, failingFor("latch_database"))
+
+        assertEquals(DatabaseState.RETRY_WITH_LEGACY, dbLocked.state)
+        assertEquals(emptyList(), namesIn(current))
+        assertEquals(listOf("latch_database", "latch_database-shm", "latch_database-wal"), namesIn(legacy))
+    }
+
+    @Test
+    fun `a set that cannot be brought back together is blocked`() {
+        // The database fails, and so does moving the -wal back: the set is split.
+        databaseSet(legacy)
+        var walMoved = false
+        val rename: (Path, Path) -> Unit = { source, target ->
+            val name = source.fileName.toString()
+            when {
+                name == "latch_database" -> throw IOException("database held open")
+                name == "latch_database-wal" && walMoved -> throw IOException("journal held open")
+                else -> {
+                    Files.move(source, target)
+                    if (name == "latch_database-wal") walMoved = true
+                }
+            }
+        }
+
+        val result = LegacyDataMigration.migrateDatabase(legacy, current, rename)
+
+        assertEquals(DatabaseState.BLOCKED, result.state)
+        assertTrue(File(current, "latch_database-wal").exists())
+        assertTrue(File(legacy, "latch_database").exists())
+    }
+
+    @Test
+    fun `an interrupted earlier run is completed`() {
+        // The -wal moved last time, the rest did not.
+        write(current, "latch_database-wal")
+        write(legacy, "latch_database-shm")
+        write(legacy, "latch_database")
+
+        assertEquals(DatabaseState.COMPLETE, LegacyDataMigration.migrateDatabase(legacy, current).state)
+        assertEquals(listOf("latch_database", "latch_database-shm", "latch_database-wal"), namesIn(current))
+        assertEquals("old latch_database-wal", File(current, "latch_database-wal").readText())
+    }
+
+    @Test
+    fun `an interrupted earlier run that still cannot finish is blocked, not opened half`() {
+        // -wal and -shm moved last time; the database still cannot move.
+        write(current, "latch_database-wal")
+        write(current, "latch_database-shm")
+        write(legacy, "latch_database")
+
+        val result = LegacyDataMigration.migrateDatabase(legacy, current, failingFor("latch_database"))
+
+        assertEquals(DatabaseState.BLOCKED, result.state)
+        assertTrue(File(legacy, "latch_database").exists())
+        assertFalse(File(current, "latch_database").exists())
+    }
+
+    @Test
+    fun `a journal in both places is a conflict, not a merge`() {
+        write(current, "latch_database-wal", "journal already moved")
+        databaseSet(legacy)
+
+        val result = LegacyDataMigration.migrateDatabase(legacy, current)
+
+        assertEquals(DatabaseState.BLOCKED, result.state)
+        assertEquals("journal already moved", File(current, "latch_database-wal").readText())
+        assertTrue(File(legacy, "latch_database").exists())
+    }
+
+    @Test
+    fun `an old journal never joins a database already in the new directory`() {
+        databaseSet(legacy)
+        write(current, "latch_database", "live db")
+
+        val result = LegacyDataMigration.migrateDatabase(legacy, current)
+
+        assertEquals(DatabaseState.DESTINATION_ALREADY_LIVE, result.state)
+        assertEquals(listOf("latch_database"), namesIn(current))
+        assertEquals("live db", File(current, "latch_database").readText())
+        assertEquals(listOf("latch_database", "latch_database-shm", "latch_database-wal"), namesIn(legacy))
+    }
+
+    @Test
+    fun `journals without their database are left alone`() {
+        write(legacy, "latch_database-wal")
+        write(legacy, "latch_database-shm")
+
+        assertEquals(DatabaseState.NONE, LegacyDataMigration.migrateDatabase(legacy, current).state)
+        assertEquals(emptyList(), namesIn(current))
+        assertEquals(listOf("latch_database-shm", "latch_database-wal"), namesIn(legacy))
     }
 
     @Test
     fun `no legacy directory, or the same directory, is a no-op`() {
         legacy.deleteRecursively()
         assertTrue(LegacyDataMigration.migrate(legacy, current).isEmpty)
+        assertEquals(DatabaseState.NONE, LegacyDataMigration.migrateDatabase(legacy, current).state)
 
         current.mkdirs()
-        write(current, "settings.json", "same")
+        write(current, "latch_database", "same")
         assertTrue(LegacyDataMigration.migrate(current, current).isEmpty)
-        assertEquals("same", File(current, "settings.json").readText())
+        assertEquals(DatabaseState.NONE, LegacyDataMigration.migrateDatabase(current, current).state)
+        assertEquals("same", File(current, "latch_database").readText())
     }
 }

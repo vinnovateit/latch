@@ -39,10 +39,17 @@ interface SystemSqliteInitializer : com.sun.jna.Library {
  * BundledSQLiteDriver and setQueryCoroutineContext are both mandatory for Room
  * KMP. The bundled driver ships its own native library which it extracts at
  * runtime, which is why the jpackage module list does not need java.sql.
+ *
+ * [location] is AppPaths.databaseLocation, the only place that decides which
+ * database may be opened; this never chooses a path of its own.
  */
-fun buildDatabase(): LatchDatabase {
+fun buildDatabase(location: AppPaths.DatabaseLocation = AppPaths.databaseLocation): LatchDatabase {
     SystemSqliteInitializer.init()
-    return Room.databaseBuilder<LatchDatabase>(name = AppPaths.databaseFile.absolutePath)
+    val builder = when (location) {
+        is AppPaths.DatabaseLocation.OnDisk -> Room.databaseBuilder<LatchDatabase>(name = location.file.absolutePath)
+        AppPaths.DatabaseLocation.InMemory -> Room.inMemoryDatabaseBuilder<LatchDatabase>()
+    }
+    return builder
         .setDriver(BundledSQLiteDriver())
         .setQueryCoroutineContext(Dispatchers.IO)
         .addMigrations(MIGRATION_1_TO_3, MIGRATION_3_TO_4, MIGRATION_4_TO_5)

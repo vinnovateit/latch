@@ -82,14 +82,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: DPAPI credential store on Windows
-        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest"
+        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest"
 
       # Gradle prints nothing per test. The timings show the real round trip
       # ran (it spawns a second JVM), rather than the off-Windows early return.
       - name: Show which DPAPI tests ran
         if: always()
         shell: pwsh
-        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml, core\build\test-results\desktopTest\TEST-*.SecureRuntimeFilesTest.xml, core\build\test-results\desktopTest\TEST-*.LegacyDataMigrationTest.xml | Select-String '<testsuite |<testcase '
+        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml, core\build\test-results\desktopTest\TEST-*.SecureRuntimeFilesTest.xml, core\build\test-results\desktopTest\TEST-*.LegacyDataMigrationTest.xml, core\build\test-results\desktopTest\TEST-*.DatabaseLocationTest.xml | Select-String '<testsuite |<testcase '
 
   # Builds the release MSI exactly as release.yml does, stages it under the
   # release asset name, and installs it for real: database open, silent
