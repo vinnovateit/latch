@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vinnovateit.latch.common.util.StatsColorPalettes
+import com.vinnovateit.latch.ui.theme.ModernizFontFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,14 +54,11 @@ fun ChartPaletteBottomSheet(
         ) {
             Text(
                 text = "Chart Bar Colors",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = ModernizFontFamily
+                ),
                 modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            Text(
-                text = "Customize download and upload bar colors",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 4.dp)
             )
 
             Spacer(Modifier.height(24.dp))

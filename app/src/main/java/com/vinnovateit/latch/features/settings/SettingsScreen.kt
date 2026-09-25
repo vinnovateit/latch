@@ -688,14 +688,11 @@ fun SettingsSelectionBottomSheet(
     ) {
       Text(
         title,
-        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+        style = MaterialTheme.typography.headlineSmall.copy(
+          fontWeight = FontWeight.Bold,
+          fontFamily = ModernizFontFamily
+        ),
         modifier = Modifier.padding(horizontal = 16.dp)
-      )
-      Text(
-        description,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 4.dp)
       )
       Spacer(Modifier.height(16.dp))
       options.forEach { option ->
@@ -752,9 +749,14 @@ fun SettingsActionBottomSheet(
           .fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
-        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Spacer(Modifier.height(4.dp))
-        Text(description, style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(horizontal = 24.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(
+          title,
+          style = MaterialTheme.typography.titleLarge.copy(
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = ModernizFontFamily
+          ),
+          textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
         Spacer(Modifier.height(24.dp))
         Row(
           modifier = Modifier
@@ -762,26 +764,30 @@ fun SettingsActionBottomSheet(
             .padding(horizontal = 16.dp),
           horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-          Button(
+          OutlinedButton(
             onClick = {
               haptic.performHapticFeedback(HapticFeedbackType.LongPress)
               onDismiss()
             },
             modifier = Modifier.weight(1f)
           ) {
-            Text(cancelText, fontWeight = FontWeight.Bold)
+            Text(cancelText.uppercase(), fontWeight = FontWeight.Bold)
           }
-          OutlinedButton(
+          Button(
             onClick = {
               haptic.performHapticFeedback(HapticFeedbackType.LongPress)
               onConfirm()
             },
             modifier = Modifier.weight(1f),
-            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+              containerColor = MaterialTheme.colorScheme.error,
+              contentColor = MaterialTheme.colorScheme.onError
+            )
           ) {
-            Text(confirmText, fontWeight = FontWeight.Bold)
+            Text(confirmText.uppercase(), fontWeight = FontWeight.Bold)
           }
         }
+        Spacer(Modifier.height(16.dp))
       }
     }
   )

@@ -12,12 +12,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -588,22 +586,14 @@ fun TopBarSection(
                 Spacer(Modifier.width(12.dp))
                 AnimatedVisibility(
                     visible = showPill,
-                    enter = fadeIn(tween(250)) + expandHorizontally(
-                        expandFrom = Alignment.Start,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
-                    ) + scaleIn(
-                        initialScale = 0.8f,
-                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f),
-                        animationSpec = tween(250)
-                    ),
-                    exit = fadeOut(tween(200)) + shrinkHorizontally(
-                        shrinkTowards = Alignment.Start,
-                        animationSpec = tween(200)
-                    ) + scaleOut(
-                        targetScale = 0.8f,
-                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f),
-                        animationSpec = tween(200)
-                    ),
+                    enter = slideInHorizontally(
+                        initialOffsetX = { -it },
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                    ) + fadeIn(tween(200)),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { -it },
+                        animationSpec = tween(180)
+                    ) + fadeOut(tween(150)),
                     label = "TopBarTitlePill",
                 ) {
                     Surface(
