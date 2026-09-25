@@ -21,6 +21,7 @@ kotlin {
 
     sourceSets {
         val desktopMain by getting
+        val desktopTest by getting
 
         commonMain.dependencies {
             implementation(project(":core"))
@@ -60,7 +61,21 @@ kotlin {
             implementation(libs.jna)
             implementation(libs.jna.platform)
         }
+
+        // Compose UI tests for the desktop screens. They render offscreen via
+        // Skia, so they run headless in CI with no display server.
+        desktopTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(compose.desktop.currentOs)
+            implementation(compose.desktop.uiTestJUnit4)
+        }
     }
+}
+
+// Compose Desktop renders through Skia offscreen here; without this the AWT
+// toolkit tries to reach a display server and the tests fail on a CI runner.
+tasks.named<Test>("desktopTest") {
+    systemProperty("java.awt.headless", "true")
 }
 
 /**
@@ -191,6 +206,11 @@ tasks.register<Tar>("packageReleaseTarGz") {
     archiveFileName.set("latch-$latchVersion-linux-x64.tar.gz")
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
     compression = Compression.GZIP
+    // Gradle 9 archives are reproducible by default, which also resets every
+    // file to 0644. That shipped bin/ launchers and the runtime's jspawnhelper
+    // non-executable, so extracted installs could not start. Keep the modes
+    // jpackage gave the app image.
+    useFileSystemPermissions()
 
     // Compose Desktop places the app image one level deeper than the "app"
     // directory, under a subdirectory named after packageName ("Latch") -

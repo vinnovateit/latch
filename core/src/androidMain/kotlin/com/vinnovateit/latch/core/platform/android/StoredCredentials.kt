@@ -1,6 +1,7 @@
 package com.vinnovateit.latch.core.platform.android
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.io.IOException
@@ -94,15 +95,35 @@ object StoredCredentials {
         }
     }
 
+    /** Blocks on disk I/O; call off the main thread. */
     fun saveCredentials(context: Context, userId: String, password: String): Boolean {
         val prefs = getEncryptedPrefsWithRecovery(context) ?: return false
-        prefs.edit()
+        return persistCredentials(
+            prefs,
+            context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE),
+            userId,
+            password,
+        )
+    }
+
+    /**
+     * Writes with `commit()` so a failed disk write reaches the caller;
+     * `apply()` reported success before anything was persisted. The
+     * `has_credentials` flag is set only once the credentials themselves are
+     * on disk, and its own failed write also fails the save.
+     */
+    fun persistCredentials(
+        credentialPrefs: SharedPreferences,
+        appPrefs: SharedPreferences,
+        userId: String,
+        password: String,
+    ): Boolean {
+        val saved = credentialPrefs.edit()
             .putString(KEY_USER_ID, userId)
             .putString(KEY_PASSWORD, password)
-            .apply()
-        context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-            .edit().putBoolean("has_credentials", true).apply()
-        return true
+            .commit()
+        if (!saved) return false
+        return appPrefs.edit().putBoolean("has_credentials", true).commit()
     }
 
     fun getUserId(context: Context): String? {
@@ -125,10 +146,24 @@ object StoredCredentials {
         return exists
     }
 
-    fun clearCredentials(context: Context) {
-        val prefs = getEncryptedPrefs(context)
-        prefs?.edit()?.clear()?.apply()
-        context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-            .edit().putBoolean("has_credentials", false).apply()
+    /**
+     * Blocks on disk I/O; call off the main thread. False when the credentials
+     * could not be confirmed removed, including when the encrypted store
+     * cannot be opened at all.
+     */
+    fun clearCredentials(context: Context): Boolean {
+        val prefs = getEncryptedPrefs(context) ?: return false
+        return removeCredentials(prefs, context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE))
+    }
+
+    /**
+     * The mirror of [persistCredentials]: `commit()` so a failed write is seen,
+     * and `has_credentials` is cleared only once the credentials themselves
+     * are gone -- otherwise the flag would claim nothing is stored while the
+     * credentials remain.
+     */
+    fun removeCredentials(credentialPrefs: SharedPreferences, appPrefs: SharedPreferences): Boolean {
+        if (!credentialPrefs.edit().clear().commit()) return false
+        return appPrefs.edit().putBoolean("has_credentials", false).commit()
     }
 }

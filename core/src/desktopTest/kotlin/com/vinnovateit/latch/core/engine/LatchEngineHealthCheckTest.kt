@@ -201,11 +201,11 @@ private class HealthCheckPlatform(
     }
     override val settingsStore: KeyValueStore = InMemoryKeyValueStore()
     override val credentials: CredentialStore = object : CredentialStore {
-        override fun save(userId: String, password: String) = Unit
+        override fun save(userId: String, password: String) = Result.success(Unit)
         override fun userId(): String? = "testuser"
         override fun password(): String? = "testpass"
         override fun exists(): Boolean = true
-        override fun clear() = Unit
+        override fun clear() = Result.success(Unit)
     }
     override val counters: ByteCounterSource = HealthNoCounters
     override val notifier: UserNotifier = object : UserNotifier {

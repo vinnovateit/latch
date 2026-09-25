@@ -11,34 +11,34 @@ buildscript {
             // 2.0.6 parses XML with external entities enabled. Reached through
             // AGP -> jetifier-processor; nothing here feeds it untrusted XML.
             classpath("org.jdom:jdom2:2.0.6.1") {
-                because("GHSA-2363-cqg2-863c: XXE injection in jdom2 < 2.0.6.1")
+                because("Security constraint for GHSA-2363-cqg2-863c; see advisory for affected versions")
             }
             // 0.9.5 decompresses JWE payloads without an output bound, so a
             // crafted token can exhaust the heap. Reached through AGP's Google
             // auth stack; nothing here processes JWEs.
             classpath("org.bitbucket.b_c:jose4j:0.9.6") {
-                because("GHSA-3677-xxcr-wjqv: DoS via compressed JWE content in jose4j < 0.9.6")
+                because("Security constraint for GHSA-3677-xxcr-wjqv; see advisory for affected versions")
             }
             // 1.80.2 does not escape values used to build LDAP filters. Reached
             // through both AGP and the Kotlin Gradle plugin; nothing here does LDAP.
-            classpath("org.bouncycastle:bcprov-jdk18on:1.84") {
-                because("GHSA-c3fc-8qff-9hwx: LDAP injection in bcprov-jdk18on < 1.84")
+            classpath("org.bouncycastle:bcprov-jdk18on:1.86") {
+                because("Security constraint for GHSA-c3fc-8qff-9hwx; see advisory for affected versions")
             }
             // Modules in 1.80.2 still use a broken cryptographic algorithm. Ships
             // alongside bcprov, pulled by AGP and the Kotlin Gradle plugin.
-            classpath("org.bouncycastle:bcpkix-jdk18on:1.84") {
-                because("GHSA-wg6q-6289-32hp: broken cryptographic algorithm in bcpkix-jdk18on < 1.84")
+            classpath("org.bouncycastle:bcpkix-jdk18on:1.86") {
+                because("Security constraint for GHSA-wg6q-6289-32hp; see advisory for affected versions")
             }
             // 3.16.0 recurses without a depth bound on long inputs, so a large
             // string can overflow the stack. Reached through AGP.
             classpath("org.apache.commons:commons-lang3:3.18.0") {
-                because("GHSA-j288-q9x7-2f5v: uncontrolled recursion in commons-lang3 < 3.18.0")
+                because("Security constraint for GHSA-j288-q9x7-2f5v; see advisory for affected versions")
             }
             // AGP declares 4.5.6, vulnerable to XSS in its error responses. Conflict
             // resolution already lands on 4.5.14; this states the safe floor rather than
             // leaving it incidental to whichever AGP version wins.
             classpath("org.apache.httpcomponents:httpclient:4.5.14") {
-                because("GHSA-7r82-7xv7-xcpj: cross-site scripting in httpclient < 4.5.13")
+                because("Security constraint for GHSA-7r82-7xv7-xcpj; see advisory for affected versions")
             }
         }
     }

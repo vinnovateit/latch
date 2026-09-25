@@ -21,6 +21,7 @@ import com.vinnovateit.latch.core.runtime.OwnerKind
 import com.vinnovateit.latch.core.runtime.RuntimeCommandService
 import com.vinnovateit.latch.core.runtime.claimDesktopOwnership
 import com.vinnovateit.latch.ui.LatchRoot
+import com.vinnovateit.latch.ui.chrome.AppMenuHost
 import java.awt.EventQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
@@ -158,10 +159,16 @@ fun main(args: Array<String>) {
                 )
             }
 
+            // Created here because the title bar and the app content are siblings:
+            // the chrome renders above LatchRoot, so the menu contract has to be
+            // handed to both from their common parent.
+            val appMenu = remember { AppMenuHost() }
+
             LatchWindow(
                 visible = windowVisible,
                 restoreTrigger = restoreTrigger,
                 onCloseRequest = { windowVisible = false },
+                appMenu = appMenu,
             ) {
                 val scope = rememberCoroutineScope()
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -180,6 +187,7 @@ fun main(args: Array<String>) {
                             if (app.updater.installAndExit(path)) exitApplication()
                         },
                         onDismissUpdate = { app.updater.dismissUpdate() },
+                        appMenu = appMenu,
                     )
                 }
             }

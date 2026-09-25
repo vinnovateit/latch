@@ -23,10 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -50,7 +47,6 @@ import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.ui.components.CircularPowerButton
-import com.vinnovateit.latch.ui.components.HowItWorksDialog
 import com.vinnovateit.latch.ui.components.LatchHomeTopBar
 import com.vinnovateit.latch.ui.components.LeafOverlay
 import com.vinnovateit.latch.ui.components.MorphingPowerButton
@@ -84,9 +80,6 @@ fun HomeScreen(
     sessions: SessionRepository,
     platform: PlatformServices,
     onOpenStats: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenAbout: () -> Unit,
-    showNavigationMenuItems: Boolean,
 ) {
     val isLatched by controller.isLatched.collectAsStateWithLifecycle()
     val status by controller.status.collectAsStateWithLifecycle()
@@ -94,8 +87,6 @@ fun HomeScreen(
     val speedUnit by SettingsManager.speedUnits.collectAsStateWithLifecycle()
 
     val history = liveStatus?.liveData?.takeLast(CHART_WINDOW) ?: emptyList()
-
-    var showHowItWorks by remember { mutableStateOf(false) }
 
     /*
      * Mirrors the Android app's "smart" power button: when there is no Wi-Fi to
@@ -115,14 +106,7 @@ fun HomeScreen(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val topBar: @Composable () -> Unit = {
-            LatchHomeTopBar(
-                isLatched = isLatched,
-                onHowItWorks = { showHowItWorks = true },
-                onOpenStats = onOpenStats,
-                onOpenSettings = onOpenSettings,
-                onOpenAbout = onOpenAbout,
-                showNavigationItems = showNavigationMenuItems,
-            )
+            LatchHomeTopBar(isLatched = isLatched)
         }
 
         if (maxWidth >= WideBreakpoint) {
@@ -151,9 +135,6 @@ fun HomeScreen(
         }
     }
 
-    if (showHowItWorks) {
-        HowItWorksDialog(onDismiss = { showHowItWorks = false })
-    }
 }
 
 @Composable

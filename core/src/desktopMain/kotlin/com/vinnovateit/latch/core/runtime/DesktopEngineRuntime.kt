@@ -5,11 +5,14 @@ import com.vinnovateit.latch.core.data.buildDatabase
 import com.vinnovateit.latch.core.domain.SessionRepository
 import com.vinnovateit.latch.core.engine.LatchCommand
 import com.vinnovateit.latch.core.engine.LatchEngine
+import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.Platform
 import com.vinnovateit.latch.core.platform.UserNotifier
 import com.vinnovateit.latch.core.portal.PortalHistoryClient
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.ThroughputMonitor
+import com.vinnovateit.latch.desktop.AppPaths
+import com.vinnovateit.latch.desktop.LegacyDataMigration
 import com.vinnovateit.latch.desktop.platform.DesktopPlatformServices
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +56,24 @@ class DesktopEngineRuntime private constructor(
     }
 
     companion object {
+        private const val TAG = "DesktopEngineRuntime"
+
+        private fun logDatabaseMigration(logger: Logger) {
+            val result = AppPaths.databaseMigration ?: return
+            val detail = result.detail?.let { " ($it)" }.orEmpty()
+            when (result.state) {
+                LegacyDataMigration.DatabaseState.NONE -> Unit
+                LegacyDataMigration.DatabaseState.COMPLETE ->
+                    logger.d(TAG, "Moved the pre-1.4.3 database into ${AppPaths.dataDir}: ${result.moved.joinToString()}")
+                LegacyDataMigration.DatabaseState.DESTINATION_ALREADY_LIVE ->
+                    logger.w(TAG, "A database already exists in ${AppPaths.dataDir}; pre-1.4.3 database files left untouched$detail")
+                LegacyDataMigration.DatabaseState.RETRY_WITH_LEGACY ->
+                    logger.w(TAG, "Legacy database migration incomplete; using the legacy database for this run and retrying on next start$detail")
+                LegacyDataMigration.DatabaseState.BLOCKED ->
+                    logger.e(TAG, "Legacy database is split between the old and new data directories; using a temporary in-memory database for this run so neither half is opened or replaced, and retrying on next start$detail")
+            }
+        }
+
         /**
          * @param syncHistoryOnStart whether to pull portal history in the
          *   background. Only long-lived owners should: a one-shot CLI command
@@ -67,6 +88,7 @@ class DesktopEngineRuntime private constructor(
             Platform.install(platform)
             SettingsManager.initialize(platform.settingsStore)
             val database = buildDatabase()
+            logDatabaseMigration(platform.logger)
             val portalClient = PortalHistoryClient(platform.httpTransport)
             val sessions = SessionRepository(database.statsDao(), ThroughputMonitor(platform.counters), portalClient = portalClient)
             sessions.initialize()

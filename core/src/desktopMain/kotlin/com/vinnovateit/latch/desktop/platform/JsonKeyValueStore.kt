@@ -59,6 +59,15 @@ class JsonKeyValueStore(
      *
      * The temp-file-plus-move keeps that window closed for readers: they see
      * either the previous file or the new one, never a half-written one.
+     *
+     * Unlike credential and runtime-ownership state, which go through
+     * [SecureFileWriter] and fail outright, a filesystem that cannot rename
+     * atomically still gets the settings written, by a plain replacing move.
+     * That is deliberate: these are recoverable preferences, and failing would
+     * lose the user's change outright to avoid a risk that costs at most the
+     * defaults -- [load] treats an unparseable file as defaults, and the next
+     * change rewrites the file whole. Nothing security- or ownership-related
+     * is stored here.
      */
     private fun write(obj: JsonObject) = synchronized(writeLock) {
         file.parentFile?.mkdirs()

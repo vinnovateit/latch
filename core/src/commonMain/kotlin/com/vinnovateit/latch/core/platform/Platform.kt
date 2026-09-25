@@ -133,11 +133,18 @@ interface ByteCounterSource {
 // ---------------------------------------------------------------------------
 
 interface CredentialStore {
-    fun save(userId: String, password: String)
+    /** Failure must be observable -- implementations must not swallow it. */
+    fun save(userId: String, password: String): Result<Unit>
     fun userId(): String?
     fun password(): String?
     fun exists(): Boolean
-    fun clear()
+
+    /**
+     * Fails if a copy of the credentials this store owns could still remain,
+     * so a caller never reports credentials as removed when they are not.
+     * Failure messages never include credential values.
+     */
+    fun clear(): Result<Unit>
 }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +153,7 @@ interface CredentialStore {
 
 interface UserNotifier {
     /** Cheap, high-frequency status (the tray tooltip). Safe to call every 2s. */
-    fun showOngoing(title: String, text: String)
+    fun showOngoing(title: String, text: String) {}
 
     /**
      * A real notification. Reserve for state transitions only -- Windows
@@ -154,7 +161,7 @@ interface UserNotifier {
      */
     fun notifyTransient(title: String, text: String, isError: Boolean = false)
 
-    fun hideOngoing()
+    fun hideOngoing() {}
 }
 
 interface SystemActions {

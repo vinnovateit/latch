@@ -13,8 +13,13 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
@@ -22,10 +27,45 @@ private const val CONNECT_TIMEOUT_MS = 2_000
 private const val REQUEST_READ_TIMEOUT_MS = 2_000
 private const val RESPONSE_READ_TIMEOUT_MS = 25_000
 
+/**
+ * A login/logout request can run for tens of seconds. Servicing requests one
+ * at a time on the accept loop meant a slow one queued every other request
+ * behind it -- a STATUS call could time out despite the owner being healthy,
+ * purely because it never got read off the socket. Requests are handled by a
+ * fixed pool of [MAX_CONCURRENT_REQUESTS] workers pulling from a
+ * [MAX_PENDING_REQUESTS]-deep admission channel, so `accept()` stays a tight
+ * loop while both *active* and *admitted-but-waiting* work stay bounded --
+ * `Dispatchers.IO.limitedParallelism` alone bounded only the former, letting
+ * `launch` pile up an unbounded number of queued-but-not-yet-running jobs
+ * behind it. The engine remains the thing serializing its own mutating
+ * commands (LatchEngine's command channel), so widening concurrency here is
+ * still safe.
+ */
+internal const val MAX_CONCURRENT_REQUESTS = 8
+
+/** See [MAX_CONCURRENT_REQUESTS]. A connection admitted beyond this backlog is closed immediately. */
+internal const val MAX_PENDING_REQUESTS = 16
+
+/**
+ * Why [InstanceCoordinator.tryAcquire] failed. [isTransitional] marks the
+ * narrow, self-resolving windows worth a short bounded retry -- the lock is
+ * held by a process that hasn't finished writing its metadata/token yet, or
+ * by one that is dying -- as opposed to a definitive failure a retry cannot
+ * fix (bad permissions, an incompatible peer, a real I/O error).
+ */
+enum class AcquisitionFailureReason(val isTransitional: Boolean) {
+    IO_ERROR(isTransitional = false),
+    OWNER_START_FAILED(isTransitional = false),
+    INCOMPATIBLE_PROTOCOL(isTransitional = false),
+    METADATA_UNAVAILABLE(isTransitional = true),
+    TOKEN_UNAVAILABLE(isTransitional = true),
+    OWNER_TRANSITIONING(isTransitional = true),
+}
+
 sealed interface AcquireResult {
     data class Owner(val coordinator: InstanceCoordinator) : AcquireResult
     data class Existing(val client: InstanceClient, val metadata: OwnerMetadata) : AcquireResult
-    data class Failure(val message: String) : AcquireResult
+    data class Failure(val message: String, val reason: AcquisitionFailureReason) : AcquireResult
 }
 
 class InstanceCoordinator private constructor(
@@ -38,11 +78,21 @@ class InstanceCoordinator private constructor(
 ) : AutoCloseable {
     val port: Int get() = server.localPort
     private val closed = AtomicBoolean(false)
+    private val requestScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pending = Channel<Socket>(capacity = MAX_PENDING_REQUESTS)
     private val listener = thread(start = false, isDaemon = true, name = "LatchRuntimeListener") {
         listen()
     }
 
     private fun start() {
+        // Exactly MAX_CONCURRENT_REQUESTS long-lived workers, each processing
+        // one socket at a time -- the active-handler bound is the size of
+        // this pool, not a dispatcher setting layered on top of `launch`.
+        repeat(MAX_CONCURRENT_REQUESTS) {
+            requestScope.launch {
+                for (socket in pending) handle(socket)
+            }
+        }
         listener.start()
     }
 
@@ -53,11 +103,17 @@ class InstanceCoordinator private constructor(
             } catch (_: Exception) {
                 break
             }
-            handle(socket)
+            // Admission is bounded by the channel's capacity: a socket that
+            // doesn't fit is refused immediately rather than queued without
+            // limit. The client sees this as a closed connection, which
+            // InstanceClient already reports as OWNER_UNAVAILABLE.
+            if (!pending.trySend(socket).isSuccess) {
+                runCatching { socket.close() }
+            }
         }
     }
 
-    private fun handle(socket: Socket) {
+    private suspend fun handle(socket: Socket) {
         socket.use { client ->
             client.soTimeout = REQUEST_READ_TIMEOUT_MS
             val response = try {
@@ -65,6 +121,8 @@ class InstanceCoordinator private constructor(
                     is PayloadResult.TooLarge -> failure("", "PAYLOAD_TOO_LARGE", "Request exceeds 64 KiB.")
                     is PayloadResult.Value -> process(payload.text)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 failure("", "MALFORMED_REQUEST", "Unable to read request.")
             }
@@ -77,7 +135,7 @@ class InstanceCoordinator private constructor(
         }
     }
 
-    private fun process(payload: String): InstanceResponse {
+    private suspend fun process(payload: String): InstanceResponse {
         val request = runCatching { JSON.decodeFromString<InstanceRequest>(payload) }.getOrNull()
             ?: return failure("", "MALFORMED_REQUEST", "Request is not valid protocol JSON.")
         if (request.version != INSTANCE_PROTOCOL_VERSION) {
@@ -90,7 +148,9 @@ class InstanceCoordinator private constructor(
             return failure("", "MALFORMED_REQUEST", "requestId is required.")
         }
         return try {
-            runBlocking { handler(request) }
+            handler(request)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             failure(request.requestId, "INTERNAL_ERROR", "Owner could not process the request.")
         }
@@ -99,6 +159,18 @@ class InstanceCoordinator private constructor(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         runCatching { server.close() }
+        pending.close()
+        // Anything admitted but not yet claimed by a worker would otherwise
+        // leak its socket once the scope below is cancelled -- a worker that
+        // never gets to it can't run its own socket.use{} cleanup.
+        while (true) {
+            val leftover = pending.tryReceive().getOrNull() ?: break
+            runCatching { leftover.close() }
+        }
+        // Not joined: a handler may be blocked on the engine, and close() must
+        // return promptly regardless. Each handler's own socket.use{} still
+        // runs its close on the way out.
+        requestScope.cancel()
         files.clearOwnerState()
         runCatching { lock.release() }
         runCatching { channel.close() }
@@ -112,7 +184,9 @@ class InstanceCoordinator private constructor(
         ): AcquireResult {
             val files = SecureRuntimeFiles(dataDir)
             val channel = runCatching { RandomAccessFile(files.lockFile, "rw").channel }
-                .getOrElse { return AcquireResult.Failure("Unable to open runtime lock: ${it.message}") }
+                .getOrElse {
+                    return AcquireResult.Failure("Unable to open runtime lock: ${it.message}", AcquisitionFailureReason.IO_ERROR)
+                }
             val lock = runCatching { channel.tryLock() }.getOrNull()
             if (lock == null) {
                 runCatching { channel.close() }
@@ -137,22 +211,32 @@ class InstanceCoordinator private constructor(
                 files.clearOwnerState()
                 runCatching { lock.release() }
                 runCatching { channel.close() }
-                AcquireResult.Failure("Unable to start runtime owner: ${error.message}")
+                AcquireResult.Failure("Unable to start runtime owner: ${error.message}", AcquisitionFailureReason.OWNER_START_FAILED)
             }
         }
 
         private fun existingOwner(files: SecureRuntimeFiles): AcquireResult {
-            val metadata = files.readMetadata()
-                ?: return AcquireResult.Failure("Runtime lock is held but owner metadata is unavailable.")
-            val token = files.readToken()
-                ?: return AcquireResult.Failure("Runtime lock is held but authentication token is unavailable.")
+            val metadata = files.readMetadata() ?: return AcquireResult.Failure(
+                "Runtime lock is held but owner metadata is unavailable.",
+                AcquisitionFailureReason.METADATA_UNAVAILABLE,
+            )
+            val token = files.readToken() ?: return AcquireResult.Failure(
+                "Runtime lock is held but authentication token is unavailable.",
+                AcquisitionFailureReason.TOKEN_UNAVAILABLE,
+            )
             if (metadata.version != INSTANCE_PROTOCOL_VERSION) {
-                return AcquireResult.Failure("The running Latch instance uses an incompatible protocol.")
+                return AcquireResult.Failure(
+                    "The running Latch instance uses an incompatible protocol.",
+                    AcquisitionFailureReason.INCOMPATIBLE_PROTOCOL,
+                )
             }
             val alive = runCatching {
                 ProcessHandle.of(metadata.pid).map(ProcessHandle::isAlive).orElse(false)
             }.getOrDefault(false)
-            if (!alive) return AcquireResult.Failure("Runtime owner is no longer alive.")
+            if (!alive) return AcquireResult.Failure(
+                "Runtime owner is no longer alive.",
+                AcquisitionFailureReason.OWNER_TRANSITIONING,
+            )
             return AcquireResult.Existing(InstanceClient(metadata.port, token), metadata)
         }
     }

@@ -15,16 +15,27 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# Nothing here writes to the repository: it only checks out and builds.
+permissions:
+  contents: read
+
+# Keyed on the workflow name, so this never cancels an Android CI run for the
+# same ref. Pushes to main are left to finish; see android.yml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   desktop:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -40,5 +51,136 @@ jobs:
       # OsBindings at runtime and are exercised by release.yml's per-OS jobs.
       # :cli:build compiles and tests the CLI module, which is plain
       # kotlin("jvm") and so has an ordinary `build` lifecycle task.
+      # :desktop:smoke is the headless platform smoke test that release.yml already
+      # runs before packaging. It degrades gracefully where there is no Wi-Fi, no
+      # keyring and no display, and it is the only check that exercises the desktop
+      # platform seams (SSID detection, OSHI counters, credential round-trip, Room).
       - name: Build and Test
-        run: ./gradlew :desktop:compileKotlinDesktop :core:desktopTest :cli:build
+        run: ./gradlew :desktop:compileKotlinDesktop :core:desktopTest :desktop:desktopTest :cli:build :desktop:smoke
+
+  # Real Windows DPAPI round trip. The job above can only drive
+  # DpapiCredentialStore through a fake backend, since Crypt32 does not exist
+  # on Linux; this runs the production store on a Windows runner, along with
+  # the runtime token/metadata writes, which share the same atomic writer. The tests
+  # are selected by name, so Gradle fails the job if the filter ever stops
+  # matching rather than letting it pass with nothing run.
+  windows-dpapi:
+
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: DPAPI credential store on Windows
+        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest"
+
+      # Gradle prints nothing per test. The timings show the real round trip
+      # ran (it spawns a second JVM), rather than the off-Windows early return.
+      - name: Show which DPAPI tests ran
+        if: always()
+        shell: pwsh
+        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml, core\build\test-results\desktopTest\TEST-*.SecureRuntimeFilesTest.xml, core\build\test-results\desktopTest\TEST-*.LegacyDataMigrationTest.xml, core\build\test-results\desktopTest\TEST-*.DatabaseLocationTest.xml | Select-String '<testsuite |<testcase '
+
+  # Builds the release MSI exactly as release.yml does, stages it under the
+  # release asset name, and installs it for real: database open, silent
+  # per-user install, installed files and version, silent uninstall, and a
+  # silent major upgrade from the newest older published release with the
+  # package staged where the updater stages it. The legacy probe records what
+  # the pre-fix staging location (inside the install directory) does to that
+  # upgrade. Installer logs are uploaded only if something failed.
+  windows-msi:
+
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build Desktop MSI
+        run: .\gradlew.bat :desktop:packageReleaseMsi
+
+      - name: Stage the MSI as release.yml does
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          $msi = @(Get-ChildItem desktop\build\compose\binaries\main-release\msi\*.msi)
+          if ($msi.Count -ne 1) {
+            throw "Expected exactly one Desktop MSI, found $($msi.Count)"
+          }
+          Copy-Item $msi.FullName staging\LatchSetup.msi
+
+      - name: Qualify the MSI on Windows
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Select-String -Path gradle.properties -Pattern '^latchVersion=(.+)$').Matches[0].Groups[1].Value
+          packaging/qualify-windows-msi.ps1 -Msi staging\LatchSetup.msi -Version $version `
+            -BaselineRepo $env:GITHUB_REPOSITORY -ProbeLegacyStaging `
+            -LegacyNotice packaging\windows-legacy-update-notice.md -LogDir msi-logs
+
+      - name: Upload Windows Installer logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-msi-logs
+          path: msi-logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Builds the Linux release tarballs and runs them extracted, as release.yml
+  # does before publishing, so a packaging regression shows up on the PR
+  # rather than on the release tag. The desktop launch needs a display, hence
+  # xvfb-run. install.sh is tested against stubbed curl/sudo and the tarball.
+  linux-packages:
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build Linux tarballs
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktop:packageReleaseTarGz :cli:packageCliTarGz
+
+      - name: Smoke-test extracted tarballs and install.sh
+        run: |
+          command -v xvfb-run >/dev/null || { sudo apt-get update && sudo apt-get install --yes xvfb; }
+          version="$(sed -n 's/^latchVersion=//p' gradle.properties)"
+          desktop="desktop/build/distributions/latch-$version-linux-x64.tar.gz"
+          xvfb-run -a packaging/smoke-linux-tarballs.sh "$version" "$desktop" \
+            "cli/build/distributions/latch-cli-$version-linux-x64.tar.gz"
+          packaging/test-install-script.sh "$desktop"
+
+      - name: Test the winget submission logic
+        run: packaging/test-submit-winget.sh

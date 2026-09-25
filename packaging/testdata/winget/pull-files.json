@@ -1,0 +1,20 @@
+[
+  {
+    "filename": "manifests/v/VinnovateIT/LatchCLI/1.4.1/VinnovateIT.LatchCLI.installer.yaml",
+    "status": "added",
+    "additions": 17,
+    "deletions": 0
+  },
+  {
+    "filename": "manifests/v/VinnovateIT/LatchCLI/1.4.1/VinnovateIT.LatchCLI.locale.en-US.yaml",
+    "status": "added",
+    "additions": 19,
+    "deletions": 0
+  },
+  {
+    "filename": "manifests/v/VinnovateIT/LatchCLI/1.4.1/VinnovateIT.LatchCLI.yaml",
+    "status": "added",
+    "additions": 6,
+    "deletions": 0
+  }
+]

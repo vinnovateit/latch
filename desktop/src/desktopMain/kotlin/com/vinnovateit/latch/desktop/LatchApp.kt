@@ -6,6 +6,7 @@ import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.formatBitsPerSecond
 import com.vinnovateit.latch.core.stats.formatClockTime
 import com.vinnovateit.latch.desktop.platform.TrayNotifier
+import com.vinnovateit.latch.desktop.platform.linux.LinuxNotifier
 import com.vinnovateit.latch.desktop.platform.windows.WindowsBalloonNotifier
 import com.vinnovateit.latch.desktop.updater.GithubUpdater
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +57,7 @@ class LatchApp private constructor(
 
     fun start() {
         if (AppPaths.isWindows) WindowsBalloonNotifier.start(platform.logger)
+        if (AppPaths.isLinux) LinuxNotifier.start(platform.logger)
         applyAutostartDefault()
         runtime.start()
 
@@ -85,9 +87,9 @@ class LatchApp private constructor(
             var wasLatched = false
             engine.isLatched.collect { latched ->
                 if (latched && !wasLatched) {
-                    notifier.notifyTransient("Connected", "Latched onto Wi-Fi.")
+                    notifier.notifyTransient("Latched", "Latched onto Wi-Fi.")
                 } else if (!latched && wasLatched) {
-                    notifier.notifyTransient("Disconnected", "No longer latched.")
+                    notifier.notifyTransient("Unlatched", "No longer latched.")
                 }
                 wasLatched = latched
             }

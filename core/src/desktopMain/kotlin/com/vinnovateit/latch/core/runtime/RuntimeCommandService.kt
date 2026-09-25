@@ -1,5 +1,6 @@
 package com.vinnovateit.latch.core.runtime
 
+import com.vinnovateit.latch.core.credentials.RegistrationNumber
 import com.vinnovateit.latch.core.engine.LatchCommand
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
@@ -18,8 +19,6 @@ data class RuntimeSessionRecord(
     val end: Long,
     val rx: Long,
     val tx: Long,
-    val maxRx: Long,
-    val maxTx: Long,
 )
 
 data class RuntimeSettingsSnapshot(val autoLogin: Boolean, val allowedSsids: Set<String>)
@@ -39,7 +38,7 @@ interface RuntimeCommandTarget {
     suspend fun settings(): RuntimeSettingsSnapshot
     suspend fun setAutoLogin(enabled: Boolean)
     suspend fun setAllowedSsids(values: Set<String>)
-    suspend fun setCredentials(userId: String, password: String)
+    suspend fun setCredentials(userId: String, password: String): RuntimeOperation
 }
 
 class RuntimeCommandService(
@@ -148,13 +147,15 @@ class RuntimeCommandService(
     }
 
     private suspend fun setCredentials(request: InstanceRequest): InstanceResponse {
-        val userId = request.arguments["userId"]?.trim().orEmpty()
+        val userId = RegistrationNumber.normalize(request.arguments["userId"].orEmpty())
         val password = request.arguments["password"].orEmpty()
         if (userId.isEmpty() || password.isEmpty()) {
             return failure(request, "INVALID_ARGUMENT", "Both user ID and password are required.")
         }
-        target.setCredentials(userId, password)
-        return success(request)
+        if (!RegistrationNumber.isValid(userId)) {
+            return failure(request, "INVALID_ARGUMENT", "Invalid registration number.")
+        }
+        return operation(request, target.setCredentials(userId, password))
     }
 
     private fun operation(request: InstanceRequest, result: RuntimeOperation): InstanceResponse =
@@ -207,9 +208,6 @@ private class DesktopRuntimeTarget(private val runtime: DesktopEngineRuntime) : 
                 session.logoutTime,
                 session.downloadBytes,
                 session.uploadBytes,
-                // The portal reports totals only, never peak throughput.
-                0L,
-                0L,
             )
         }
 
@@ -222,8 +220,11 @@ private class DesktopRuntimeTarget(private val runtime: DesktopEngineRuntime) : 
 
     override suspend fun setAllowedSsids(values: Set<String>) = SettingsManager.setAllowedSsids(values)
 
-    override suspend fun setCredentials(userId: String, password: String) =
-        runtime.platform.credentials.save(userId, password)
+    override suspend fun setCredentials(userId: String, password: String): RuntimeOperation =
+        runtime.platform.credentials.save(userId, password).fold(
+            onSuccess = { RuntimeOperation(true) },
+            onFailure = { RuntimeOperation(false, "CREDENTIAL_SAVE_FAILED", "Unable to save credentials securely.") },
+        )
 
     private suspend fun execute(command: LatchCommand, label: String): RuntimeOperation {
         if (!runtime.engine.submitAndAwait(command, RUNTIME_COMMAND_TIMEOUT_MS)) {

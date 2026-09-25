@@ -166,19 +166,32 @@ class CliRunnerTest {
     @Test
     fun `history is newest first with stable timestamps`() = runBlocking {
         val terminal = RecordingTerminal()
-        val older = CliSession(start = 1_000, end = 2_000, rx = 10, tx = 20, maxRx = 30, maxTx = 40)
-        val newer = CliSession(start = 3_000, end = 4_000, rx = 50, tx = 60, maxRx = 70, maxTx = 80)
+        val older = CliSession(start = 1_000, end = 2_000, rx = 10, tx = 20)
+        val newer = CliSession(start = 3_000, end = 4_000, rx = 50, tx = 60)
         val backend = FakeBackend(historyResult = OperationResult(listOf(older, newer)))
 
         val exitCode = CliRunner(terminal, { backend }).run(CliCommand.History)
 
         assertEquals(0, exitCode)
         assertEquals(
-            "start\tend\trx-bytes\ttx-bytes\tmax-rx-bps\tmax-tx-bps\n" +
-                "1970-01-01T00:00:03Z\t1970-01-01T00:00:04Z\t50\t60\t70\t80\n" +
-                "1970-01-01T00:00:01Z\t1970-01-01T00:00:02Z\t10\t20\t30\t40\n",
+            "start\tend\trx-bytes\ttx-bytes\n" +
+                "1970-01-01T00:00:03Z\t1970-01-01T00:00:04Z\t50\t60\n" +
+                "1970-01-01T00:00:01Z\t1970-01-01T00:00:02Z\t10\t20\n",
             terminal.output,
         )
+    }
+
+    @Test
+    fun `history does not report a fabricated peak throughput`() = runBlocking {
+        val terminal = RecordingTerminal()
+        val session = CliSession(start = 1_000, end = 2_000, rx = 10, tx = 20)
+        val backend = FakeBackend(historyResult = OperationResult(listOf(session)))
+
+        val exitCode = CliRunner(terminal, { backend }).run(CliCommand.History)
+
+        assertEquals(0, exitCode)
+        assertFalse(terminal.output.contains("max-rx"))
+        assertFalse(terminal.output.contains("max-tx"))
     }
 
     @Test
@@ -257,6 +270,66 @@ class CliRunnerTest {
     }
 
     @Test
+    fun `invalid registration number is rejected without contacting the backend`() = runBlocking {
+        val terminal = RecordingTerminal(lines = ArrayDeque(listOf("not-a-reg-no")))
+        val backend = FakeBackend()
+
+        val exitCode = CliRunner(terminal, { backend }).run(CliCommand.SetCredentials)
+
+        assertEquals(1, exitCode)
+        assertEquals(null, backend.credentialUserId)
+        assertEquals("error: Invalid registration number.\n", terminal.output)
+        assertFalse(terminal.output.contains("Credentials saved."))
+    }
+
+    @Test
+    fun `a lowercase registration number reaches the backend normalized`() = runBlocking {
+        val secret = charArrayOf('s', 'e', 'c', 'r', 'e', 't')
+        val terminal = RecordingTerminal(lines = ArrayDeque(listOf("22bce0001")), secrets = ArrayDeque(listOf(secret)))
+        val backend = FakeBackend()
+
+        val exitCode = CliRunner(terminal, { backend }).run(CliCommand.SetCredentials)
+
+        assertEquals(0, exitCode)
+        assertEquals("22BCE0001", backend.credentialUserId)
+    }
+
+    @Test
+    fun `failed credential persistence exits nonzero and never claims success`() = runBlocking {
+        val secret = charArrayOf('s', 'e', 'c', 'r', 'e', 't')
+        val terminal = RecordingTerminal(lines = ArrayDeque(listOf("22BCE0001")), secrets = ArrayDeque(listOf(secret)))
+        val backend = FakeBackend(
+            setCredentialsResult = OperationResult(error = "Unable to save credentials securely."),
+        )
+
+        val exitCode = CliRunner(terminal, { backend }).run(CliCommand.SetCredentials)
+
+        assertEquals(1, exitCode)
+        assertEquals("error: Unable to save credentials securely.\n", terminal.output)
+        assertFalse(terminal.output.contains("Credentials saved."))
+    }
+
+    @Test
+    fun `first bootstrap does not activate the daemon when credential persistence fails`() = runBlocking {
+        val secret = charArrayOf('s', 'e', 'c', 'r', 'e', 't')
+        val terminal = RecordingTerminal(lines = ArrayDeque(listOf("22BCE0001")), secrets = ArrayDeque(listOf(secret)))
+        val backend = FakeBackend(
+            setupResult = OperationResult(false),
+            setCredentialsResult = OperationResult(error = "Unable to save credentials securely."),
+        )
+        val lifecycle = FakeLifecycle()
+
+        val exitCode = CliRunner(terminal, { backend }, lifecycle = lifecycle).run(CliCommand.Bootstrap)
+
+        assertEquals(1, exitCode)
+        assertFalse(lifecycle.activated)
+        assertTrue(backend.closed)
+        assertTrue(secret.all { it == '\u0000' })
+        assertTrue(terminal.output.contains("error: Unable to save credentials securely."))
+        assertFalse(terminal.output.contains("running in the background"))
+    }
+
+    @Test
     fun `successful login and logout use stable output`() = runBlocking {
         val cases = mapOf(
             CliCommand.Login to "Login completed.\n",
@@ -317,6 +390,7 @@ private class FakeBackend(
         CliSettings(autoLogin = true, allowedSsids = setOf("VIT")),
     ),
     private val setupResult: OperationResult<Boolean> = OperationResult(true),
+    private val setCredentialsResult: OperationResult<Unit> = OperationResult(Unit),
 ) : CliBackend {
     var closed = false
     var autoLoginValue: Boolean? = null
@@ -344,7 +418,7 @@ private class FakeBackend(
     override suspend fun setCredentials(userId: String, password: CharArray): OperationResult<Unit> {
         credentialUserId = userId
         credentialPassword = password.copyOf()
-        return OperationResult(Unit)
+        return setCredentialsResult
     }
 
     override suspend fun runDaemon(): OperationResult<Unit> = OperationResult(Unit)

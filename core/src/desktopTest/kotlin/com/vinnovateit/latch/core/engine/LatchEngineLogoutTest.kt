@@ -136,11 +136,11 @@ private class FakePlatform(
     }
     override val settingsStore: KeyValueStore = InMemoryKeyValueStore()
     override val credentials: CredentialStore = object : CredentialStore {
-        override fun save(userId: String, password: String) = Unit
+        override fun save(userId: String, password: String) = Result.success(Unit)
         override fun userId(): String? = null
         override fun password(): String? = null
         override fun exists(): Boolean = false
-        override fun clear() = Unit
+        override fun clear() = Result.success(Unit)
     }
     override val counters: ByteCounterSource = NoCounters
     override val notifier: UserNotifier = object : UserNotifier {

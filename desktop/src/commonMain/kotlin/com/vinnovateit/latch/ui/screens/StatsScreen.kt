@@ -43,6 +43,7 @@ import com.vinnovateit.latch.core.model.DataUsage
 import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.formatDate
+import com.vinnovateit.latch.core.stats.formatDisplayDate
 import com.vinnovateit.latch.core.stats.generatePortalHtmlReport
 import com.vinnovateit.latch.desktop.resources.Res
 import com.vinnovateit.latch.desktop.resources.stats_title
@@ -97,11 +98,13 @@ fun StatsScreen(
     val insights by sessions.statsInsights.collectAsStateWithLifecycle()
     val chartItems by sessions.chartItems.collectAsStateWithLifecycle()
 
-    var selectedTimestamp by remember(chartItems) { mutableStateOf<Long?>(null) }
-    val selectedDaySessions = remember(portalHistory, selectedTimestamp) {
-        val targetTs = selectedTimestamp ?: System.currentTimeMillis()
-        val targetDayKey = formatDate(targetTs, "yyyy-MM-dd")
-        portalHistory.filter { it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L) && formatDate(it.loginTime, "yyyy-MM-dd") == targetDayKey }
+    var selectedDayTimestamp by remember { mutableStateOf<Long?>(null) }
+    val todayKey = remember { formatDate(System.currentTimeMillis(), "yyyy-MM-dd") }
+    val selectedDateKey = selectedDayTimestamp?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
+    val isToday = selectedDateKey == todayKey
+
+    val displayedSessions = remember(portalHistory, selectedDateKey) {
+        portalHistory.filter { it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L) && formatDate(it.loginTime, "yyyy-MM-dd") == selectedDateKey }
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -320,25 +323,57 @@ fun StatsScreen(
                                             dlColor = dlColor,
                                             ulColor = ulColor,
                                             isAmoled = isAmoled,
-                                            onSelectedDayChange = { selectedTimestamp = it },
+                                            onSelectedDayChange = { selectedDayTimestamp = it },
                                         )
                                         Spacer(modifier = Modifier.height(15.dp))
                                     }
                                 }
 
-                                if (selectedDaySessions.isNotEmpty()) {
+                                item {
+                                    val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())} Sessions"
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        textAlign = TextAlign.Left,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+
+                                if (displayedSessions.isNotEmpty()) {
                                     itemsIndexed(
-                                        items = selectedDaySessions,
+                                        items = displayedSessions,
                                         key = { index, session -> "${session.loginTime}_${session.uploadBytes}_${session.downloadBytes}_$index" },
                                         contentType = { _, _ -> "session_item" },
                                     ) { index, session ->
                                         TodaySessionListItem(
                                             session = session,
-                                            shape = groupedItemShape(index, selectedDaySessions.size),
+                                            shape = groupedItemShape(index, displayedSessions.size),
                                             isAmoled = isAmoled,
                                             dlColor = dlColor,
                                             ulColor = ulColor,
                                         )
+                                    }
+                                } else {
+                                    item {
+                                        val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())}."
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        ) {
+                                            Text(
+                                                text = emptyText,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(16.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -390,25 +425,57 @@ fun StatsScreen(
                                         dlColor = dlColor,
                                         ulColor = ulColor,
                                         isAmoled = isAmoled,
-                                        onSelectedDayChange = { selectedTimestamp = it },
+                                        onSelectedDayChange = { selectedDayTimestamp = it },
                                     )
                                     Spacer(modifier = Modifier.height(15.dp))
                                 }
                             }
 
-                            if (selectedDaySessions.isNotEmpty()) {
+                            item {
+                                val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())} Sessions"
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    textAlign = TextAlign.Left,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+
+                            if (displayedSessions.isNotEmpty()) {
                                 itemsIndexed(
-                                    items = selectedDaySessions,
+                                    items = displayedSessions,
                                     key = { index, session -> "${session.loginTime}_${session.uploadBytes}_${session.downloadBytes}_$index" },
                                     contentType = { _, _ -> "session_item" },
                                 ) { index, session ->
                                     TodaySessionListItem(
                                         session = session,
-                                        shape = groupedItemShape(index, selectedDaySessions.size),
+                                        shape = groupedItemShape(index, displayedSessions.size),
                                         isAmoled = isAmoled,
                                         dlColor = dlColor,
                                         ulColor = ulColor,
                                     )
+                                }
+                            } else {
+                                item {
+                                    val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())}."
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    ) {
+                                        Text(
+                                            text = emptyText,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(16.dp),
+                                        )
+                                    }
                                 }
                             }
                         }

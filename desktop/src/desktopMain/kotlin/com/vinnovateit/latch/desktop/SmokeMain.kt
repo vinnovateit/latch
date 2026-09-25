@@ -74,8 +74,8 @@ fun main() = runBlocking {
         creds.save("smoke-test-user", "smoke-test-pass")
         val ok = creds.userId() == "smoke-test-user" && creds.password() == "smoke-test-pass"
         println("roundtrip        : ${if (ok) "OK" else "FAILED"}")
-        creds.clear()
-        println("cleared          : ${!creds.exists()}")
+        val cleared = creds.clear()
+        println("cleared          : ${cleared.isSuccess && !creds.exists()}")
     } else {
         println("roundtrip        : SKIPPED (real credentials present, not touching them)")
     }

@@ -78,7 +78,7 @@ jobs:
       - name: Verify shared runtime and CLI
         run: |
           chmod +x gradlew
-          ./gradlew :core:desktopTest :cli:test :desktop:smoke
+          ./gradlew :core:desktopTest :desktop:desktopTest :cli:test :desktop:smoke
 
       - name: Build Desktop and CLI packages
         run: |
@@ -87,6 +87,19 @@ jobs:
             :cli:packageCliTarGz \
             :cli:packageCliDeb \
             :cli:packageCliRpm
+
+      # Runs what was archived rather than the build image: v1.4.0 shipped
+      # tarballs whose launchers were not executable while the image was fine.
+      # Failing here stops the release before anything is uploaded.
+      - name: Smoke-test extracted Linux tarballs and install.sh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          command -v xvfb-run >/dev/null || sudo apt-get install --yes xvfb
+          desktop="desktop/build/distributions/latch-$VERSION-linux-x64.tar.gz"
+          xvfb-run -a packaging/smoke-linux-tarballs.sh "$VERSION" "$desktop" \
+            "cli/build/distributions/latch-cli-$VERSION-linux-x64.tar.gz"
+          packaging/test-install-script.sh "$desktop"
 
       - name: Smoke-test bundled CLI
         run: |
@@ -134,6 +147,11 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      # The only place a release exercises real DPAPI: the Linux job's tests
+      # reach DpapiCredentialStore through a fake backend.
+      - name: Verify DPAPI credential store
+        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest"
+
       - name: Build Desktop MSI and portable CLI
         run: .\gradlew.bat :desktop:packageReleaseMsi :cli:packageCliZip
 
@@ -154,13 +172,44 @@ jobs:
           # Keep one stable GUI installer filename across patch rebuilds. The
           # MSI's internal product/version metadata remains controlled by
           # Compose/jpackage; only the release asset name is normalized here.
+          # Not Latch-*.msi: updaters up to 1.4.2 offer that shape and then
+          # break the install (see WINDOWS_PACKAGE_ASSET in GithubUpdater.kt).
           $msi = @(Get-ChildItem desktop\build\compose\binaries\main-release\msi\*.msi)
           if ($msi.Count -ne 1) {
             throw "Expected exactly one Desktop MSI, found $($msi.Count)"
           }
-          Copy-Item $msi.FullName staging\Latch-Setup.msi
+          Copy-Item $msi.FullName staging\LatchSetup.msi
+          # Updaters up to 1.4.2 only show an update when a Latch-*.msi is
+          # published, so this carries the manual-install notice to them. It
+          # is the notice text, not an installer: if they choose to download
+          # it, msiexec rejects it before touching the installed product and
+          # the old version relaunches unchanged. The qualification step
+          # below proves that. Drop it once no install older than 1.4.3 remains.
+          Copy-Item packaging\windows-legacy-update-notice.md staging\Latch-Update-Notice.msi
           Copy-Item cli\build\distributions\*.zip staging\
           Get-ChildItem staging
+
+      # Installs the exact file about to be uploaded: database open, silent
+      # per-user install, installed files and version, silent uninstall, and
+      # a silent upgrade from the previous published release. Failing here
+      # stops the release before the MSI reaches anyone.
+      - name: Qualify the staged MSI on Windows
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          packaging/qualify-windows-msi.ps1 -Msi staging\LatchSetup.msi -Version $env:VERSION `
+            -BaselineRepo $env:GITHUB_REPOSITORY -LegacyNotice staging\Latch-Update-Notice.msi -LogDir msi-logs
+
+      - name: Upload Windows Installer logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-msi-logs
+          path: msi-logs/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v7
@@ -212,7 +261,15 @@ jobs:
       - name: Extract release notes
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: packaging/extract-release-notes.sh "$VERSION" release-notes.md
+        run: |
+          packaging/extract-release-notes.sh "$VERSION" release-notes.md
+          # Updaters up to 1.4.2 show these notes on their update screen;
+          # the notice at the top is how their users learn to install by
+          # hand. Kept while Latch-Update-Notice.msi is published.
+          if [[ -f release-assets/Latch-Update-Notice.msi ]]; then
+            { cat packaging/windows-legacy-update-notice.md; echo; cat release-notes.md; } > release-notes.with-notice.md
+            mv release-notes.with-notice.md release-notes.md
+          fi
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -298,10 +355,18 @@ jobs:
           git commit -m "Publish Latch $TAG to the APT and DNF repositories"
           git push origin gh-pages
 
+  # WinGet gets one pending submission for the newest release, not one PR per
+  # tag: submit-winget.sh reconciles with what is already open or published
+  # before it opens anything. Serialised across releases so two tags close
+  # together cannot both see "nothing pending"; GitHub keeps only the newest
+  # waiting run, so a burst of releases coalesces to its latest version.
   submit-winget:
     name: Submit to winget
     needs: [prepare, release]
     runs-on: ubuntu-latest
+    concurrency:
+      group: winget-submission
+      cancel-in-progress: false
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
@@ -315,9 +380,14 @@ jobs:
           gh release download "$TAG" --pattern '*-package-metadata.zip' --dir .
           unzip -q "latch-cli-$VERSION-package-metadata.zip" -d package-metadata
 
+      # The reconciliation logic runs against a fake GitHub before it is
+      # trusted with the real one.
+      - name: Test the winget submission logic
+        run: packaging/test-submit-winget.sh
+
       # A repository-scoped token cannot push to a fork in another org, so this
       # needs a PAT with public_repo rather than GITHUB_TOKEN.
-      - name: Open the winget pull request
+      - name: Reconcile and submit to winget
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}

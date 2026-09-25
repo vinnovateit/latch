@@ -9,9 +9,12 @@ import com.vinnovateit.latch.core.platform.CredentialStore
  * EncryptedSharedPreferences/Keystore logic and shouldn't be duplicated.
  */
 class AndroidCredentialStore(private val context: Context) : CredentialStore {
-    override fun save(userId: String, password: String) {
-        StoredCredentials.saveCredentials(context, userId, password)
-    }
+    override fun save(userId: String, password: String): Result<Unit> =
+        if (StoredCredentials.saveCredentials(context, userId, password)) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IllegalStateException("Failed to save credentials securely."))
+        }
 
     override fun userId(): String? = StoredCredentials.getUserId(context)
 
@@ -19,5 +22,10 @@ class AndroidCredentialStore(private val context: Context) : CredentialStore {
 
     override fun exists(): Boolean = StoredCredentials.credentialsExist(context)
 
-    override fun clear() = StoredCredentials.clearCredentials(context)
+    override fun clear(): Result<Unit> =
+        if (StoredCredentials.clearCredentials(context)) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IllegalStateException("Stored credentials could not be removed."))
+        }
 }

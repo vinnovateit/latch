@@ -11,16 +11,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,6 +70,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -72,17 +81,20 @@ import androidx.compose.ui.unit.sp
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.common.ui.LeafOverlay
 import com.vinnovateit.latch.common.util.TooltipHint
+import com.vinnovateit.latch.core.credentials.RegistrationNumber
 import com.vinnovateit.latch.core.platform.android.StoredCredentials
 import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 import kotlinx.coroutines.launch
 
-private val REG_NO_REGEX = Regex("^[0-9]{2}[A-Z]{3}[0-9]{4}$")
-
+/**
+ * [onBackClick] shows a back button in edit mode, reached from Settings like the
+ * other pushed screens. First-run setup has none: onboarding leads here.
+ */
 @Composable
 fun CredentialsScreen(
     editMode: Boolean,
     onCredentialsSaved: () -> Unit,
-    onBackClick: (() -> Unit)? = null
+    onBackClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -133,17 +145,20 @@ fun CredentialsScreen(
     }
 
     val handleSubmit: () -> Unit = {
-        val trimmedRegNo = regNo.trim().uppercase()
+        val trimmedRegNo = RegistrationNumber.normalize(regNo)
         when {
             trimmedRegNo.isBlank() || password.isBlank() -> {
                 triggerError(context.getString(R.string.credentials_error_message))
             }
-            !REG_NO_REGEX.matches(trimmedRegNo) -> {
+            !RegistrationNumber.isValid(trimmedRegNo) -> {
                 triggerError("Invalid Registration Number")
             }
             else -> {
                 scope.launch {
-                    if (StoredCredentials.saveCredentials(context, trimmedRegNo, password)) {
+                    val saved = withContext(Dispatchers.IO) {
+                        StoredCredentials.saveCredentials(context, trimmedRegNo, password)
+                    }
+                    if (saved) {
                         onCredentialsSaved()
                     } else {
                         triggerError("Couldn't save credentials securely. Please try again.")
@@ -308,6 +323,33 @@ fun CredentialsScreen(
                 SaveButton(
                     editMode = editMode,
                     onSubmit = handleSubmit
+                )
+            }
+        }
+
+        if (editMode && onBackClick != null) {
+            val haptic = LocalHapticFeedback.current
+            // Same control and placement as the Settings and Stats back buttons.
+            // Drawn after the form so it stays tappable over scrolled content.
+            FilledIconButton(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Start))
+                    .padding(start = 12.dp, top = 4.dp)
+                    .size(40.dp)
+                    .clip(CircleShape),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onBackClick()
+                },
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }

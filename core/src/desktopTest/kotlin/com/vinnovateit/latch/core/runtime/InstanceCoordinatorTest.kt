@@ -3,14 +3,22 @@ package com.vinnovateit.latch.core.runtime
 import com.vinnovateit.latch.desktop.AppPaths
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 
 class InstanceCoordinatorTest {
@@ -204,6 +212,325 @@ class InstanceCoordinatorTest {
             assertNotEquals("stale-token", files.readToken())
         } finally {
             acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `an independent request is not blocked behind a slow one`() = runBlocking {
+        val directory = createTempDirectory("latch-hol-").toFile()
+        val slowStarted = CompletableDeferred<Unit>()
+        val releaseSlow = CompletableDeferred<Unit>()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP) { request ->
+                if (request.command == RuntimeCommand.LOGIN) {
+                    slowStarted.complete(Unit)
+                    releaseSlow.await()
+                }
+                echo(request)
+            },
+        )
+        try {
+            val slowClient = assertIs<AcquireResult.Existing>(
+                InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+            ).client
+            val fastClient = assertIs<AcquireResult.Existing>(
+                InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+            ).client
+
+            val slowCall = async(Dispatchers.IO) { slowClient.send(RuntimeCommand.LOGIN) }
+            slowStarted.await()
+
+            // Proves the owner services this independently, not queued behind LOGIN:
+            // with head-of-line blocking, this hangs until releaseSlow fires and
+            // withTimeout throws instead of returning a real response.
+            val fastResponse = withTimeout(2_000) { fastClient.send(RuntimeCommand.STATUS) }
+            assertTrue(fastResponse.ok, "an independent STATUS request must not wait behind a slow LOGIN")
+
+            releaseSlow.complete(Unit)
+            assertTrue(withTimeout(2_000) { slowCall.await() }.ok)
+        } finally {
+            releaseSlow.complete(Unit)
+            acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `concurrent responses are paired with the request that asked for them`() = runBlocking {
+        val directory = createTempDirectory("latch-concurrent-pairing-").toFile()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP, ::echo),
+        )
+        try {
+            val calls = (1..6).map { index ->
+                async(Dispatchers.IO) {
+                    val client = assertIs<AcquireResult.Existing>(
+                        InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+                    ).client
+                    index to client.send(RuntimeCommand.PING, mapOf("index" to index.toString()))
+                }
+            }
+
+            calls.map { it.await() }.forEach { (index, response) ->
+                assertTrue(response.ok)
+                assertEquals(index.toString(), response.data["index"], "a response must carry its own request's data, not another one's")
+            }
+        } finally {
+            acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `a malformed request from one client does not disturb a concurrent well-formed one`() = runBlocking {
+        val directory = createTempDirectory("latch-concurrent-malformed-").toFile()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP, ::echo),
+        )
+        try {
+            val goodClient = assertIs<AcquireResult.Existing>(
+                InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+            ).client
+
+            val malformed = async(Dispatchers.IO) {
+                InstanceClient(acquired.coordinator.port, "unused").sendRaw("not-json")
+            }
+            val good = async(Dispatchers.IO) { goodClient.send(RuntimeCommand.PING) }
+
+            assertEquals("MALFORMED_REQUEST", malformed.await().code)
+            assertTrue(good.await().ok)
+        } finally {
+            acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `closing the coordinator during an active request returns promptly`() = runBlocking {
+        val directory = createTempDirectory("latch-close-active-").toFile()
+        val started = CompletableDeferred<Unit>()
+        val neverReleased = CompletableDeferred<Unit>()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP) { request ->
+                started.complete(Unit)
+                neverReleased.await()
+                echo(request)
+            },
+        )
+        try {
+            val client = assertIs<AcquireResult.Existing>(
+                InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+            ).client
+            val stuckCall = async(Dispatchers.IO) { client.send(RuntimeCommand.LOGIN) }
+            started.await()
+
+            withTimeout(2_000) { acquired.coordinator.close() }
+
+            stuckCall.cancel()
+        } finally {
+            neverReleased.complete(Unit)
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `no new connection is served after close`() = runBlocking {
+        val directory = createTempDirectory("latch-close-refuses-").toFile()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP, ::echo),
+        )
+        val port = acquired.coordinator.port
+        acquired.coordinator.close()
+
+        val response = InstanceClient(port, "unused").send(RuntimeCommand.PING)
+
+        assertEquals("OWNER_UNAVAILABLE", response.code)
+        directory.deleteRecursively()
+        Unit
+    }
+
+    @Test
+    fun `active concurrency does not exceed the configured limit`() = runBlocking {
+        val directory = createTempDirectory("latch-active-bound-").toFile()
+        val activeCount = AtomicInteger(0)
+        val maxObserved = AtomicInteger(0)
+        val release = CompletableDeferred<Unit>()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP) { request ->
+                if (request.command == RuntimeCommand.LOGIN) {
+                    val current = activeCount.incrementAndGet()
+                    maxObserved.updateAndGet { previous -> maxOf(previous, current) }
+                    release.await()
+                    activeCount.decrementAndGet()
+                }
+                echo(request)
+            },
+        )
+        try {
+            val calls = List(MAX_CONCURRENT_REQUESTS + MAX_PENDING_REQUESTS + 4) {
+                val client = assertIs<AcquireResult.Existing>(
+                    InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+                ).client
+                async(Dispatchers.IO) { client.send(RuntimeCommand.LOGIN) }
+            }
+
+            withTimeout(3_000) { while (activeCount.get() < MAX_CONCURRENT_REQUESTS) delay(10) }
+            // Settle window: give any incorrectly-over-admitted handler a
+            // chance to start before asserting the ceiling held.
+            delay(200)
+
+            assertEquals(MAX_CONCURRENT_REQUESTS, activeCount.get(), "no more than the configured limit should be executing at once")
+            assertEquals(MAX_CONCURRENT_REQUESTS, maxObserved.get(), "the limit must never have been exceeded, even transiently")
+
+            release.complete(Unit)
+            calls.forEach { withTimeout(5_000) { it.await() } }
+        } finally {
+            release.complete(Unit)
+            acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `pending admission is bounded and excess requests are rejected`() = runBlocking {
+        val directory = createTempDirectory("latch-pending-bound-").toFile()
+        val activeCount = AtomicInteger(0)
+        val release = CompletableDeferred<Unit>()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP) { request ->
+                if (request.command == RuntimeCommand.LOGIN) {
+                    activeCount.incrementAndGet()
+                    release.await()
+                }
+                echo(request)
+            },
+        )
+        try {
+            val capacity = MAX_CONCURRENT_REQUESTS + MAX_PENDING_REQUESTS
+            val admitted = List(capacity) {
+                val client = assertIs<AcquireResult.Existing>(
+                    InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+                ).client
+                async(Dispatchers.IO) { client.send(RuntimeCommand.LOGIN) }
+            }
+
+            withTimeout(3_000) { while (activeCount.get() < MAX_CONCURRENT_REQUESTS) delay(10) }
+            // Settle window: let the rest of the first batch actually reach
+            // accept()/trySend before sending work meant to overflow it.
+            delay(300)
+
+            val excess = List(3) {
+                val client = assertIs<AcquireResult.Existing>(
+                    InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+                ).client
+                async(Dispatchers.IO) { client.send(RuntimeCommand.LOGIN) }
+            }
+
+            excess.forEach { call ->
+                val response = withTimeout(2_000) { call.await() }
+                assertFalse(response.ok, "a request beyond MAX_CONCURRENT_REQUESTS + MAX_PENDING_REQUESTS must be rejected, not queued")
+                assertEquals("OWNER_UNAVAILABLE", response.code)
+            }
+
+            // The first batch, exactly at capacity, must still be admitted and
+            // eventually served rather than having been silently dropped.
+            release.complete(Unit)
+            admitted.forEach { call ->
+                val response = withTimeout(5_000) { call.await() }
+                assertTrue(response.ok, "a request within capacity must still be served")
+            }
+        } finally {
+            release.complete(Unit)
+            acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `capacity recovers once an active handler completes`() = runBlocking {
+        val directory = createTempDirectory("latch-recovery-").toFile()
+        val activeCount = AtomicInteger(0)
+        val gate = Channel<Unit>()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP) { request ->
+                if (request.command == RuntimeCommand.LOGIN) {
+                    activeCount.incrementAndGet()
+                    gate.receive()
+                    activeCount.decrementAndGet()
+                }
+                echo(request)
+            },
+        )
+        try {
+            val capacity = MAX_CONCURRENT_REQUESTS + MAX_PENDING_REQUESTS
+            val saturating = List(capacity) {
+                val client = assertIs<AcquireResult.Existing>(
+                    InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+                ).client
+                async(Dispatchers.IO) { client.send(RuntimeCommand.LOGIN) }
+            }
+
+            withTimeout(3_000) { while (activeCount.get() < MAX_CONCURRENT_REQUESTS) delay(10) }
+            delay(200)
+
+            // Release exactly one active handler; a pending one should
+            // immediately backfill the freed worker slot.
+            gate.send(Unit)
+            withTimeout(3_000) { while (activeCount.get() < MAX_CONCURRENT_REQUESTS) delay(10) }
+            assertEquals(MAX_CONCURRENT_REQUESTS, activeCount.get(), "a freed slot must be backfilled from the pending admission queue")
+
+            repeat(capacity - 1) { gate.send(Unit) }
+            saturating.forEach { withTimeout(5_000) { it.await() } }
+
+            val freshClient = assertIs<AcquireResult.Existing>(
+                InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+            ).client
+            val response = withTimeout(2_000) { freshClient.send(RuntimeCommand.STATUS) }
+            assertTrue(response.ok, "the coordinator must serve normal requests again once saturation clears")
+        } finally {
+            acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `closing during saturation returns promptly and releases ownership`() = runBlocking {
+        val directory = createTempDirectory("latch-close-saturated-").toFile()
+        val activeCount = AtomicInteger(0)
+        val neverReleased = CompletableDeferred<Unit>()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP) { request ->
+                if (request.command == RuntimeCommand.LOGIN) {
+                    activeCount.incrementAndGet()
+                    neverReleased.await()
+                }
+                echo(request)
+            },
+        )
+        try {
+            val port = acquired.coordinator.port
+            val saturating = List(MAX_CONCURRENT_REQUESTS + MAX_PENDING_REQUESTS + 3) {
+                val client = assertIs<AcquireResult.Existing>(
+                    InstanceCoordinator.tryAcquire(directory, OwnerKind.CLI_ONESHOT, ::echo),
+                ).client
+                async(Dispatchers.IO) { client.send(RuntimeCommand.LOGIN) }
+            }
+
+            withTimeout(3_000) { while (activeCount.get() < MAX_CONCURRENT_REQUESTS) delay(10) }
+            delay(200)
+
+            withTimeout(2_000) { acquired.coordinator.close() }
+
+            val postClose = InstanceClient(port, "unused").send(RuntimeCommand.PING)
+            assertEquals("OWNER_UNAVAILABLE", postClose.code, "no request must be serviced after close")
+
+            val next = assertIs<AcquireResult.Owner>(InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP, ::echo))
+            next.coordinator.close()
+
+            saturating.forEach { it.cancel() }
+        } finally {
+            neverReleased.complete(Unit)
             directory.deleteRecursively()
         }
     }

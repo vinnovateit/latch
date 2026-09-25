@@ -96,7 +96,7 @@ fun HistoryBarChart(
     dlColor: Color,
     ulColor: Color,
     isAmoled: Boolean,
-    onSelectedDayChange: ((Long) -> Unit)? = null,
+    onSelectedDayChange: ((Long?) -> Unit)? = null,
 ) {
     if (chartItems.isEmpty()) return
 
@@ -169,7 +169,7 @@ fun HistoryBarChart(
     }
 
     LaunchedEffect(initialBarItem) {
-        initialBarItem?.let { onSelectedDayChange?.invoke(it.timestamp) }
+        onSelectedDayChange?.invoke(initialBarItem?.timestamp)
     }
 
     LaunchedEffect(lazyListState, chartItems) {
@@ -183,6 +183,38 @@ fun HistoryBarChart(
                     }
                 }
             }
+    }
+
+    var lastCenteredIndex by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(chartItems, lazyListState) {
+        snapshotFlow {
+            val layoutInfo = lazyListState.layoutInfo
+            val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+            val visibleBars = layoutInfo.visibleItemsInfo.filter {
+                chartItems.getOrNull(it.index) is HistoryChartItem.BarData
+            }
+            visibleBars.minByOrNull { item ->
+                val itemCenter = item.offset + item.size / 2
+                kotlin.math.abs(itemCenter - viewportCenter)
+            }?.index ?: -1
+        }.distinctUntilChanged().collect { centerIdx ->
+            if (centerIdx != -1 && centerIdx != lastCenteredIndex && lazyListState.isScrollInProgress) {
+                val item = chartItems.getOrNull(centerIdx) as? HistoryChartItem.BarData
+                if (item != null) {
+                    lastCenteredIndex = centerIdx
+                    selectedIndex = centerIdx
+                    displayedData = DesktopChartDetailState(
+                        usage = item.usage,
+                        label = item.formattedDate.ifBlank {
+                            formatDate(item.timestamp, "EEEE, MMMM d, yyyy")
+                        },
+                        sessionCount = item.sessionCount,
+                        durationFormatted = item.durationFormatted,
+                    )
+                    onSelectedDayChange?.invoke(item.timestamp)
+                }
+            }
+        }
     }
 
     var visibleMaxUsage by remember { mutableLongStateOf(1L) }
@@ -418,6 +450,7 @@ fun HistoryBarChart(
             val onBarTap: (Int, HistoryChartItem.BarData) -> Unit = remember(chartItems, barWidth) {
                 { idx, item ->
                     selectedIndex = idx
+                    lastCenteredIndex = idx
                     onSelectedDayChange?.invoke(item.timestamp)
                     displayedData = DesktopChartDetailState(
                         usage = item.usage,

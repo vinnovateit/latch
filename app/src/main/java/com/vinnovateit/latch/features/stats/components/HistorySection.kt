@@ -90,12 +90,12 @@ data class ChartDetailState(
 fun HistoryBarChart(
     history: List<HistoryChartItem>,
     isLoaded: Boolean = true,
-    onSelectedDayChange: ((Long) -> Unit)? = null
+    onSelectedDayChange: ((Long?) -> Unit)? = null
 ) {
     if (!isLoaded) {
         HistoryBarChartSkeleton()
     } else if (history.isNotEmpty()) {
-        HistoryBarChartContent(chartItems = history, isLoaded = true, onSelectedDayChange = onSelectedDayChange)
+        HistoryBarChartContent(chartItems = history, isLoaded = isLoaded, onSelectedDayChange = onSelectedDayChange)
     } else {
         NoDataCard("No stats available. Connect to Wi-Fi to start tracking your usage.")
     }
@@ -123,7 +123,7 @@ private fun NoDataCard(msg: String) {
 private fun HistoryBarChartContent(
     chartItems: List<HistoryChartItem>,
     isLoaded: Boolean = true,
-    onSelectedDayChange: ((Long) -> Unit)? = null
+    onSelectedDayChange: ((Long?) -> Unit)? = null
 ) {
 
     if (isLoaded && chartItems.filterIsInstance<HistoryChartItem.BarData>().all { it.usage.rxBytes + it.usage.txBytes == 0L }) {
@@ -176,6 +176,9 @@ private fun HistoryBarChartContent(
     val initialBarItem = remember(chartItems, todayIdx) {
         chartItems.getOrNull(todayIdx) as? HistoryChartItem.BarData
     }
+    LaunchedEffect(initialBarItem) {
+        onSelectedDayChange?.invoke(initialBarItem?.timestamp)
+    }
     var selectedIndex by remember(chartItems, todayIdx) {
         mutableIntStateOf(if (initialBarItem != null) todayIdx else -1)
     }
@@ -194,10 +197,6 @@ private fun HistoryBarChartContent(
                 totalUsageDetail
             }
         )
-    }
-
-    LaunchedEffect(initialBarItem) {
-        initialBarItem?.let { onSelectedDayChange?.invoke(it.timestamp) }
     }
 
     var visibleMaxUsage by remember { mutableLongStateOf(overallMaxUsage) }
@@ -283,6 +282,7 @@ private fun HistoryBarChartContent(
                         sessionCount = item.sessionCount,
                         durationFormatted = item.durationFormatted
                     )
+                    onSelectedDayChange?.invoke(item.timestamp)
                 }
             }
         }

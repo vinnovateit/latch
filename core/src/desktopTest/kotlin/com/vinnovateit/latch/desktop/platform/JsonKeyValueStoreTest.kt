@@ -50,6 +50,27 @@ class JsonKeyValueStoreTest {
         assertEquals(emptyList(), failures, "reader observed a torn or missing settings file")
     }
 
+    /**
+     * Settings keep a non-atomic fallback on purpose (see JsonKeyValueStore.write),
+     * which is only acceptable because a torn file is recoverable: it reads as
+     * defaults rather than failing startup, and the next change rewrites it whole.
+     */
+    @Test
+    fun `a torn settings file reads as defaults and the next change repairs it`() = withStoreFile { file ->
+        JsonKeyValueStore(file, NoOpLogger).putString("theme", "Dark")
+        val intact = file.readText()
+        file.writeText(intact.substring(0, intact.length / 2))
+
+        val recovered = JsonKeyValueStore(file, NoOpLogger)
+        assertEquals("System Default", recovered.getString("theme", "System Default"))
+
+        recovered.putString("accent_color", "Blue")
+
+        val reopened = JsonKeyValueStore(file, NoOpLogger)
+        assertEquals("Blue", reopened.getString("accent_color", "Red"))
+        assertEquals("System Default", reopened.getString("theme", "System Default"))
+    }
+
     private fun withStoreFile(block: (java.io.File) -> Unit) {
         val directory = createTempDirectory("latch-settings-").toFile()
         try {

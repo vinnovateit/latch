@@ -51,7 +51,7 @@ class RuntimeCommandServiceTest {
     fun `status and history are serialized for clients`() = runBlocking {
         val target = FakeRuntimeTarget(
             snapshot = RuntimeSnapshot("connected", "VIT", true),
-            sessionValues = listOf(RuntimeSessionRecord(1, 2, 3, 4, 5, 6)),
+            sessionValues = listOf(RuntimeSessionRecord(1, 2, 3, 4)),
         )
         val service = service(target)
 
@@ -122,6 +122,50 @@ class RuntimeCommandServiceTest {
     }
 
     @Test
+    fun `credentials are normalized before reaching the target`() = runBlocking {
+        val target = FakeRuntimeTarget()
+        val service = service(target)
+
+        val response = service.execute(
+            request(RuntimeCommand.SET_CREDENTIALS, mapOf("userId" to " 22bce0001 ", "password" to "secret")),
+        )
+
+        assertTrue(response.ok)
+        assertEquals("22BCE0001", target.credentialUserId)
+    }
+
+    @Test
+    fun `malformed registration numbers fail validation before reaching the target`() = runBlocking {
+        val target = FakeRuntimeTarget()
+        val service = service(target)
+
+        val response = service.execute(
+            request(RuntimeCommand.SET_CREDENTIALS, mapOf("userId" to "not-a-reg-no", "password" to "secret")),
+        )
+
+        assertEquals("INVALID_ARGUMENT", response.code)
+        assertEquals(null, target.credentialUserId)
+    }
+
+    @Test
+    fun `credential storage failure maps to a stable protocol code without leaking details`() = runBlocking {
+        val target = FakeRuntimeTarget(
+            credentialSaveResult = RuntimeOperation(false, "CREDENTIAL_SAVE_FAILED", "Unable to save credentials securely."),
+        )
+        val service = service(target)
+
+        val response = service.execute(
+            request(RuntimeCommand.SET_CREDENTIALS, mapOf("userId" to "22BCE0001", "password" to "secret")),
+        )
+
+        assertFalse(response.ok)
+        assertEquals("CREDENTIAL_SAVE_FAILED", response.code)
+        assertEquals("Unable to save credentials securely.", response.message)
+        assertFalse(response.message.contains("Exception"))
+        assertFalse(response.message.contains("java."))
+    }
+
+    @Test
     fun `engine operation errors retain stable codes`() = runBlocking {
         val target = FakeRuntimeTarget(
             loginResult = RuntimeOperation(false, "NO_WIFI", "Wi-Fi is unavailable."),
@@ -184,6 +228,7 @@ private class FakeRuntimeTarget(
     private val loginResult: RuntimeOperation = RuntimeOperation(true),
     private val logoutResult: RuntimeOperation = RuntimeOperation(true),
     private val setup: Boolean = true,
+    private val credentialSaveResult: RuntimeOperation = RuntimeOperation(true),
 ) : RuntimeCommandTarget {
     var autoLoginValue: Boolean? = null
     var allowedSsidsValue: Set<String>? = null
@@ -198,8 +243,9 @@ private class FakeRuntimeTarget(
     override suspend fun settings(): RuntimeSettingsSnapshot = settingsValue
     override suspend fun setAutoLogin(enabled: Boolean) { autoLoginValue = enabled }
     override suspend fun setAllowedSsids(values: Set<String>) { allowedSsidsValue = values }
-    override suspend fun setCredentials(userId: String, password: String) {
+    override suspend fun setCredentials(userId: String, password: String): RuntimeOperation {
         credentialUserId = userId
         credentialPassword = password
+        return credentialSaveResult
     }
 }
