@@ -566,6 +566,7 @@ fun TopBarSection(
 
     TopAppBar(
         modifier = modifier,
+        windowInsets = WindowInsets(0.dp),
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
             scrolledContainerColor = Color.Transparent,
@@ -573,11 +574,10 @@ fun TopBarSection(
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(start = 4.dp),
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_latch),
-                    contentDescription = null,
+                    contentDescription = "Latch",
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(36.dp),
                 )
@@ -609,12 +609,15 @@ fun TopBarSection(
         },
         actions = {
             Box {
-                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(48.dp)) {
+                IconButton(
+                    onClick = { menuExpanded = true },
+                    modifier = Modifier.size(48.dp),
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Menu,
                         contentDescription = "Menu",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
                     )
                 }
                 DropdownMenu(
@@ -630,7 +633,13 @@ fun TopBarSection(
                             menuExpanded = false
                             onPreferencesClick()
                         },
-                        leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = "Settings") }
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     )
                     DropdownMenuItem(
                         text = { Text("How It Works", fontSize = 15.sp, fontFamily = SatoshiFontFamily) },
@@ -638,7 +647,13 @@ fun TopBarSection(
                             menuExpanded = false
                             onHowItWorksClick()
                         },
-                        leadingIcon = { Icon(Icons.Rounded.QuestionMark, contentDescription = "How It Works") }
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.QuestionMark,
+                                contentDescription = "How It Works",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     )
                     DropdownMenuItem(
                         text = { Text("Meet The Team", fontSize = 15.sp, fontFamily = SatoshiFontFamily) },
@@ -646,7 +661,13 @@ fun TopBarSection(
                             menuExpanded = false
                             onMeetTheTeamClick()
                         },
-                        leadingIcon = { Icon(Icons.Rounded.Groups, contentDescription = "Meet The Team") }
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.Groups,
+                                contentDescription = "Meet The Team",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     )
                 }
             }
