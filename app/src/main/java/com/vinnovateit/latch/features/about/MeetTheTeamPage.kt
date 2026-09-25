@@ -245,13 +245,13 @@ fun MeetTheTeamPage(onBackClick: () -> Unit) {
                         onBackClick()
                     },
                     colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        contentColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.onSurface
+                        contentDescription = "Back"
                     )
                 }
             }

@@ -1,8 +1,5 @@
 package com.vinnovateit.latch.features.settings
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,15 +10,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,34 +24,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Autorenew
-import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.Colorize
-import androidx.compose.material.icons.rounded.DarkMode
-import androidx.compose.material.icons.rounded.FormatPaint
-import androidx.compose.material.icons.rounded.LightMode
-import androidx.compose.material.icons.rounded.Password
-import androidx.compose.material.icons.rounded.SettingsBackupRestore
-import androidx.compose.material.icons.rounded.SettingsSystemDaydream
-import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,13 +54,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -83,56 +67,56 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.R
-import com.vinnovateit.latch.common.ui.components.ExpressiveTopBarContent
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.features.settings.components.CustomColorPickerDialog
 import com.vinnovateit.latch.features.settings.components.parseHexOrNull
 import com.vinnovateit.latch.platform.LatchAppGraph
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
+import com.vinnovateit.latch.ui.theme.ModernizFontFamily
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsTopBar(
-  collapseFraction: Float,
-  headerHeight: Dp,
+  scrollBehavior: TopAppBarScrollBehavior? = null,
   onBackPressed: () -> Unit
 ) {
-  val surfaceColor = MaterialTheme.colorScheme.surface
   val haptic = LocalHapticFeedback.current
 
-  Box(
-    modifier = Modifier
-      .fillMaxWidth()
-      .height(headerHeight)
-      .background(surfaceColor.copy(alpha = collapseFraction))
-  ) {
-    Box(
-      modifier = Modifier
-        .fillMaxSize()
-        .statusBarsPadding()
-    ) {
+  LargeTopAppBar(
+    title = {
+      Text(
+        text = "Settings",
+        fontFamily = ModernizFontFamily,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp)
+      )
+    },
+    navigationIcon = {
       FilledIconButton(
         modifier = Modifier
-          .align(Alignment.TopStart)
-          .padding(start = 12.dp, top = 4.dp),
+          .padding(start = 12.dp)
+          .size(40.dp)
+          .clip(CircleShape),
         onClick = {
           haptic.performHapticFeedback(HapticFeedbackType.LongPress)
           onBackPressed()
         },
-        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+        colors = IconButtonDefaults.filledIconButtonColors(
+          containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+        )
       ) {
-        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
+        Icon(
+          imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+          contentDescription = "Back",
+          tint = MaterialTheme.colorScheme.primary
+        )
       }
-
-      ExpressiveTopBarContent(
-        title = "Settings",
-        collapseFraction = collapseFraction,
-        modifier = Modifier
-          .fillMaxSize()
-          .padding(start = 0.dp, end = 0.dp)
-      )
-    }
-  }
+    },
+    scrollBehavior = scrollBehavior,
+    colors = TopAppBarDefaults.largeTopAppBarColors(
+      containerColor = MaterialTheme.colorScheme.surface,
+      scrolledContainerColor = MaterialTheme.colorScheme.surface
+    )
+  )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -156,75 +140,26 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
   val chartPalette by SettingsManager.chartPalette.collectAsStateWithLifecycle()
   val hapticsEnabled by SettingsManager.hapticsEnabled.collectAsStateWithLifecycle()
 
-  val density = LocalDensity.current
-  val coroutineScope = rememberCoroutineScope()
   val lazyListState = rememberLazyListState()
+  val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-  val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-  val minTopBarHeight = 64.dp + statusBarHeight
-  val maxTopBarHeight = 180.dp
-  val minTopBarHeightPx = with(density) { minTopBarHeight.toPx() }
-  val maxTopBarHeightPx = with(density) { maxTopBarHeight.toPx() }
-
-  val topBarHeight = remember { Animatable(maxTopBarHeightPx) }
-  var collapseFraction by remember { mutableFloatStateOf(0f) }
-
-  LaunchedEffect(topBarHeight.value) {
-    collapseFraction = 1f - ((topBarHeight.value - minTopBarHeightPx) / (maxTopBarHeightPx - minTopBarHeightPx)).coerceIn(0f, 1f)
-  }
-
-  val nestedScrollConnection = remember {
-    object : NestedScrollConnection {
-      override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-        val delta = available.y
-        val isScrollingDown = delta < 0
-
-        if (!isScrollingDown && (lazyListState.firstVisibleItemIndex > 0 || lazyListState.firstVisibleItemScrollOffset > 0)) {
-          return Offset.Zero
-        }
-
-        val previousHeight = topBarHeight.value
-        val newHeight = (previousHeight + delta).coerceIn(minTopBarHeightPx, maxTopBarHeightPx)
-        val consumed = newHeight - previousHeight
-
-        if (consumed.roundToInt() != 0) {
-          coroutineScope.launch {
-            topBarHeight.snapTo(newHeight)
-          }
-        }
-
-        val canConsumeScroll = !(isScrollingDown && newHeight == minTopBarHeightPx)
-        return if (canConsumeScroll) Offset(0f, consumed) else Offset.Zero
-      }
-    }
-  }
-
-  LaunchedEffect(lazyListState.isScrollInProgress) {
-    if (!lazyListState.isScrollInProgress) {
-      val shouldExpand = topBarHeight.value > (minTopBarHeightPx + maxTopBarHeightPx) / 2
-      val canExpand = lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0
-
-      val targetValue = if (shouldExpand && canExpand) maxTopBarHeightPx else minTopBarHeightPx
-
-      if (topBarHeight.value != targetValue) {
-        coroutineScope.launch {
-          topBarHeight.animateTo(targetValue, spring(stiffness = Spring.StiffnessMedium))
-        }
-      }
-    }
-  }
-
-  Box(
+  Scaffold(
     modifier = Modifier
-      .nestedScroll(nestedScrollConnection)
-      .fillMaxSize()
-      .background(MaterialTheme.colorScheme.surface)
-  ) {
-    val currentTopBarHeightDp = with(density) { topBarHeight.value.toDp() }
+      .nestedScroll(scrollBehavior.nestedScrollConnection)
+      .fillMaxSize(),
+    topBar = {
+      SettingsTopBar(
+        scrollBehavior = scrollBehavior,
+        onBackPressed = onBackClick
+      )
+    }
+  ) { innerPadding ->
     LazyColumn(
       state = lazyListState,
-      contentPadding = PaddingValues(top = currentTopBarHeightDp),
-      modifier = Modifier.fillMaxSize()
+      contentPadding = innerPadding,
+      modifier = Modifier
+        .fillMaxSize()
+        .background(MaterialTheme.colorScheme.surface)
     ) {
       // ACCOUNT
       item {
@@ -233,13 +168,6 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
             SettingsItem(
               title = "Auto-login on Connect",
               subtitle = "Automatically log in to VIT Wi-Fi",
-              leadingIcon = {
-                Icon(
-                  Icons.Rounded.Autorenew,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.primary
-                )
-              },
               trailingContent = {
                 Switch(
                   checked = autoLogin,
@@ -250,17 +178,10 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
               },
               onClick = { SettingsManager.setAutoLogin(!autoLogin) }
             )
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             SettingsItem(
               title = "Update Credentials",
               subtitle = "Change your registration number and password",
-              leadingIcon = {
-                Icon(
-                  Icons.Rounded.Password,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.primary
-                )
-              },
               onClick = { onNavigateToCredentials() }
             )
           }
@@ -276,22 +197,10 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
             SettingsItem(
               title = "Theme",
               subtitle = theme,
-              leadingIcon = {
-                val themeIcon = when (theme) {
-                    "Light" -> Icons.Rounded.LightMode
-                    "Dark" -> Icons.Rounded.DarkMode
-                    else -> Icons.Rounded.SettingsSystemDaydream
-                }
-                Icon(
-                  themeIcon,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.primary
-                )
-              },
               onClick = { showThemeSheet = true }
             )
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             androidx.compose.animation.AnimatedVisibility(
               visible = !useDynamicColors,
@@ -302,13 +211,6 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                 SettingsItem(
                   title = "Accent Color",
                   subtitle = if (useMonochrome) "Monochrome" else accentColor,
-                  leadingIcon = {
-                    Icon(
-                      Icons.Rounded.FormatPaint,
-                      contentDescription = null,
-                      tint = MaterialTheme.colorScheme.primary
-                    )
-                  },
                   trailingContent = {
                     val colors = listOf(
                       "Red" to Color(0xFFC01221),
@@ -322,26 +224,20 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                         else (customParsed ?: colors.find { it.first == accentColor }?.second ?: Color(0xFFC01221))
                     Box(
                       modifier = Modifier
-                        .size(24.dp)
+                        .size(26.dp)
                         .clip(CircleShape)
                         .background(selectedColor)
                     )
                   },
                   onClick = { showAccentColorSheet = true }
                 )
+                Spacer(modifier = Modifier.height(2.dp))
               }
             }
 
             SettingsItem(
               title = "Dynamic Colors",
               subtitle = "Adapt with your system's Material You theming",
-              leadingIcon = {
-                Icon(
-                  Icons.Rounded.ColorLens,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.primary
-                )
-              },
               trailingContent = {
                 Switch(
                   checked = useDynamicColors,
@@ -352,22 +248,15 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
               },
               onClick = { SettingsManager.setUseDynamicColors(!useDynamicColors) },
             )
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             SettingsItem(
               title = "Chart Bar Colors",
               subtitle = chartPalette,
-              leadingIcon = {
-                Icon(
-                  Icons.Rounded.FormatPaint,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.primary
-                )
-              },
               trailingContent = {
                 val (previewDl, previewUl) = com.vinnovateit.latch.common.util.StatsColorPalettes.resolveColors(chartPalette)
                 Canvas(
                   modifier = Modifier
-                    .size(20.dp)
+                    .size(26.dp)
                     .clip(CircleShape)
                 ) {
                   drawArc(
@@ -386,17 +275,10 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
               },
               onClick = { showChartPaletteSheet = true }
             )
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             SettingsItem(
               title = "Haptic feedback",
               subtitle = "Vibrate on interactions and button taps",
-              leadingIcon = {
-                Icon(
-                  Icons.Rounded.Vibration,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.primary
-                )
-              },
               trailingContent = {
                 Switch(
                   checked = hapticsEnabled,
@@ -422,26 +304,12 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                   "B/s" -> "Bytes per second (B/s)"
                   else -> speedUnits
               },
-              leadingIcon = {
-                Icon(
-                  Icons.Rounded.Speed,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.primary
-                )
-              },
               onClick = { showSpeedUnitsSheet = true }
             )
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             SettingsItem(
               title = "Clear Stats",
               subtitle = "Reset usage history",
-              leadingIcon = {
-                Icon(
-                  Icons.Rounded.SettingsBackupRestore,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.primary
-                )
-              },
               onClick = { showClearStatsSheet = true }
             )
           }
@@ -449,11 +317,6 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
       }
       item { Spacer(modifier = Modifier.height(72.dp)) }
     }
-    SettingsTopBar(
-      collapseFraction = collapseFraction,
-      headerHeight = maxTopBarHeight - ((maxTopBarHeight - minTopBarHeight) * collapseFraction),
-      onBackPressed = onBackClick
-    )
   }
 
   if (showSpeedUnitsSheet) {
@@ -461,8 +324,8 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
       title = "Speed Units",
       description = "Choose how network speed is displayed",
       options = listOf(
-        SelectionOption("bps", Icons.Rounded.Speed, "Bits per second (bps)"),
-        SelectionOption("B/s", Icons.Rounded.Speed, "Bytes per second (B/s)")
+        SelectionOption("bps", displayLabel = "Bits per second (bps)"),
+        SelectionOption("B/s", displayLabel = "Bytes per second (B/s)")
       ),
       selected = speedUnits,
       onSelect = {
@@ -475,9 +338,9 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
 
   if (showThemeSheet) {
     val themeOptions = listOf(
-      SelectionOption("System Default", Icons.Rounded.SettingsSystemDaydream),
-      SelectionOption("Light", Icons.Rounded.LightMode),
-      SelectionOption("Dark", Icons.Rounded.DarkMode)
+      SelectionOption("System Default", displayLabel = "System Default"),
+      SelectionOption("Light", displayLabel = "Light"),
+      SelectionOption("Dark", displayLabel = "Dark")
     )
     SettingsSelectionBottomSheet(
       title = "Theme",
@@ -624,7 +487,6 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
 
 data class SelectionOption(
   val label: String,
-  val icon: ImageVector,
   val displayLabel: String = label
 )
 
@@ -644,7 +506,7 @@ fun SettingsSection(
         style = MaterialTheme.typography.labelMedium,
         fontSize = 14.sp,
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface
+        color = MaterialTheme.colorScheme.primary
       )
     }
     content()
@@ -746,16 +608,17 @@ fun AccentColorPicker(
 fun SettingsItem(
   title: String,
   subtitle: String,
-  leadingIcon: @Composable () -> Unit,
   trailingContent: @Composable () -> Unit = {},
+  shape: Shape = RoundedCornerShape(4.dp),
   onClick: () -> Unit
 ) {
   val haptic = LocalHapticFeedback.current
   Surface(
     color = MaterialTheme.colorScheme.surfaceVariant,
+    shape = shape,
     modifier = Modifier
       .fillMaxWidth()
-      .clip(RoundedCornerShape(10.dp))
+      .clip(shape)
       .clickable(onClick = {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         onClick()
@@ -767,20 +630,12 @@ fun SettingsItem(
         .padding(16.dp)
         .fillMaxWidth()
     ) {
-      Box(
-        modifier = Modifier
-          .padding(end = 16.dp)
-          .size(24.dp),
-        contentAlignment = Alignment.Center
-      ) {
-        leadingIcon()
-      }
 
       Column(
         modifier = Modifier
           .weight(1f)
           .padding(end = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp)
       ) {
         Text(
           text = title,
@@ -840,7 +695,7 @@ fun SettingsSelectionBottomSheet(
         description,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 4.dp)
       )
       Spacer(Modifier.height(16.dp))
       options.forEach { option ->
@@ -857,10 +712,9 @@ fun SettingsSelectionBottomSheet(
                 onSelect(option)
               }
             )
-            .padding(vertical = 12.dp),
+            .padding(vertical = 12.dp, horizontal = 24.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Icon(option.icon, contentDescription = null, modifier = Modifier.padding(start = 16.dp, end = 16.dp), tint = contentColor)
           Text(
             option.displayLabel,
             color = contentColor,
@@ -899,7 +753,7 @@ fun SettingsActionBottomSheet(
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
         Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         Text(description, style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(horizontal = 24.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Spacer(Modifier.height(24.dp))
         Row(

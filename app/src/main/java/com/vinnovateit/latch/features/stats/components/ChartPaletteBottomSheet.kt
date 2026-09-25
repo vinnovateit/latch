@@ -60,7 +60,7 @@ fun ChartPaletteBottomSheet(
                 text = "Customize download and upload bar colors",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 4.dp)
             )
 
             Spacer(Modifier.height(24.dp))
@@ -78,7 +78,7 @@ fun ChartPaletteBottomSheet(
 
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(54.dp)
                             .clip(CircleShape)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)

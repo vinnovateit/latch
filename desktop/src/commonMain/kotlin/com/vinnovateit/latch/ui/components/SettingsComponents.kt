@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -80,10 +81,10 @@ internal fun SettingsSection(
     }
 }
 
-/** 3 dp gap between rows inside a [SettingsSection]. */
+/** 2 dp gap between rows inside a [SettingsSection]. */
 @Composable
 internal fun SettingsRowGap() {
-    Spacer(Modifier.height(3.dp))
+    Spacer(Modifier.height(2.dp))
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +98,7 @@ internal fun SettingsItem(
     subtitle: String? = null,
     leadingIcon: ImageVector? = null,
     enabled: Boolean = true,
+    shape: Shape = RoundedCornerShape(4.dp),
     onClick: (() -> Unit)? = null,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
@@ -108,9 +110,10 @@ internal fun SettingsItem(
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = shape,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(shape)
             .then(clickModifier),
     ) {
         Row(
@@ -142,7 +145,7 @@ internal fun SettingsItem(
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = title,

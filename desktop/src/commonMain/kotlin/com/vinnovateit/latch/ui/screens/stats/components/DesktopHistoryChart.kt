@@ -36,6 +36,7 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -238,10 +239,67 @@ fun HistoryBarChart(
     var showDatePicker by remember { mutableStateOf(false) }
 
     if (showDatePicker) {
+        val barDataList = remember(chartItems) { chartItems.filterIsInstance<HistoryChartItem.BarData>() }
+        val dataBars = remember(barDataList) {
+            val withData = barDataList.filter { it.usage.rxBytes + it.usage.txBytes > 0L }
+            if (withData.isNotEmpty()) withData else barDataList
+        }
+        val daysWithData = remember(barDataList) {
+            barDataList.filter { it.usage.rxBytes + it.usage.txBytes > 0L }
+                .map { formatDate(it.timestamp, "yyyy-MM-dd") }
+                .toSet()
+        }
+        val minTs = remember(dataBars) { dataBars.minOfOrNull { it.timestamp } ?: System.currentTimeMillis() }
+        val maxTs = remember(dataBars) { dataBars.maxOfOrNull { it.timestamp } ?: System.currentTimeMillis() }
+
+        val minYear = remember(minTs) {
+            Calendar.getInstance().apply { timeInMillis = minTs }.get(Calendar.YEAR)
+        }
+        val maxYear = remember(maxTs) {
+            Calendar.getInstance().apply { timeInMillis = maxTs }.get(Calendar.YEAR)
+        }
+        val minUtcMillis = remember(minTs) {
+            val minCal = Calendar.getInstance().apply { timeInMillis = minTs }
+            Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                clear()
+                set(minCal.get(Calendar.YEAR), minCal.get(Calendar.MONTH), minCal.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
+            }.timeInMillis
+        }
+        val maxUtcMillis = remember(maxTs) {
+            val maxCal = Calendar.getInstance().apply { timeInMillis = maxTs }
+            Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                clear()
+                set(maxCal.get(Calendar.YEAR), maxCal.get(Calendar.MONTH), maxCal.get(Calendar.DAY_OF_MONTH), 23, 59, 59)
+                set(Calendar.MILLISECOND, 999)
+            }.timeInMillis
+        }
+        val effectiveYearRange = remember(minYear, maxYear) {
+            minYear.coerceAtMost(maxYear)..maxYear.coerceAtLeast(minYear)
+        }
+
         val selectedItem = chartItems.getOrNull(selectedIndex) as? HistoryChartItem.BarData
-        val initialTs = selectedItem?.timestamp ?: System.currentTimeMillis()
+        val initialTs = selectedItem?.timestamp ?: maxTs
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = initialTs,
+            yearRange = effectiveYearRange,
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                    if (utcTimeMillis !in minUtcMillis..maxUtcMillis) return false
+                    if (daysWithData.isEmpty()) return true
+                    val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                        timeInMillis = utcTimeMillis
+                    }
+                    val y = utcCal.get(Calendar.YEAR)
+                    val m = utcCal.get(Calendar.MONTH) + 1
+                    val d = utcCal.get(Calendar.DAY_OF_MONTH)
+                    val dateKey = String.format(Locale.US, "%04d-%02d-%02d", y, m, d)
+                    return daysWithData.contains(dateKey)
+                }
+
+                override fun isSelectableYear(year: Int): Boolean {
+                    return year in effectiveYearRange
+                }
+            },
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -290,14 +348,16 @@ fun HistoryBarChart(
                             onSelectedDayChange?.invoke(barItem.timestamp)
 
                             coroutineScope.launch {
-                                val layoutInfo = lazyListState.layoutInfo
-                                val viewportWidth = layoutInfo.viewportSize.width
-                                val barWidthPx = with(density) { 14.dp.roundToPx() }
-                                val centeredOffset = (viewportWidth / 2) - (barWidthPx / 2)
-                                lazyListState.animateScrollToItem(
-                                    index = targetIdx,
-                                    scrollOffset = -centeredOffset,
-                                )
+                                lazyListState.scrollToItem(targetIdx, 0)
+                                val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.find { it.index == targetIdx }
+                                if (itemInfo != null) {
+                                    val viewportCenter = (lazyListState.layoutInfo.viewportStartOffset + lazyListState.layoutInfo.viewportEndOffset) / 2
+                                    val itemCenter = itemInfo.offset + itemInfo.size / 2
+                                    val delta = itemCenter - viewportCenter
+                                    if (delta != 0) {
+                                        lazyListState.scrollBy(delta.toFloat())
+                                    }
+                                }
                             }
                         }
                     },
@@ -355,6 +415,47 @@ fun HistoryBarChart(
             val rowHeight = barAreaHeight + 20.dp
             val centerPadding = ((maxWidth - barWidth) / 2).coerceIn(24.dp, 100.dp)
 
+            val onBarTap: (Int, HistoryChartItem.BarData) -> Unit = remember(chartItems, barWidth) {
+                { idx, item ->
+                    selectedIndex = idx
+                    onSelectedDayChange?.invoke(item.timestamp)
+                    displayedData = DesktopChartDetailState(
+                        usage = item.usage,
+                        label = item.formattedDate.ifBlank {
+                            formatDate(item.timestamp, "EEEE, MMMM d, yyyy")
+                        },
+                        sessionCount = item.sessionCount,
+                        durationFormatted = item.durationFormatted,
+                    )
+                    coroutineScope.launch {
+                        val layoutInfo = lazyListState.layoutInfo
+                        val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx }
+                        if (targetItem != null) {
+                            val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                            val itemCenter = targetItem.offset + targetItem.size / 2
+                            val delta = (itemCenter - viewportCenter).toFloat()
+                            if (kotlin.math.abs(delta) > 1f) {
+                                lazyListState.animateScrollBy(
+                                    value = delta,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                )
+                            }
+                        } else {
+                            val viewportWidth = layoutInfo.viewportSize.width
+                            val barWidthPx = with(density) { barWidth.roundToPx() }
+                            val centeredOffset = (viewportWidth / 2) - (barWidthPx / 2)
+                            lazyListState.animateScrollToItem(
+                                index = idx,
+                                scrollOffset = -centeredOffset,
+                            )
+                        }
+                    }
+                }
+            }
+
             Column(modifier = Modifier.fillMaxWidth()) {
                 LazyRow(
                     state = lazyListState,
@@ -382,9 +483,16 @@ fun HistoryBarChart(
                         items = chartItems,
                         key = { index, item ->
                             when (item) {
-                                is HistoryChartItem.BarData -> "bar_${item.timestamp}_$index"
+                                is HistoryChartItem.BarData -> item.timestamp
                                 is HistoryChartItem.MonthSeparator -> "month_${item.monthName}_$index"
                                 is HistoryChartItem.CollapsedMonth -> "collapsed_${item.monthName}_$index"
+                            }
+                        },
+                        contentType = { _, item ->
+                            when (item) {
+                                is HistoryChartItem.BarData -> "bar"
+                                is HistoryChartItem.MonthSeparator -> "month"
+                                is HistoryChartItem.CollapsedMonth -> "collapsed"
                             }
                         },
                     ) { idx, item ->
@@ -394,43 +502,14 @@ fun HistoryBarChart(
                                     modifier = Modifier.width(barWidth).fillMaxHeight(),
                                     usage = item.usage,
                                     maxUsage = { animatedMaxUsage },
-                                    isSelected = (idx == selectedIndex),
-                                    hasSelection = (selectedIndex != -1),
+                                    isSelected = { selectedIndex == idx },
+                                    hasSelection = { selectedIndex != -1 },
                                     isAmoled = isAmoled,
                                     barWidth = barWidth,
                                     barAreaHeight = barAreaHeight,
                                     dlColor = dlColor,
                                     ulColor = ulColor,
-                                    onTap = {
-                                        selectedIndex = idx
-                                        onSelectedDayChange?.invoke(item.timestamp)
-                                        displayedData = DesktopChartDetailState(
-                                            usage = item.usage,
-                                            label = item.formattedDate.ifBlank {
-                                                formatDate(item.timestamp, "EEEE, MMMM d, yyyy")
-                                            },
-                                            sessionCount = item.sessionCount,
-                                            durationFormatted = item.durationFormatted,
-                                        )
-                                        coroutineScope.launch {
-                                            val layoutInfo = lazyListState.layoutInfo
-                                            val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx }
-                                            if (targetItem != null) {
-                                                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-                                                val itemCenter = targetItem.offset + targetItem.size / 2
-                                                val delta = (itemCenter - viewportCenter).toFloat()
-                                                if (kotlin.math.abs(delta) > 1f) {
-                                                    lazyListState.animateScrollBy(
-                                                        value = delta,
-                                                        animationSpec = spring(
-                                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                                            stiffness = Spring.StiffnessMediumLow,
-                                                        ),
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    },
+                                    onTap = { onBarTap(idx, item) },
                                 )
                             }
                             is HistoryChartItem.MonthSeparator -> {
@@ -490,8 +569,8 @@ private fun DesktopCanvasBar(
     modifier: Modifier = Modifier,
     usage: DataUsage,
     maxUsage: () -> Float,
-    isSelected: Boolean,
-    hasSelection: Boolean = false,
+    isSelected: () -> Boolean,
+    hasSelection: () -> Boolean = { false },
     isAmoled: Boolean = false,
     barWidth: Dp,
     barAreaHeight: Dp,
@@ -503,12 +582,21 @@ private fun DesktopCanvasBar(
     val uploadFrac = if (total > 0) usage.txBytes.toFloat() / total.toFloat() else 0f
     val emptyColor = if (isAmoled) Color(0xFF262626) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
 
+    val density = LocalDensity.current
+    val cornerRadius = remember(density) { with(density) { androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx()) } }
+    val emptyCornerRadius = remember(density) { with(density) { androidx.compose.ui.geometry.CornerRadius(2.dp.toPx(), 2.dp.toPx()) } }
+    val strokeWidth = remember(density) { with(density) { 1.5.dp.toPx() } }
+    val strokeStyle = remember(strokeWidth) { androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth) }
+    val minBarHeightPx = remember(density) { with(density) { 6.dp.toPx() } }
+    val minUlHeightPx = remember(density) { with(density) { 2.dp.toPx() } }
+    val emptyBarHeightPx = remember(density) { with(density) { 4.dp.toPx() } }
+
     Canvas(
         modifier = modifier
             .width(barWidth)
             .height(barAreaHeight)
             .graphicsLayer {
-                alpha = if (isSelected) 1f else if (hasSelection) 0.45f else 1f
+                alpha = if (isSelected()) 1f else if (hasSelection()) 0.45f else 1f
             }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -524,18 +612,16 @@ private fun DesktopCanvasBar(
         } else {
             0.04f
         }
-        val cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx())
-        val strokeWidth = 1.5.dp.toPx()
         val inset = if (isAmoled) strokeWidth / 2 else 0f
         val drawWidth = (size.width - inset * 2).coerceAtLeast(0f)
 
         if (total > 0) {
-            val rawBarHeight = (size.height * currentFrac).coerceAtLeast(6.dp.toPx())
+            val rawBarHeight = (size.height * currentFrac).coerceAtLeast(minBarHeightPx)
             val drawHeight = (rawBarHeight - inset * 2).coerceAtLeast(0f)
             val startY = size.height - rawBarHeight + inset
             val topLeftOffset = Offset(inset, startY)
 
-            val ulH = if (uploadFrac > 0f) (drawHeight * uploadFrac).coerceAtLeast(2.dp.toPx()) else 0f
+            val ulH = if (uploadFrac > 0f) (drawHeight * uploadFrac).coerceAtLeast(minUlHeightPx) else 0f
             val dlH = (drawHeight - ulH).coerceAtLeast(0f)
 
             if (ulH > 0f) {
@@ -545,7 +631,7 @@ private fun DesktopCanvasBar(
                         topLeft = topLeftOffset,
                         size = Size(drawWidth, ulH),
                         cornerRadius = cornerRadius,
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth),
+                        style = strokeStyle,
                     )
                 } else {
                     drawRoundRect(
@@ -565,7 +651,7 @@ private fun DesktopCanvasBar(
                         topLeft = Offset(topLeftOffset.x, dlTopY),
                         size = Size(drawWidth, dlH),
                         cornerRadius = cornerRadius,
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth),
+                        style = strokeStyle,
                     )
                 } else {
                     drawRoundRect(
@@ -577,15 +663,14 @@ private fun DesktopCanvasBar(
                 }
             }
         } else {
-            val rawBarHeight = 4.dp.toPx()
-            val drawHeight = (rawBarHeight - inset * 2).coerceAtLeast(0f)
-            val startY = size.height - rawBarHeight + inset
+            val drawHeight = (emptyBarHeightPx - inset * 2).coerceAtLeast(0f)
+            val startY = size.height - emptyBarHeightPx + inset
             val topLeftOffset = Offset(inset, startY)
             drawRoundRect(
                 color = emptyColor,
                 topLeft = topLeftOffset,
                 size = Size(drawWidth, drawHeight),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx(), 2.dp.toPx()),
+                cornerRadius = emptyCornerRadius,
             )
         }
     }

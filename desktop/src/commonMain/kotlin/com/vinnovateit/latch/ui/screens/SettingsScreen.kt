@@ -128,7 +128,6 @@ fun SettingsScreen(
                         SettingsItem(
                             title = "Auto-login",
                             subtitle = "Login automatically when a VIT WIFI is available nearby",
-                            leadingIcon = LatchIcons.Login,
                             trailingContent = {
                                 Switch(
                                     checked = autoLogin,
@@ -140,7 +139,6 @@ fun SettingsScreen(
                         SettingsItem(
                             title = stringResource(Res.string.update_credentials),
                             subtitle = "Change the registration number or password Latch uses",
-                            leadingIcon = LatchIcons.Autorenew,
                             onClick = onNavigateToCredentials,
                         )
                     }
@@ -152,11 +150,6 @@ fun SettingsScreen(
                         SettingsItem(
                             title = "Theme",
                             subtitle = theme,
-                            leadingIcon = when (theme) {
-                                "Light" -> LatchIcons.LightMode
-                                "Dark" -> LatchIcons.DarkMode
-                                else -> LatchIcons.DesktopWindows
-                            },
                             onClick = { showThemeDialog = true },
                         )
                         SettingsRowGap()
@@ -167,7 +160,6 @@ fun SettingsScreen(
                                 AccentSeeds.parseHexOrNull(accentColor) != null -> "Custom ($accentColor)"
                                 else -> accentColor
                             },
-                            leadingIcon = LatchIcons.InvertColors,
                             onClick = { showAccentDialog = true },
                             trailingContent = {
                                 AccentSwatch(
@@ -185,14 +177,12 @@ fun SettingsScreen(
                         SettingsItem(
                             title = "Speed units",
                             subtitle = speedUnits,
-                            leadingIcon = LatchIcons.BarChart,
                             onClick = { showUnitsDialog = true },
                         )
                         SettingsRowGap()
                         SettingsItem(
                             title = "Clear session history",
                             subtitle = "Delete all recorded sessions and usage totals",
-                            leadingIcon = LatchIcons.Restore,
                             onClick = { showClearStatsDialog = true },
                         )
                     }
@@ -205,7 +195,6 @@ fun SettingsScreen(
                             SettingsItem(
                                 title = "Run at startup",
                                 subtitle = "Launch Latch automatically when you sign in",
-                                leadingIcon = LatchIcons.DesktopWindows,
                                 trailingContent = {
                                     Switch(
                                         checked = autostartEnabled,
@@ -224,7 +213,6 @@ fun SettingsScreen(
                         SettingsItem(
                             title = "Minimize to tray",
                             subtitle = "Send Latch to the system tray when minimized",
-                            leadingIcon = LatchIcons.Minimize,
                             trailingContent = {
                                 Switch(
                                     checked = minimizeToTray,
@@ -370,7 +358,6 @@ internal fun UpdatePanel(
         SettingsItem(
             title = "Software updates",
             subtitle = statusText,
-            leadingIcon = LatchIcons.SystemUpdateAlt,
             trailingContent = {
                 if (state is UpdateState.Checking) {
                     LoadingIndicator(modifier = Modifier.size(24.dp))

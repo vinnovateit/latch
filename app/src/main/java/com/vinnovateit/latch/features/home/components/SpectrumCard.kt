@@ -220,7 +220,7 @@ private fun StatusIndicator(connectionStatus: ConnectionStatus) {
                     Icon(
                       imageVector = if (isUnsupported) Icons.Rounded.QuestionMark else Icons.Rounded.Error,
                       contentDescription = stringResource(R.string.status_login_failed),
-                      tint = MaterialTheme.colorScheme.primary,
+                      tint = MaterialTheme.colorScheme.error,
                       modifier = Modifier.size(64.dp)
                     )
                 }

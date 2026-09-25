@@ -12,8 +12,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -399,7 +403,7 @@ fun PowerButtonOverlay(
     val targetContentColor = when {
         isAmoled -> if (isConnected) primaryColor else primaryColor.copy(alpha = 0.4f)
         isConnected -> MaterialTheme.colorScheme.onPrimary
-        else -> primaryColor.copy(alpha = 0.5f)
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
 
     val contentColor by androidx.compose.animation.animateColorAsState(
@@ -496,7 +500,7 @@ fun LandscapePowerButton(
     val targetContentColor = when {
         isAmoled -> if (isConnected) primaryColor else primaryColor.copy(alpha = 0.4f)
         isConnected -> MaterialTheme.colorScheme.onPrimary
-        else -> primaryColor.copy(alpha = 0.5f)
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
 
     val contentColor by androidx.compose.animation.animateColorAsState(
@@ -584,8 +588,22 @@ fun TopBarSection(
                 Spacer(Modifier.width(12.dp))
                 AnimatedVisibility(
                     visible = showPill,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(200)),
+                    enter = fadeIn(tween(250)) + expandHorizontally(
+                        expandFrom = Alignment.Start,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                    ) + scaleIn(
+                        initialScale = 0.8f,
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f),
+                        animationSpec = tween(250)
+                    ),
+                    exit = fadeOut(tween(200)) + shrinkHorizontally(
+                        shrinkTowards = Alignment.Start,
+                        animationSpec = tween(200)
+                    ) + scaleOut(
+                        targetScale = 0.8f,
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f),
+                        animationSpec = tween(200)
+                    ),
                     label = "TopBarTitlePill",
                 ) {
                     Surface(
@@ -608,7 +626,7 @@ fun TopBarSection(
             }
         },
         actions = {
-            Box {
+            Box(modifier = Modifier.padding(end = 8.dp)) {
                 IconButton(
                     onClick = { menuExpanded = true },
                     modifier = Modifier.size(48.dp),
@@ -617,13 +635,13 @@ fun TopBarSection(
                         imageVector = Icons.Rounded.Menu,
                         contentDescription = "Menu",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(28.dp),
                     )
                 }
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     modifier = Modifier.width(200.dp),
                 ) {
