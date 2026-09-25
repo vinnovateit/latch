@@ -31,10 +31,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +55,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -65,11 +71,14 @@ import com.vinnovateit.latch.core.model.DataUsage
 import com.vinnovateit.latch.core.model.HistoryChartItem
 import com.vinnovateit.latch.core.stats.formatBytes
 import com.vinnovateit.latch.core.stats.formatDate
+import com.vinnovateit.latch.core.stats.formatDisplayDate
 import com.vinnovateit.latch.core.stats.formatDurationDynamic
 import com.vinnovateit.latch.ui.components.LatchIcons
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Locale
+import java.util.TimeZone
 
 @Immutable
 data class DesktopChartDetailState(
@@ -79,13 +88,14 @@ data class DesktopChartDetailState(
     val durationFormatted: String = "",
 )
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryBarChart(
     chartItems: List<HistoryChartItem>,
     dlColor: Color,
     ulColor: Color,
     isAmoled: Boolean,
+    onSelectedDayChange: ((Long) -> Unit)? = null,
 ) {
     if (chartItems.isEmpty()) return
 
@@ -157,6 +167,23 @@ fun HistoryBarChart(
         )
     }
 
+    LaunchedEffect(initialBarItem) {
+        initialBarItem?.let { onSelectedDayChange?.invoke(it.timestamp) }
+    }
+
+    LaunchedEffect(lazyListState, chartItems) {
+        snapshotFlow { lazyListState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { inProgress ->
+                if (!inProgress) {
+                    val item = chartItems.getOrNull(selectedIndex) as? HistoryChartItem.BarData
+                    if (item != null) {
+                        onSelectedDayChange?.invoke(item.timestamp)
+                    }
+                }
+            }
+    }
+
     var visibleMaxUsage by remember { mutableLongStateOf(1L) }
     LaunchedEffect(chartItems, lazyListState) {
         snapshotFlow {
@@ -208,19 +235,113 @@ fun HistoryBarChart(
         }
     }
 
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    if (showDatePicker) {
+        val selectedItem = chartItems.getOrNull(selectedIndex) as? HistoryChartItem.BarData
+        val initialTs = selectedItem?.timestamp ?: System.currentTimeMillis()
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = initialTs,
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDatePicker = false
+                        val pickedUtcMillis = datePickerState.selectedDateMillis ?: return@TextButton
+                        val utcCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                            timeInMillis = pickedUtcMillis
+                        }
+                        val year = utcCal.get(Calendar.YEAR)
+                        val month = utcCal.get(Calendar.MONTH)
+                        val day = utcCal.get(Calendar.DAY_OF_MONTH)
+                        val targetDayKey = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day)
+
+                        val localCal = Calendar.getInstance().apply {
+                            set(year, month, day, 12, 0, 0)
+                        }
+                        val targetMillis = localCal.timeInMillis
+
+                        var targetIdx = chartItems.indexOfFirst {
+                            it is HistoryChartItem.BarData && formatDate(it.timestamp, "yyyy-MM-dd") == targetDayKey
+                        }
+                        if (targetIdx == -1) {
+                            targetIdx = chartItems.indices
+                                .filter { chartItems[it] is HistoryChartItem.BarData }
+                                .minByOrNull { idx ->
+                                    val itemTs = (chartItems[idx] as HistoryChartItem.BarData).timestamp
+                                    kotlin.math.abs(itemTs - targetMillis)
+                                } ?: -1
+                        }
+
+                        if (targetIdx != -1) {
+                            val barItem = chartItems[targetIdx] as HistoryChartItem.BarData
+                            selectedIndex = targetIdx
+                            val formattedDate = barItem.formattedDate.ifBlank {
+                                formatDisplayDate(barItem.timestamp)
+                            }
+                            displayedData = DesktopChartDetailState(
+                                usage = barItem.usage,
+                                label = formattedDate,
+                                sessionCount = barItem.sessionCount,
+                                durationFormatted = barItem.durationFormatted,
+                            )
+                            onSelectedDayChange?.invoke(barItem.timestamp)
+
+                            coroutineScope.launch {
+                                val layoutInfo = lazyListState.layoutInfo
+                                val viewportWidth = layoutInfo.viewportSize.width
+                                val barWidthPx = with(density) { 14.dp.roundToPx() }
+                                val centeredOffset = (viewportWidth / 2) - (barWidthPx / 2)
+                                lazyListState.animateScrollToItem(
+                                    index = targetIdx,
+                                    scrollOffset = -centeredOffset,
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = headerTitle,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { showDatePicker = true }
+                    .padding(vertical = 4.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = headerTitle,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Icon(
+                    imageVector = LatchIcons.ArrowDropDown,
+                    contentDescription = "Select Date",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         BoxWithConstraints(
@@ -282,6 +403,7 @@ fun HistoryBarChart(
                                     ulColor = ulColor,
                                     onTap = {
                                         selectedIndex = idx
+                                        onSelectedDayChange?.invoke(item.timestamp)
                                         displayedData = DesktopChartDetailState(
                                             usage = item.usage,
                                             label = item.formattedDate.ifBlank {
@@ -521,41 +643,15 @@ private fun DesktopStatDetailRow(
         }
         Spacer(Modifier.height(8.dp))
         Box(
-            modifier = Modifier.height(28.dp),
+            modifier = Modifier.height(24.dp),
             contentAlignment = Alignment.Center,
         ) {
-            if (sessionCount > 0 || (durationFormatted.isNotBlank() && durationFormatted != "0s")) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (sessionCount > 0) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                        ) {
-                            Text(
-                                text = "$sessionCount ${if (sessionCount == 1) "session" else "sessions"}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            )
-                        }
-                    }
-                    if (durationFormatted.isNotBlank() && durationFormatted != "0s") {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                        ) {
-                            Text(
-                                text = "⏱ $durationFormatted",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            )
-                        }
-                    }
-                }
+            if (durationFormatted.isNotBlank() && durationFormatted != "0s") {
+                Text(
+                    text = durationFormatted,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

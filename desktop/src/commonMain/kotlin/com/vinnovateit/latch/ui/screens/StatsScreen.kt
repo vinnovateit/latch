@@ -2,14 +2,18 @@ package com.vinnovateit.latch.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -93,9 +97,11 @@ fun StatsScreen(
     val insights by sessions.statsInsights.collectAsStateWithLifecycle()
     val chartItems by sessions.chartItems.collectAsStateWithLifecycle()
 
-    val todaySessions = remember(portalHistory) {
-        val todayKey = formatDate(System.currentTimeMillis(), "yyyy-MM-dd")
-        portalHistory.filter { it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L) && formatDate(it.loginTime, "yyyy-MM-dd") == todayKey }
+    var selectedTimestamp by remember(chartItems) { mutableStateOf<Long?>(null) }
+    val selectedDaySessions = remember(portalHistory, selectedTimestamp) {
+        val targetTs = selectedTimestamp ?: System.currentTimeMillis()
+        val targetDayKey = formatDate(targetTs, "yyyy-MM-dd")
+        portalHistory.filter { it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L) && formatDate(it.loginTime, "yyyy-MM-dd") == targetDayKey }
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -251,80 +257,160 @@ fun StatsScreen(
                     }
                 }
             } else {
-                LazyColumn(
+                BoxWithConstraints(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentPadding = PaddingValues(bottom = 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    contentAlignment = Alignment.TopCenter,
                 ) {
-                    // Live session card (when connected)
-                    liveStatus?.let { live ->
-                        item {
-                            val usage = DataUsage(live.totalRxBytes, live.totalTxBytes)
-                            LiveSessionCard(
-                                startTimeMillis = live.startTimeMillis,
-                                usage = usage,
-                                latestRxBps = live.liveData.lastOrNull()?.usage?.rxBps ?: 0L,
-                                latestTxBps = live.liveData.lastOrNull()?.usage?.txBps ?: 0L,
-                                speedUnit = speedUnit,
-                                dlColor = dlColor,
-                                ulColor = ulColor,
-                            )
-                            Spacer(modifier = Modifier.height(15.dp))
+                    if (maxWidth >= 840.dp) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 1200.dp)
+                                .padding(horizontal = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        ) {
+                            // Left pane: Live Session, Metrics, Insights
+                            LazyColumn(
+                                modifier = Modifier.weight(0.44f).fillMaxHeight(),
+                                contentPadding = PaddingValues(bottom = 32.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                liveStatus?.let { live ->
+                                    item {
+                                        val usage = DataUsage(live.totalRxBytes, live.totalTxBytes)
+                                        LiveSessionCard(
+                                            startTimeMillis = live.startTimeMillis,
+                                            usage = usage,
+                                            latestRxBps = live.liveData.lastOrNull()?.usage?.rxBps ?: 0L,
+                                            latestTxBps = live.liveData.lastOrNull()?.usage?.txBps ?: 0L,
+                                            speedUnit = speedUnit,
+                                            dlColor = dlColor,
+                                            ulColor = ulColor,
+                                        )
+                                        Spacer(modifier = Modifier.height(15.dp))
+                                    }
+                                }
+
+                                item {
+                                    StatsMetricsSummary(
+                                        metrics = metrics,
+                                        dlColor = dlColor,
+                                        ulColor = ulColor,
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
+
+                                item {
+                                    UsageInsightsCards(insights = insights)
+                                }
+                            }
+
+                            // Right pane: Chart + Selected day sessions
+                            LazyColumn(
+                                modifier = Modifier.weight(0.56f).fillMaxHeight(),
+                                contentPadding = PaddingValues(bottom = 32.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                if (chartItems.isNotEmpty()) {
+                                    item {
+                                        HistoryBarChart(
+                                            chartItems = chartItems,
+                                            dlColor = dlColor,
+                                            ulColor = ulColor,
+                                            isAmoled = isAmoled,
+                                            onSelectedDayChange = { selectedTimestamp = it },
+                                        )
+                                        Spacer(modifier = Modifier.height(15.dp))
+                                    }
+                                }
+
+                                if (selectedDaySessions.isNotEmpty()) {
+                                    itemsIndexed(
+                                        items = selectedDaySessions,
+                                        key = { index, session -> "${session.loginTime}_${session.uploadBytes}_${session.downloadBytes}_$index" },
+                                        contentType = { _, _ -> "session_item" },
+                                    ) { index, session ->
+                                        TodaySessionListItem(
+                                            session = session,
+                                            shape = groupedItemShape(index, selectedDaySessions.size),
+                                            isAmoled = isAmoled,
+                                            dlColor = dlColor,
+                                            ulColor = ulColor,
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    }
+                    } else {
+                        // Narrow / Compact layout: single centered column
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 720.dp),
+                            contentPadding = PaddingValues(bottom = 32.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            liveStatus?.let { live ->
+                                item {
+                                    val usage = DataUsage(live.totalRxBytes, live.totalTxBytes)
+                                    LiveSessionCard(
+                                        startTimeMillis = live.startTimeMillis,
+                                        usage = usage,
+                                        latestRxBps = live.liveData.lastOrNull()?.usage?.rxBps ?: 0L,
+                                        latestTxBps = live.liveData.lastOrNull()?.usage?.txBps ?: 0L,
+                                        speedUnit = speedUnit,
+                                        dlColor = dlColor,
+                                        ulColor = ulColor,
+                                    )
+                                    Spacer(modifier = Modifier.height(15.dp))
+                                }
+                            }
 
-                    // Hero Metrics Summary
-                    item {
-                        StatsMetricsSummary(
-                            metrics = metrics,
-                            dlColor = dlColor,
-                            ulColor = ulColor,
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
+                            item {
+                                StatsMetricsSummary(
+                                    metrics = metrics,
+                                    dlColor = dlColor,
+                                    ulColor = ulColor,
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
 
-                    // Usage insights (rendered directly on background)
-                    item {
-                        UsageInsightsCards(insights = insights)
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
+                            item {
+                                UsageInsightsCards(insights = insights)
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
 
-                    // Daily usage bar chart
-                    if (chartItems.isNotEmpty()) {
-                        item {
-                            HistoryBarChart(
-                                chartItems = chartItems,
-                                dlColor = dlColor,
-                                ulColor = ulColor,
-                                isAmoled = isAmoled,
-                            )
-                            Spacer(modifier = Modifier.height(15.dp))
-                        }
-                    }
+                            if (chartItems.isNotEmpty()) {
+                                item {
+                                    HistoryBarChart(
+                                        chartItems = chartItems,
+                                        dlColor = dlColor,
+                                        ulColor = ulColor,
+                                        isAmoled = isAmoled,
+                                        onSelectedDayChange = { selectedTimestamp = it },
+                                    )
+                                    Spacer(modifier = Modifier.height(15.dp))
+                                }
+                            }
 
-                    // Today's session items (hidden if empty)
-                    if (todaySessions.isNotEmpty()) {
-                        item {
-                            Text(
-                                text = "Today's Sessions",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                textAlign = TextAlign.Left,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                            )
-                        }
-                        itemsIndexed(todaySessions, key = { index, session -> "today_${session.loginTime}_$index" }) { index, session ->
-                            TodaySessionListItem(
-                                session = session,
-                                shape = groupedItemShape(index, todaySessions.size),
-                                isAmoled = isAmoled,
-                                dlColor = dlColor,
-                                ulColor = ulColor,
-                            )
+                            if (selectedDaySessions.isNotEmpty()) {
+                                itemsIndexed(
+                                    items = selectedDaySessions,
+                                    key = { index, session -> "${session.loginTime}_${session.uploadBytes}_${session.downloadBytes}_$index" },
+                                    contentType = { _, _ -> "session_item" },
+                                ) { index, session ->
+                                    TodaySessionListItem(
+                                        session = session,
+                                        shape = groupedItemShape(index, selectedDaySessions.size),
+                                        isAmoled = isAmoled,
+                                        dlColor = dlColor,
+                                        ulColor = ulColor,
+                                    )
+                                }
+                            }
                         }
                     }
                 }

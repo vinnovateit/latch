@@ -19,6 +19,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -30,6 +33,8 @@ import com.vinnovateit.latch.core.model.LiveConnectionStatus
 import com.vinnovateit.latch.core.model.PortalSessionRecord
 import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.core.stats.formatDate
+import com.vinnovateit.latch.core.stats.formatDisplayDate
 import com.vinnovateit.latch.features.stats.StatsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -53,12 +58,22 @@ fun StatsList(
   val statsInsights by statsViewModel.statsInsights.collectAsStateWithLifecycle()
   val chartItems by statsViewModel.chartItems.collectAsStateWithLifecycle()
   val isHistoryLoaded by statsViewModel.isHistoryLoaded.collectAsStateWithLifecycle()
-  val todaySessions by statsViewModel.todaySessions.collectAsStateWithLifecycle()
   val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
   val isAmoled = usePureBlack && com.vinnovateit.latch.ui.theme.LocalIsDarkTheme.current
   val chartPalette by SettingsManager.chartPalette.collectAsStateWithLifecycle()
   val (dlColor, ulColor) = com.vinnovateit.latch.common.util.StatsColorPalettes.resolveColors(chartPalette)
   val layoutDirection = LocalLayoutDirection.current
+
+  var selectedTimestamp by remember(chartItems) { mutableStateOf<Long?>(null) }
+  val selectedDaySessions = remember(portalHistory, selectedTimestamp) {
+    val targetTs = selectedTimestamp ?: System.currentTimeMillis()
+    val targetDayKey = formatDate(targetTs, "yyyy-MM-dd")
+    portalHistory.filter { session ->
+      session.loginTime > 0 &&
+        formatDate(session.loginTime, "yyyy-MM-dd") == targetDayKey &&
+        (session.uploadBytes > 0L || session.downloadBytes > 0L)
+    }
+  }
 
   LazyColumn(
     modifier = modifier,
@@ -103,29 +118,22 @@ fun StatsList(
       item {
         HistoryBarChart(
           history = chartItems,
-          isLoaded = isHistoryLoaded
+          isLoaded = isHistoryLoaded,
+          onSelectedDayChange = { selectedTimestamp = it }
         )
         Spacer(modifier = Modifier.height(15.dp))
       }
     }
 
-    if (todaySessions.isNotEmpty()) {
-      item {
-        Text(
-          text = "Today's Sessions",
-          style = MaterialTheme.typography.titleMedium,
-          fontWeight = FontWeight.Bold,
-          color = MaterialTheme.colorScheme.onBackground,
-          textAlign = TextAlign.Left,
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-      }
-      itemsIndexed(todaySessions, key = { index, session -> "today_${session.loginTime}_$index" }) { index, session ->
+    if (selectedDaySessions.isNotEmpty()) {
+      itemsIndexed(
+        items = selectedDaySessions,
+        key = { index, session -> "${session.loginTime}_${session.uploadBytes}_${session.downloadBytes}_$index" },
+        contentType = { _, _ -> "session_item" }
+      ) { index, session ->
         TodaySessionListItem(
           session = session,
-          shape = groupedItemShape(index, todaySessions.size),
+          shape = groupedItemShape(index, selectedDaySessions.size),
           isAmoled = isAmoled,
           dlColor = dlColor,
           ulColor = ulColor

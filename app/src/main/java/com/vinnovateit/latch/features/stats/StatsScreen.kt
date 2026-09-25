@@ -30,48 +30,37 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.vinnovateit.latch.common.ui.components.ExpressiveTopBarContent
 import com.vinnovateit.latch.common.util.TooltipHint
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.features.stats.components.SessionCard
 import com.vinnovateit.latch.features.stats.components.StatsList
+import com.vinnovateit.latch.ui.theme.ModernizFontFamily
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StatsTopBar(
-  collapseFraction: Float,
-  headerHeight: Dp,
+  scrollBehavior: TopAppBarScrollBehavior? = null,
   onBackPressed: () -> Unit,
   onSaveReport: () -> Unit,
   isSyncing: Boolean = false,
   onResyncHistory: () -> Unit = {},
   onNavigateToHistory: () -> Unit = {}
 ) {
-  val surfaceColor = MaterialTheme.colorScheme.surface
   val haptic = LocalHapticFeedback.current
   var menuExpanded by remember { mutableStateOf(false) }
 
-  Box(
-    modifier = Modifier
-      .fillMaxWidth()
-      .height(headerHeight)
-      .background(surfaceColor)
-  ) {
-    Box(
-      modifier = Modifier
-        .fillMaxSize()
-        .statusBarsPadding()
-    ) {
-      ExpressiveTopBarContent(
-        title = "Stats",
-        collapseFraction = collapseFraction,
-        modifier = Modifier.fillMaxSize()
+  LargeTopAppBar(
+    title = {
+      Text(
+        text = "Stats",
+        fontFamily = ModernizFontFamily,
+        color = MaterialTheme.colorScheme.primary
       )
-
-      // Back Button
+    },
+    navigationIcon = {
       FilledIconButton(
         modifier = Modifier
-          .align(Alignment.TopStart)
-          .padding(start = 12.dp, top = 4.dp)
+          .padding(start = 12.dp)
           .size(40.dp)
           .clip(CircleShape),
         onClick = {
@@ -88,12 +77,9 @@ private fun StatsTopBar(
           tint = MaterialTheme.colorScheme.primary
         )
       }
-
-      Box(
-        modifier = Modifier
-          .align(Alignment.TopEnd)
-          .padding(end = 12.dp, top = 4.dp)
-      ) {
+    },
+    actions = {
+      Box(modifier = Modifier.padding(end = 12.dp)) {
         IconButton(
           onClick = {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -170,10 +156,16 @@ private fun StatsTopBar(
           )
         }
       }
-    }
-  }
+    },
+    scrollBehavior = scrollBehavior,
+    colors = TopAppBarDefaults.largeTopAppBarColors(
+      containerColor = MaterialTheme.colorScheme.surface,
+      scrolledContainerColor = MaterialTheme.colorScheme.surface
+    )
+  )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("ContextCastToActivity")
 @Composable
 fun StatsScreen(
@@ -192,53 +184,15 @@ fun StatsScreen(
   val speedUnits by SettingsManager.speedUnits.collectAsStateWithLifecycle()
   var showAllSessions by remember { mutableStateOf(false) }
 
-  val density = LocalDensity.current
+  val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
   BoxWithConstraints(modifier = modifier.fillMaxSize()) {
     val isPortrait = maxHeight > maxWidth
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val minTopBarHeight = 64.dp + statusBarHeight
-    val maxTopBarHeight = 180.dp
-    val minTopBarHeightPx = with(density) { minTopBarHeight.toPx() }
-    val maxTopBarHeightPx = with(density) { maxTopBarHeight.toPx() }
-
-    var topBarHeightPx by remember { mutableFloatStateOf(maxTopBarHeightPx) }
-
-    val nestedScrollConnection = remember(minTopBarHeightPx, maxTopBarHeightPx) {
-      object : NestedScrollConnection {
-        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-          val delta = available.y
-          if (delta < 0 && topBarHeightPx > minTopBarHeightPx) {
-            val newHeight = (topBarHeightPx + delta).coerceIn(minTopBarHeightPx, maxTopBarHeightPx)
-            val consumed = newHeight - topBarHeightPx
-            topBarHeightPx = newHeight
-            return Offset(0f, consumed)
-          }
-          return Offset.Zero
-        }
-
-        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-          val delta = available.y
-          if (delta > 0 && topBarHeightPx < maxTopBarHeightPx) {
-            val newHeight = (topBarHeightPx + delta).coerceIn(minTopBarHeightPx, maxTopBarHeightPx)
-            val consumedHeight = newHeight - topBarHeightPx
-            topBarHeightPx = newHeight
-            return Offset(0f, consumedHeight)
-          }
-          return Offset.Zero
-        }
-      }
-    }
-
-    val currentTopBarHeightDp = with(density) { topBarHeightPx.toDp() }
-    val collapseFraction = 1f - ((topBarHeightPx - minTopBarHeightPx) / (maxTopBarHeightPx - minTopBarHeightPx)).coerceIn(0f, 1f)
 
     if (!isLive && portalHistory.isEmpty()) {
       Scaffold(
         topBar = {
           StatsTopBar(
-            collapseFraction = 0f,
-            headerHeight = maxTopBarHeight,
             onBackPressed = onBackPressed,
             onSaveReport = onSaveReport,
             isSyncing = isSyncing,
@@ -253,30 +207,27 @@ fun StatsScreen(
             .fillMaxSize()
         )
       }
-    } else {
-      if (!isPortrait && isLive && sessionToShow != null) {
-        Row(modifier = Modifier.fillMaxSize()) {
-          Column(
+    } else if (!isPortrait && isLive && sessionToShow != null) {
+      Scaffold(
+        topBar = {
+          StatsTopBar(
+            onBackPressed = onBackPressed,
+            onSaveReport = onSaveReport,
+            isSyncing = isSyncing,
+            onResyncHistory = { statsViewModel.refreshHistory(force = true) },
+            onNavigateToHistory = onNavigateToHistory
+          )
+        }
+      ) { innerPadding ->
+        Row(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+          Box(
             modifier = Modifier
               .weight(0.5f)
               .fillMaxHeight()
-              .background(MaterialTheme.colorScheme.background)
+              .padding(horizontal = 24.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center
           ) {
-            StatsTopBar(
-              collapseFraction = 1f,
-              headerHeight = minTopBarHeight,
-              onBackPressed = onBackPressed,
-              onSaveReport = onSaveReport,
-              isSyncing = isSyncing,
-              onResyncHistory = { statsViewModel.refreshHistory(force = true) },
-              onNavigateToHistory = onNavigateToHistory
-            )
-            Box(
-              modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp).fillMaxSize(),
-              contentAlignment = Alignment.Center
-            ) {
-              SessionCard(session = sessionToShow!!, speedUnit = speedUnits)
-            }
+            SessionCard(session = sessionToShow!!, speedUnit = speedUnits)
           }
 
           StatsList(
@@ -295,31 +246,13 @@ fun StatsScreen(
             statsViewModel = statsViewModel
           )
         }
-      } else {
-        Box(
-          modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .nestedScroll(nestedScrollConnection)
-        ) {
-          StatsList(
-            modifier = Modifier.fillMaxSize(),
-            isLive = isLive,
-            showSessionCard = true,
-            sessionToShow = sessionToShow,
-            portalHistory = portalHistory,
-            liveStatus = liveStatus,
-            speedUnits = speedUnits,
-            showAllSessions = showAllSessions,
-            onToggleShowAll = { showAllSessions = !showAllSessions },
-            contentPadding = PaddingValues(top = maxTopBarHeight),
-            onNavigateToHistory = onNavigateToHistory,
-            statsViewModel = statsViewModel
-          )
-
+      }
+    } else {
+      Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
           StatsTopBar(
-            collapseFraction = collapseFraction,
-            headerHeight = currentTopBarHeightDp,
+            scrollBehavior = scrollBehavior,
             onBackPressed = onBackPressed,
             onSaveReport = onSaveReport,
             isSyncing = isSyncing,
@@ -327,6 +260,23 @@ fun StatsScreen(
             onNavigateToHistory = onNavigateToHistory
           )
         }
+      ) { innerPadding ->
+        StatsList(
+          modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+          contentPadding = innerPadding,
+          isLive = isLive,
+          showSessionCard = true,
+          sessionToShow = sessionToShow,
+          portalHistory = portalHistory,
+          liveStatus = liveStatus,
+          speedUnits = speedUnits,
+          showAllSessions = showAllSessions,
+          onToggleShowAll = { showAllSessions = !showAllSessions },
+          onNavigateToHistory = onNavigateToHistory,
+          statsViewModel = statsViewModel
+        )
       }
     }
   }
