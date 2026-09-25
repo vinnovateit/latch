@@ -36,10 +36,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import com.vinnovateit.latch.ui.theme.ModernizFontFamily
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,8 +43,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -67,6 +65,7 @@ import com.vinnovateit.latch.features.stats.components.GameStatRow
 import com.vinnovateit.latch.features.stats.components.SessionHistorySkeletonLoader
 import com.vinnovateit.latch.features.stats.components.groupedItemShape
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
+import com.vinnovateit.latch.ui.theme.ModernizFontFamily
 import java.util.Calendar
 
 val historyFilters = listOf(
