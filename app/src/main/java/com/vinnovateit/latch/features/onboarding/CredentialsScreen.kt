@@ -180,7 +180,7 @@ fun CredentialsScreen(
             alignment = Alignment.Center
         )
 
-        if (onBackClick != null) {
+        if (onBackClick != null && !editMode) {
             TooltipHint(tooltipText = "Back") {
                 FilledIconButton(
                     modifier = Modifier
