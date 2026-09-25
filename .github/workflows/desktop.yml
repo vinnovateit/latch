@@ -125,3 +125,6 @@ jobs:
           xvfb-run -a packaging/smoke-linux-tarballs.sh "$version" "$desktop" \
             "cli/build/distributions/latch-cli-$version-linux-x64.tar.gz"
           packaging/test-install-script.sh "$desktop"
+
+      - name: Test the winget submission logic
+        run: packaging/test-submit-winget.sh
