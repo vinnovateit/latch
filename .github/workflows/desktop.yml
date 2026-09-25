@@ -135,7 +135,8 @@ jobs:
         run: |
           $version = (Select-String -Path gradle.properties -Pattern '^latchVersion=(.+)$').Matches[0].Groups[1].Value
           packaging/qualify-windows-msi.ps1 -Msi staging\LatchSetup.msi -Version $version `
-            -BaselineRepo $env:GITHUB_REPOSITORY -ProbeLegacyStaging -LogDir msi-logs
+            -BaselineRepo $env:GITHUB_REPOSITORY -ProbeLegacyStaging `
+            -LegacyNotice packaging\windows-legacy-update-notice.md -LogDir msi-logs
 
       - name: Upload Windows Installer logs
         if: failure()

@@ -16,7 +16,10 @@ valid, installable, upgradable, removable Windows Installer package:
      published release succeeds with the package staged where the updater
      stages it -- the path the auto-update incident went down;
   5. user data in Latch's data directory survives both the uninstall and the
-     upgrade.
+     upgrade;
+  6. with -LegacyNotice, the manual-install notice published for updaters
+     up to 1.4.2 is harmless when one of them runs it: msiexec rejects it at
+     open and the installed product is untouched.
 
 Only native tooling is used: the WindowsInstaller.Installer COM object and
 msiexec. Latch.exe is never launched -- an installed build registers itself
@@ -26,7 +29,8 @@ removed again, even on failure.
 
 Usage:
   pwsh packaging/qualify-windows-msi.ps1 -Msi <path> -Version <x.y.z>
-       [-BaselineRepo owner/repo] [-ProbeLegacyStaging] [-LogDir <dir>]
+       [-BaselineRepo owner/repo] [-ProbeLegacyStaging] [-LegacyNotice <path>]
+       [-LogDir <dir>]
 #>
 [CmdletBinding()]
 param(
@@ -34,6 +38,7 @@ param(
     [Parameter(Mandatory)] [string] $Version,
     [string] $BaselineRepo,
     [switch] $ProbeLegacyStaging,
+    [string] $LegacyNotice,
     [string] $LogDir = 'msi-logs'
 )
 
@@ -339,6 +344,22 @@ try {
         Write-Result "Upgrade from $($baseline.Version) (package staged in $StagingDir):"
         Install-LatchPackage $baseline.Path 'baseline-install.log' "baseline $($baseline.Version) install"
         Assert-Installed $baselineCode $baseline.Version
+
+        if ($LegacyNotice) {
+            # Exactly what an updater up to 1.4.2 does with the notice asset
+            # if its user chooses "Download update": stage it where it stages
+            # downloads and run it silently. 1620 is "this installation package
+            # could not be opened" -- rejected before anything is changed.
+            Write-Result "Legacy notice asset, run as a pre-1.4.3 updater would:"
+            New-Item -ItemType Directory -Force -Path $LegacyStagingDir | Out-Null
+            $notice = Join-Path $LegacyStagingDir 'Latch-Update-Notice.msi'
+            Copy-Item -LiteralPath (Resolve-Path -LiteralPath $LegacyNotice).Path -Destination $notice
+            $r = Invoke-Msiexec "/i `"$notice`" /qn /norestart" 'legacy-notice.log'
+            if ($r.ExitCode -ne 1620) { throw "msiexec exited $($r.ExitCode) on the notice, expected 1620 (package could not be opened). Log: $($r.Log)" }
+            Assert-Installed $baselineCode $baseline.Version
+            Write-Result "  msiexec exit 1620 (rejected at open); $($baseline.Version) still installed and launchable"
+            Remove-Item -LiteralPath $LegacyStagingDir -Recurse -Force
+        }
         # Where builds up to 1.4.2 kept user data: the install directory.
         # Recorded, not asserted -- the old product's uninstall removes it.
         $sentinel = Join-Path $InstallDir 'qualification-sentinel.txt'

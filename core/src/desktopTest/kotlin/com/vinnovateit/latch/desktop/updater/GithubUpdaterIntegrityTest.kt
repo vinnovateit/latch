@@ -53,6 +53,7 @@ class GithubUpdaterIntegrityTest {
     private var assetDigest: String? = "sha256:$payloadSha"
     private var assetUrl = ASSET_URL
     private var msiName = WINDOWS_PACKAGE_ASSET
+    private var publishLegacyNotice = false
     private var assetResponse: () -> UpdateHttpResponse = { ok(payload) }
 
     private val logger = object : Logger {
@@ -284,6 +285,15 @@ class GithubUpdaterIntegrityTest {
         assertEquals(0, requests.get())
     }
 
+    /** The notice published for pre-1.4.3 updaters is never what this one installs. */
+    @Test
+    fun theLegacyNoticeAssetIsNeverOffered() = runBlocking<Unit> {
+        publishLegacyNotice = true
+        val downloaded = assertIs<UpdateState.Downloaded>(checkAndDownload())
+        assertContentEquals(payload, File(downloaded.filePath).readBytes())
+        assertEquals(1, requests.get(), "only the installer is fetched")
+    }
+
     // --- 9-11. Cancellation, leftovers, supersession --------------------------
 
     @Test
@@ -500,6 +510,15 @@ class GithubUpdaterIntegrityTest {
 
     private fun releaseJson(): String {
         val digest = assetDigest?.let { "\"digest\": \"$it\"," } ?: ""
+        // Listed before the installer, as it sorts on the release page:
+        // updaters up to 1.4.2 take the first Latch-*.msi they find.
+        val noticeAsset = if (!publishLegacyNotice) "" else """
+                {
+                  "name": "Latch-Update-Notice.msi",
+                  "browser_download_url": "https://github.com/vinnovateit/latch/releases/download/v1.4.2/Latch-Update-Notice.msi",
+                  "size": 512,
+                  "digest": "sha256:${"1".repeat(64)}"
+                },"""
         return """
             {
               "tag_name": "v1.4.2",
@@ -511,6 +530,7 @@ class GithubUpdaterIntegrityTest {
                   "size": 1,
                   "digest": "sha256:${"0".repeat(64)}"
                 },
+                $noticeAsset
                 {
                   "name": "$msiName",
                   "browser_download_url": "$assetUrl",

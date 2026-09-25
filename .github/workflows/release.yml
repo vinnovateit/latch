@@ -179,6 +179,13 @@ jobs:
             throw "Expected exactly one Desktop MSI, found $($msi.Count)"
           }
           Copy-Item $msi.FullName staging\LatchSetup.msi
+          # Updaters up to 1.4.2 only show an update when a Latch-*.msi is
+          # published, so this carries the manual-install notice to them. It
+          # is the notice text, not an installer: if they choose to download
+          # it, msiexec rejects it before touching the installed product and
+          # the old version relaunches unchanged. The qualification step
+          # below proves that. Drop it once no install older than 1.4.3 remains.
+          Copy-Item packaging\windows-legacy-update-notice.md staging\Latch-Update-Notice.msi
           Copy-Item cli\build\distributions\*.zip staging\
           Get-ChildItem staging
 
@@ -193,7 +200,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           packaging/qualify-windows-msi.ps1 -Msi staging\LatchSetup.msi -Version $env:VERSION `
-            -BaselineRepo $env:GITHUB_REPOSITORY -LogDir msi-logs
+            -BaselineRepo $env:GITHUB_REPOSITORY -LegacyNotice staging\Latch-Update-Notice.msi -LogDir msi-logs
 
       - name: Upload Windows Installer logs
         if: failure()
@@ -254,7 +261,15 @@ jobs:
       - name: Extract release notes
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: packaging/extract-release-notes.sh "$VERSION" release-notes.md
+        run: |
+          packaging/extract-release-notes.sh "$VERSION" release-notes.md
+          # Updaters up to 1.4.2 show these notes on their update screen;
+          # the notice at the top is how their users learn to install by
+          # hand. Kept while Latch-Update-Notice.msi is published.
+          if [[ -f release-assets/Latch-Update-Notice.msi ]]; then
+            { cat packaging/windows-legacy-update-notice.md; echo; cat release-notes.md; } > release-notes.with-notice.md
+            mv release-notes.with-notice.md release-notes.md
+          fi
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
