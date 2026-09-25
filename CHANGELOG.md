@@ -6,6 +6,22 @@ that release's body, so a release is only as good as its entry in this file. Add
 the section in the same commit that bumps the version; the release job fails
 before it builds anything if the section is missing.
 
+## 1.4.3
+
+Windows update recovery and packaging reliability release.
+
+### What's fixed
+
+- **Windows updates**: fixed an upgrade failure where the downloaded installer was deleted while Windows Installer was still using it, leaving Latch uninstalled
+- **Windows updater**: a downloaded installer is now checked against the release's expected size and SHA-256 before it is installed
+- **Windows data**: settings, saved credentials and history now live outside the install directory, so upgrades and uninstalls no longer remove them. Data an earlier version left in place, such as the portable CLI's, moves there the first time 1.4.3 starts
+- **Windows installer**: the installer is now named `LatchSetup.msi`, and every release's installer is installed, upgraded and uninstalled on a real Windows machine before it is published
+- **WinGet**: a new release now replaces the previous pending WinGet submission instead of opening another alongside it
+
+Windows users on Latch 1.4.2 or earlier need to install this version by hand once, as described in the notice above. After that, updates install from the app and keep your data.
+
+Download the compatible version for your machine from the assets below.
+
 ## 1.4.2
 
 Hardening release for the desktop app, the CLI and the Linux installer.
