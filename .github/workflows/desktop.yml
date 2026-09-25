@@ -126,7 +126,7 @@ jobs:
           if ($msi.Count -ne 1) {
             throw "Expected exactly one Desktop MSI, found $($msi.Count)"
           }
-          Copy-Item $msi.FullName staging\Latch-Setup.msi
+          Copy-Item $msi.FullName staging\LatchSetup.msi
 
       - name: Qualify the MSI on Windows
         shell: pwsh
@@ -134,7 +134,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = (Select-String -Path gradle.properties -Pattern '^latchVersion=(.+)$').Matches[0].Groups[1].Value
-          packaging/qualify-windows-msi.ps1 -Msi staging\Latch-Setup.msi -Version $version `
+          packaging/qualify-windows-msi.ps1 -Msi staging\LatchSetup.msi -Version $version `
             -BaselineRepo $env:GITHUB_REPOSITORY -ProbeLegacyStaging -LogDir msi-logs
 
       - name: Upload Windows Installer logs

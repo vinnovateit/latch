@@ -32,7 +32,16 @@ private const val GITHUB_API = "https://api.github.com/repos/vinnovateit/latch/r
 // own release downloads. The API response is what vouches for the asset's
 // size and digest, so the URL it points at has to be the one it describes.
 private const val RELEASE_DOWNLOAD_PREFIX = "https://github.com/vinnovateit/latch/releases/download/"
-private const val MSI_PATTERN = "Latch-"
+/**
+ * The Windows installer's release asset name, matched exactly.
+ *
+ * Deliberately not `Latch-*.msi`, the only shape updaters up to 1.4.2 offer:
+ * they stage the package inside the install directory, which the upgrade then
+ * deletes mid-install, leaving no Latch installed. Under this name those
+ * updaters find no Windows package and stay on a working install; users on
+ * them update once by hand. Must never start with "Latch-" again.
+ */
+internal const val WINDOWS_PACKAGE_ASSET = "LatchSetup.msi"
 private const val PIPE = 32 * 1024
 private const val TAG = "GithubUpdater"
 
@@ -130,7 +139,7 @@ class GithubUpdater internal constructor(
             val release = fetchLatestRelease()
             val packageAsset = release.assets.find { asset ->
                 if (isWindows) {
-                    asset.name.startsWith(MSI_PATTERN) && asset.name.endsWith(".msi")
+                    asset.name == WINDOWS_PACKAGE_ASSET
                 } else {
                     asset.name.contains("Latch", ignoreCase = true) &&
                         (asset.name.endsWith(".deb") || asset.name.endsWith(".AppImage") || asset.name.endsWith(".tar.gz"))

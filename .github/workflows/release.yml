@@ -172,11 +172,13 @@ jobs:
           # Keep one stable GUI installer filename across patch rebuilds. The
           # MSI's internal product/version metadata remains controlled by
           # Compose/jpackage; only the release asset name is normalized here.
+          # Not Latch-*.msi: updaters up to 1.4.2 offer that shape and then
+          # break the install (see WINDOWS_PACKAGE_ASSET in GithubUpdater.kt).
           $msi = @(Get-ChildItem desktop\build\compose\binaries\main-release\msi\*.msi)
           if ($msi.Count -ne 1) {
             throw "Expected exactly one Desktop MSI, found $($msi.Count)"
           }
-          Copy-Item $msi.FullName staging\Latch-Setup.msi
+          Copy-Item $msi.FullName staging\LatchSetup.msi
           Copy-Item cli\build\distributions\*.zip staging\
           Get-ChildItem staging
 
@@ -190,7 +192,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          packaging/qualify-windows-msi.ps1 -Msi staging\Latch-Setup.msi -Version $env:VERSION `
+          packaging/qualify-windows-msi.ps1 -Msi staging\LatchSetup.msi -Version $env:VERSION `
             -BaselineRepo $env:GITHUB_REPOSITORY -LogDir msi-logs
 
       - name: Upload Windows Installer logs

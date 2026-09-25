@@ -30,7 +30,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 private const val API = "https://api.github.com/repos/vinnovateit/latch/releases/latest"
-private const val ASSET_URL = "https://github.com/vinnovateit/latch/releases/download/v1.4.2/Latch-Setup.msi"
+private const val ASSET_URL = "https://github.com/vinnovateit/latch/releases/download/v1.4.2/LatchSetup.msi"
 
 /**
  * The Windows auto-update incident: Windows Installer reported "This
@@ -52,6 +52,7 @@ class GithubUpdaterIntegrityTest {
     private var assetSize: Long = payload.size.toLong()
     private var assetDigest: String? = "sha256:$payloadSha"
     private var assetUrl = ASSET_URL
+    private var msiName = WINDOWS_PACKAGE_ASSET
     private var assetResponse: () -> UpdateHttpResponse = { ok(payload) }
 
     private val logger = object : Logger {
@@ -255,10 +256,32 @@ class GithubUpdaterIntegrityTest {
 
     @Test
     fun assetOutsideThisRepositorysReleasesIsRefused() = runBlocking<Unit> {
-        assetUrl = "https://example.com/Latch-Setup.msi"
+        assetUrl = "https://example.com/LatchSetup.msi"
         updater.check(force = true)
         assertIs<UpdateState.Error>(updater.state.value)
         assertTrue(logs.any { "download URL outside" in it }, logs.toString())
+    }
+
+    // --- The release asset name -------------------------------------------------
+
+    /**
+     * Updaters up to 1.4.2 offer any `Latch-*.msi` and stage it inside the
+     * install directory, where the upgrade deletes it mid-install. The
+     * published name must stay invisible to them, or the next release puts
+     * every one of those installs through the failed upgrade again.
+     */
+    @Test
+    fun publishedInstallerNameIsInvisibleToUpdatersUpTo142() {
+        val legacyUpdaterWouldOffer = WINDOWS_PACKAGE_ASSET.startsWith("Latch-") && WINDOWS_PACKAGE_ASSET.endsWith(".msi")
+        assertFalse(legacyUpdaterWouldOffer, "$WINDOWS_PACKAGE_ASSET would be offered by <=1.4.2 updaters")
+    }
+
+    @Test
+    fun anInstallerUnderTheLegacyNameIsNotOffered() = runBlocking<Unit> {
+        msiName = "Latch-Setup.msi"
+        updater.check(force = true)
+        assertIs<UpdateState.UpToDate>(updater.state.value)
+        assertEquals(0, requests.get())
     }
 
     // --- 9-11. Cancellation, leftovers, supersession --------------------------
@@ -489,7 +512,7 @@ class GithubUpdaterIntegrityTest {
                   "digest": "sha256:${"0".repeat(64)}"
                 },
                 {
-                  "name": "Latch-Setup.msi",
+                  "name": "$msiName",
                   "browser_download_url": "$assetUrl",
                   "size": $assetSize,
                   $digest
