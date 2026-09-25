@@ -4,31 +4,31 @@ Hash: SHA512
 Architectures: amd64
 Codename: stable
 Components: main
-Date: Thu, 24 Sep 2026 05:56:23 +0000
+Date: Fri, 25 Sep 2026 02:02:27 +0000
 Description: Latch CLI packages
 Label: Latch
 Origin: Latch
 Suite: stable
 MD5Sum:
- 075eb83cbe5aedf4c0809b1061cabd15              166 Release
- 7c8d31f8fd10fcca4d0de9205585594e             1824 main/binary-amd64/Packages
- 31be52dc697219bbe5c1f59a0a2b4a4b              648 main/binary-amd64/Packages.gz
+ f01d870fc6759ab3cca4417bfe480bb4              166 Release
+ 1fe2d6c82d90c669642aeb959c49fa24             2432 main/binary-amd64/Packages
+ ca5d2ee5f4eb2a7b60565d0585b8e30f              758 main/binary-amd64/Packages.gz
 SHA1:
- 2126f20055b11f08c6d90be92d43936d730de5d1              166 Release
- 943bef558b7e10446fd74dcf0b37a1262d904a15             1824 main/binary-amd64/Packages
- 7e080b8322c308d488a19dd5821f648b51ba8f59              648 main/binary-amd64/Packages.gz
+ ed32d4b48f32f337e7b74f0900bf5fb67c1e7175              166 Release
+ 17b0f7424b7ecbd63d488fa0d2938c4f11380231             2432 main/binary-amd64/Packages
+ 875c11063a8f37c3b6be7185bfee7dcdcdb9a914              758 main/binary-amd64/Packages.gz
 SHA256:
- 58bceaba90d395e610f628e723ac49f3fc9b2650b69fb66397b7273a3f23f239              166 Release
- afa1b5e2daad354bd5b7372b7118c0c1fe057ac107ac462513d24f311b723594             1824 main/binary-amd64/Packages
- abe466a3116c896bd9f8e4c34404d6fcccb238a941e78bb9558487056e2f6720              648 main/binary-amd64/Packages.gz
+ ac9af58827e62f410f45bc6ca4ae4ba87660c729ca9ef403f87ca062673a7563              166 Release
+ d18445e77f9596c1aaa2ad4b34de0c3945200a30a82ef234238e25eabb411e80             2432 main/binary-amd64/Packages
+ bd7b1f7e19bcec0b2993b68a81ac63b60f99d02d63b283f6a6fee2de177f3548              758 main/binary-amd64/Packages.gz
 SHA512:
- c52f5091f6863f7727fd58e3c1f8dab127c3062516f81cfe6b597be3781de62ca50b61933ed1484bc0d98cbf1aadb9ed2e73f2fc75e3af1fd74e3e344894c7e5              166 Release
- 2bbe499a2e87923f38f71116a5afb1aff818f0455d428327b04ec4bf554dc9acbc7bb9582603535dc65172c7c888cdf8417a2aa2a44da908240a51b7cecd5bbd             1824 main/binary-amd64/Packages
- b69f4834416c75ed915fbd56a278b960906817b627bbe7b8427b874ba8f2556913bf26ec908d26fafc781e6ef37b63499a55f6757f06440c646266fc55019f89              648 main/binary-amd64/Packages.gz
+ 6b677fac1ef340cf9b8ff76a2d777ac3f63841404d21c760ae6423921475bc132b3429b310800eae5b7ec2e21fe11b3e412a16a91936c67835ea66049c3fe3fd              166 Release
+ 84feebed07cf03d40dd1b83096831afb068a90a355f89a6b34d84bd522bea85f34e2421a447df243063d0a248d96b5aac59d7e9d9d4c431d249dd54f284bd043             2432 main/binary-amd64/Packages
+ 3591bf0b27f027a7c774d4d223f2c50325bc33774e7b4b8fe168955d28298fb3be0d67facea9de1d43d8bf7c5e919e449f70c4f3bbe8d199289e6b7c3546763f              758 main/binary-amd64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQS548/fdh+DKSXv6hNvsYKuWuCgyAUCarS7hwAKCRBvsYKuWuCg
-yIQMAP4skN5n54yl1L2KlaFKcQKgDxeDO44YbFoAHnVYhMgAeAEAy3xSIHLLwhc5
-r0/Yjz1JmWbJhUZJiNL2b94DarODGgs=
-=Fjij
+iHUEARYKAB0WIQS548/fdh+DKSXv6hNvsYKuWuCgyAUCarXWMwAKCRBvsYKuWuCg
+yHJPAQCESY53EmtRUje3fxUitqj5BFLJPmkH46/odDT4RjLlogEA11P4bZDPvJWa
+QO8taG49bJhUJUNmBMNEXPl7ZUv4DQI=
+=yaX1
 -----END PGP SIGNATURE-----
