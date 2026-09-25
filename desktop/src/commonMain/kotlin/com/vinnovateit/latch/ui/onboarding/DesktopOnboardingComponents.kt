@@ -260,11 +260,8 @@ fun DesktopOnboardingBottomBar(
 
                 FloatingActionButton(
                     onClick = {
-                        if (isLastPage) {
-                            if (isEnabled) onFinishClicked()
-                        } else {
-                            onNextClicked()
-                        }
+                        if (!isEnabled) return@FloatingActionButton
+                        if (isLastPage) onFinishClicked() else onNextClicked()
                     },
                     shape = fabShape,
                     containerColor = when {
@@ -276,7 +273,6 @@ fun DesktopOnboardingBottomBar(
                         !isEnabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                         isLastPage -> MaterialTheme.colorScheme.onPrimary
                         else -> MaterialTheme.colorScheme.onPrimaryContainer
-                    },
                     },
                     elevation = FloatingActionButtonDefaults.elevation(defaultElevation = if (isEnabled) 2.dp else 0.dp),
                     modifier = Modifier.size(56.dp),
