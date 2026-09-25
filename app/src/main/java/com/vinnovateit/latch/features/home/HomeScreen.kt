@@ -1,28 +1,40 @@
 package com.vinnovateit.latch.features.home
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
-import android.graphics.BlurMaskFilter
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,18 +45,38 @@ import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.QuestionMark
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Wifi
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.*
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -58,24 +90,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.os.Build
-import android.provider.Settings
-import com.vinnovateit.latch.platform.LatchAppGraph
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.common.ui.LeafOverlay
-import com.vinnovateit.latch.common.util.TooltipHint
 import com.vinnovateit.latch.core.model.LiveDataPoint
 import com.vinnovateit.latch.core.model.SessionSummary
-import com.vinnovateit.latch.features.home.components.SpectrumCard
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.features.home.components.SpectrumCard
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
 import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus
-import com.vinnovateit.latch.ui.theme.*
+import com.vinnovateit.latch.platform.LatchAppGraph
+import com.vinnovateit.latch.ui.theme.LatchTheme
+import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
+import com.vinnovateit.latch.ui.theme.ModernizFontFamily
+import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -559,6 +589,7 @@ fun TopBarSection(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showPill by remember(isConnected) { mutableStateOf(true) }
+    val haptic = LocalHapticFeedback.current
 
     LaunchedEffect(isConnected, triggerStatusPill) {
         showPill = true
@@ -618,7 +649,10 @@ fun TopBarSection(
         actions = {
             Box(modifier = Modifier.padding(end = 8.dp)) {
                 IconButton(
-                    onClick = { menuExpanded = true },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuExpanded = true
+                    },
                     modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
@@ -638,6 +672,7 @@ fun TopBarSection(
                     DropdownMenuItem(
                         text = { Text("Settings", fontSize = 15.sp, fontFamily = SatoshiFontFamily) },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuExpanded = false
                             onPreferencesClick()
                         },
@@ -652,6 +687,7 @@ fun TopBarSection(
                     DropdownMenuItem(
                         text = { Text("How It Works", fontSize = 15.sp, fontFamily = SatoshiFontFamily) },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuExpanded = false
                             onHowItWorksClick()
                         },
@@ -666,6 +702,7 @@ fun TopBarSection(
                     DropdownMenuItem(
                         text = { Text("Meet The Team", fontSize = 15.sp, fontFamily = SatoshiFontFamily) },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuExpanded = false
                             onMeetTheTeamClick()
                         },
