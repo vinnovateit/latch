@@ -11,7 +11,7 @@
     <string name="registration_number">Registration Number</string>
     <string name="password">Password</string>
     <string name="save_credentials">Save Credentials</string>
-    <string name="update_credentials">Update Credentials</string>
+    <string name="update_credentials">Save</string>
     <string name="credentials_saved_toast">Credentials saved!</string>
     <string name="credentials_error_message">Please enter User ID and your password</string>
     <string name="username_icon_content_description">Username Icon</string>

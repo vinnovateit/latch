@@ -2,7 +2,9 @@ package com.vinnovateit.latch.features.onboarding
 
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -244,26 +246,10 @@ fun CredentialsScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    Button(
-                        onClick = { handleSubmit() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp)
-                            .height(54.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    ) {
-                        Text(
-                            text = if (editMode) stringResource(id = R.string.update_credentials) else stringResource(id = R.string.save_credentials),
-                            fontSize = 18.sp,
-                            fontFamily = SatoshiFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        )
-                    }
+                    SaveButton(
+                        editMode = editMode,
+                        onSubmit = handleSubmit
+                    )
                 }
             }
         } else {
@@ -319,26 +305,10 @@ fun CredentialsScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                Button(
-                    onClick = { handleSubmit() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
-                        .height(54.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text(
-                        text = if (editMode) stringResource(id = R.string.update_credentials) else stringResource(id = R.string.save_credentials),
-                        fontSize = 18.sp,
-                        fontFamily = SatoshiFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-                }
+                SaveButton(
+                    editMode = editMode,
+                    onSubmit = handleSubmit
+                )
             }
         }
 
@@ -432,5 +402,57 @@ private fun CredentialFormInputs(
                 tint = MaterialTheme.colorScheme.primary
             )
         }
+    }
+}
+
+@Composable
+private fun SaveButton(
+    editMode: Boolean,
+    onSubmit: () -> Unit,
+) {
+    // Animatable corner radius: starts fully round (27dp = height/2), springs to squircle on tap.
+    val cornerRadius = remember { Animatable(27f) }
+    val scope = rememberCoroutineScope()
+
+    Button(
+        onClick = {
+            scope.launch {
+                // Press: spring corners inward to squircle shape.
+                cornerRadius.animateTo(
+                    targetValue = 12f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessHigh
+                    )
+                )
+                // Trigger submit while corners are squircle.
+                onSubmit()
+                // Spring back to fully round.
+                cornerRadius.animateTo(
+                    targetValue = 27f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                )
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .height(54.dp),
+        shape = RoundedCornerShape(cornerRadius.value.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        )
+    ) {
+        Text(
+            text = if (editMode) stringResource(id = R.string.update_credentials) else stringResource(id = R.string.save_credentials),
+            fontSize = 18.sp,
+            fontFamily = SatoshiFontFamily,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        )
     }
 }
