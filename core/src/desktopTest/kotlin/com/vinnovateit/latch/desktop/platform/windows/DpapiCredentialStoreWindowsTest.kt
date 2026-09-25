@@ -2,6 +2,7 @@ package com.vinnovateit.latch.desktop.platform.windows
 
 import com.vinnovateit.latch.core.platform.NoOpLogger
 import com.vinnovateit.latch.desktop.AppPaths
+import com.vinnovateit.latch.desktop.LegacyDataMigration
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
@@ -84,6 +85,25 @@ class DpapiCredentialStoreWindowsTest {
 
         assertTrue(DpapiCredentialStore(file, NoOpLogger).password() == password, "a fresh store did not see the replacement")
         assertEquals(emptyList(), dataDir.listFiles().orEmpty().map { it.name }.filter { it.endsWith(".tmp") })
+    }
+
+    /**
+     * Pre-1.4.3 data is moved, not re-encrypted, when a fixed build first
+     * starts. DPAPI binds a blob to the Windows user, not to its path, so the
+     * moved blob must still decrypt from its new location.
+     */
+    @Test
+    fun `a DPAPI blob still decrypts after the legacy data migration moves it`() {
+        if (!isWindows) return
+        val legacy = File(dataDir, "Latch").apply { mkdirs() }
+        val current = File(File(dataDir, "VinnovateIT"), "Latch")
+        assertTrue(DpapiCredentialStore(File(legacy, "credentials.bin"), NoOpLogger).save(userId, password).isSuccess, "the DPAPI save failed")
+
+        val result = LegacyDataMigration.migrate(legacy, current)
+
+        assertEquals(listOf("credentials.bin"), result.moved)
+        val moved = DpapiCredentialStore(File(current, "credentials.bin"), NoOpLogger)
+        assertTrue(moved.userId() == userId && moved.password() == password, "the moved blob did not decrypt")
     }
 
     /**
