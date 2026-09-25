@@ -150,7 +150,7 @@ jobs:
       # The only place a release exercises real DPAPI: the Linux job's tests
       # reach DpapiCredentialStore through a fake backend.
       - name: Verify DPAPI credential store
-        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest"
+        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest"
 
       - name: Build Desktop MSI and portable CLI
         run: .\gradlew.bat :desktop:packageReleaseMsi :cli:packageCliZip

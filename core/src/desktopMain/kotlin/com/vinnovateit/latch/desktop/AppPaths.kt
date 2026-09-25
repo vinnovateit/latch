@@ -50,16 +50,20 @@ object AppPaths {
      * No Latch install ever lands in this directory, so neither an upgrade
      * nor an uninstall touches it.
      *
-     * Resolved once per process, and the first resolution moves any data a
-     * pre-1.4.3 build left in the old place ([LegacyDataMigration]). That runs
-     * before anything opens a data file, since everything reaches its file
-     * through here.
+     * Resolved once per process, and the first resolution moves the settings
+     * and credentials a pre-1.4.3 build left in the old place
+     * ([LegacyDataMigration.migrate]). That runs before anything opens a data
+     * file, since everything reaches its file through here. The database is
+     * not moved here: see [databaseLocation].
      */
     private val windowsDataDir: File by lazy {
         val dir = File(File(localAppData, "VinnovateIT"), "Latch").apply { mkdirs() }
-        legacyMigration = LegacyDataMigration.migrate(from = File(localAppData, "Latch"), to = dir)
+        legacyMigration = LegacyDataMigration.migrate(from = legacyWindowsDataDir, to = dir)
         dir
     }
+
+    /** Where Windows builds up to 1.4.2 kept their data: the default install directory. */
+    private val legacyWindowsDataDir: File get() = File(localAppData, "Latch")
 
     /** What moving pre-1.4.3 Windows data did in this process, for the log; null if it never ran. */
     @Volatile
@@ -97,5 +101,54 @@ object AppPaths {
 
     val settingsFile: File get() = File(dataDir, "settings.json")
 
-    val databaseFile: File get() = File(dataDir, "latch_database")
+    /** Which database this process opens: a file, or -- when no file may be opened -- memory only. */
+    sealed interface DatabaseLocation {
+        data class OnDisk(val file: File) : DatabaseLocation
+        data object InMemory : DatabaseLocation
+    }
+
+    /**
+     * The database this process opens, decided once, the first time it is
+     * asked for -- by buildDatabase, which only the runtime owner calls, after
+     * it holds the runtime lock. So exactly one process at a time moves the
+     * legacy database and chooses which one to open, and no other process has
+     * it open while it does.
+     */
+    val databaseLocation: DatabaseLocation by lazy {
+        val legacy = if (isWindows && System.getProperty("latch.dataDir").isNullOrBlank()) legacyWindowsDataDir else null
+        chooseDatabaseLocation(legacy, dataDir).also { (_, result) -> databaseMigration = result }.first
+    }
+
+    /** What moving the pre-1.4.3 database did in this process, for the log; null if there was nothing to consider. */
+    @Volatile
+    internal var databaseMigration: LegacyDataMigration.DatabaseResult? = null
+        private set
+
+    /**
+     * The one mapping from the migration outcome to the database to open.
+     * A fresh database is only ever created in [dataDir], and only when no
+     * legacy database is waiting to move there: a failed move keeps using the
+     * legacy database where it is whole, and uses no file at all where it is
+     * split, until a later start can move it.
+     */
+    internal fun chooseDatabaseLocation(
+        legacyDir: File?,
+        dataDir: File,
+        rename: (java.nio.file.Path, java.nio.file.Path) -> Unit = { source, target -> java.nio.file.Files.move(source, target) },
+    ): Pair<DatabaseLocation, LegacyDataMigration.DatabaseResult?> {
+        val current = DatabaseLocation.OnDisk(File(dataDir, DATABASE_NAME))
+        if (legacyDir == null) return current to null
+        val result = LegacyDataMigration.migrateDatabase(legacyDir, dataDir, rename)
+        val location = when (result.state) {
+            LegacyDataMigration.DatabaseState.NONE,
+            LegacyDataMigration.DatabaseState.COMPLETE,
+            LegacyDataMigration.DatabaseState.DESTINATION_ALREADY_LIVE,
+            -> current
+            LegacyDataMigration.DatabaseState.RETRY_WITH_LEGACY -> DatabaseLocation.OnDisk(File(legacyDir, DATABASE_NAME))
+            LegacyDataMigration.DatabaseState.BLOCKED -> DatabaseLocation.InMemory
+        }
+        return location to result
+    }
+
+    private const val DATABASE_NAME = "latch_database"
 }
