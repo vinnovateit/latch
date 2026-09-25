@@ -7,7 +7,7 @@
     <string name="landing_latch_logo_content_description">Latch Logo</string>
     <string name="landing_vinnovateit_logo_content_description">VinnovateIT Logo</string>
     <string name="credentials_title">Credentials</string>
-    <string name="credentials_subtitle">Enter WiFi login credentials</string>
+    <string name="credentials_subtitle">Enter Wi-Fi login credentials</string>
     <string name="registration_number">Registration Number</string>
     <string name="password">Password</string>
     <string name="save_credentials">Save Credentials</string>
