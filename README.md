@@ -38,7 +38,7 @@ Before you start, make sure you have:
 
 ### Windows (desktop)
 
-1. Download `Latch-Setup.msi` from the [latest release](https://github.com/vinnovateit/latch/releases/latest)
+1. Download `LatchSetup.msi` from the [latest release](https://github.com/vinnovateit/latch/releases/latest)
 2. Run the installer and follow the setup wizard
 3. Launch Latch from the Start menu and enter your VIT hostel credentials
 
