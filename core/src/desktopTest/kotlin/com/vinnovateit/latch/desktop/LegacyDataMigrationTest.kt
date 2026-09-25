@@ -104,6 +104,32 @@ class LegacyDataMigrationTest {
     }
 
     @Test
+    fun `a journal that cannot be moved keeps the database with it`() {
+        write(legacy, "latch_database", "old db")
+        write(legacy, "latch_database-wal", "old wal")
+        write(legacy, "latch_database-shm", "old shm")
+        write(legacy, "settings.json", "old settings")
+        val lockedWal: (java.nio.file.Path, java.nio.file.Path) -> Unit = { source, target ->
+            if (source.fileName.toString() == "latch_database-wal") throw java.io.IOException("held open by a scanner")
+            java.nio.file.Files.move(source, target)
+        }
+
+        val result = LegacyDataMigration.migrate(legacy, current, lockedWal)
+
+        assertEquals(listOf("settings.json"), result.moved, "other files still move")
+        assertEquals(listOf("latch_database-wal", "latch_database-shm", "latch_database"), result.kept)
+        assertFalse(File(current, "latch_database").exists(), "the database must not move without its journal")
+        assertEquals("old db", File(legacy, "latch_database").readText())
+        assertEquals("old wal", File(legacy, "latch_database-wal").readText())
+
+        // Once the file is free, the next start moves the set together.
+        LegacyDataMigration.migrate(legacy, current)
+        for (name in listOf("latch_database", "latch_database-wal", "latch_database-shm")) {
+            assertTrue(File(current, name).exists(), "$name moved on the retry")
+        }
+    }
+
+    @Test
     fun `logs and unknown files stay behind`() {
         write(legacy, "logs/latch.0.log", "log")
         write(legacy, "Latch.exe", "binary")

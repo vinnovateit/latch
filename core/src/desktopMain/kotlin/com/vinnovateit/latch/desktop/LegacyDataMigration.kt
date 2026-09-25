@@ -5,6 +5,7 @@ import java.io.IOException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
+import java.nio.file.Path
 
 /**
  * Moves user data out of the directory Windows builds up to 1.4.2 kept it in.
@@ -41,7 +42,15 @@ internal object LegacyDataMigration {
         val isEmpty: Boolean get() = moved.isEmpty() && kept.isEmpty() && note == null
     }
 
-    fun migrate(from: File, to: File): Result {
+    /**
+     * [rename] is the move itself; tests replace it to simulate a file that
+     * cannot be moved (say, held open by a virus scanner).
+     */
+    fun migrate(
+        from: File,
+        to: File,
+        rename: (Path, Path) -> Unit = { source, target -> Files.move(source, target) },
+    ): Result {
         if (!from.isDirectory) return Result(emptyList(), emptyList())
         if (from.canonicalFile == to.canonicalFile) return Result(emptyList(), emptyList())
         to.mkdirs()
@@ -57,28 +66,41 @@ internal object LegacyDataMigration {
 
         val moved = mutableListOf<String>()
         val kept = mutableListOf<String>()
-        fun move(name: String) {
+        /** False only when the file is still in the old place and could not be moved. */
+        fun move(name: String): Boolean {
             val source = File(from, name)
-            if (!source.isFile) return
-            try {
-                Files.move(source.toPath(), File(to, name).toPath())
+            if (!source.isFile) return true
+            return try {
+                rename(source.toPath(), File(to, name).toPath())
                 moved += name
+                true
             } catch (_: FileAlreadyExistsException) {
                 kept += name
+                true
             } catch (_: NoSuchFileException) {
                 // Moved by another process a moment ago.
+                true
             } catch (_: IOException) {
                 kept += name
+                false
             }
         }
 
-        FILES.forEach(::move)
+        FILES.forEach { move(it) }
         // A database already in the new place is the live one; its journal
         // must never be joined by the old database's.
         if (File(to, DATABASE).exists()) {
             DATABASE_FILES.filter { File(from, it).isFile }.forEach { kept += it }
         } else {
-            DATABASE_FILES.forEach(::move)
+            // Stops at the first file that cannot be moved, so the database
+            // never leaves its journal behind within one run either: the rest
+            // stay together in the old place and the next start retries them.
+            for ((index, name) in DATABASE_FILES.withIndex()) {
+                if (!move(name)) {
+                    DATABASE_FILES.drop(index + 1).filter { File(from, it).isFile }.forEach { kept += it }
+                    break
+                }
+            }
         }
         return Result(moved, kept)
     }
