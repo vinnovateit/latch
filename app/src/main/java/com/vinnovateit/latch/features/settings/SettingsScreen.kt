@@ -32,13 +32,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Autorenew
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.Colorize
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.FormatPaint
 import androidx.compose.material.icons.rounded.LightMode
-import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Password
 import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material.icons.rounded.SettingsSystemDaydream
@@ -69,7 +67,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -77,7 +74,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -88,10 +84,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.common.ui.components.ExpressiveTopBarContent
-import com.vinnovateit.latch.platform.LatchAppGraph
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.features.settings.components.CustomColorPickerDialog
 import com.vinnovateit.latch.features.settings.components.parseHexOrNull
+import com.vinnovateit.latch.platform.LatchAppGraph
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -142,7 +138,6 @@ private fun SettingsTopBar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit) {
-  val context = LocalContext.current
   val haptic = LocalHapticFeedback.current
   val autoLogin by SettingsManager.autoLogin.collectAsStateWithLifecycle()
   val speedUnits by SettingsManager.speedUnits.collectAsStateWithLifecycle()
@@ -153,14 +148,12 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
   var showClearStatsSheet by remember { mutableStateOf(false) }
   var showAccentColorSheet by remember { mutableStateOf(false) }
   var showChartPaletteSheet by remember { mutableStateOf(false) }
-  var showPaletteStyleSheet by remember { mutableStateOf(false) }
 
   val useDynamicColors by SettingsManager.useDynamicColors.collectAsStateWithLifecycle()
   val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
   val useMonochrome by SettingsManager.useMonochrome.collectAsStateWithLifecycle()
   val accentColor by SettingsManager.accentColor.collectAsStateWithLifecycle()
   val chartPalette by SettingsManager.chartPalette.collectAsStateWithLifecycle()
-  val paletteStyle by SettingsManager.paletteStyle.collectAsStateWithLifecycle()
   val hapticsEnabled by SettingsManager.hapticsEnabled.collectAsStateWithLifecycle()
 
   val density = LocalDensity.current
@@ -174,7 +167,7 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
   val maxTopBarHeightPx = with(density) { maxTopBarHeight.toPx() }
 
   val topBarHeight = remember { Animatable(maxTopBarHeightPx) }
-  var collapseFraction by remember { mutableStateOf(0f) }
+  var collapseFraction by remember { mutableFloatStateOf(0f) }
 
   LaunchedEffect(topBarHeight.value) {
     collapseFraction = 1f - ((topBarHeight.value - minTopBarHeightPx) / (maxTopBarHeightPx - minTopBarHeightPx)).coerceIn(0f, 1f)
@@ -336,30 +329,6 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
                   },
                   onClick = { showAccentColorSheet = true }
                 )
-                Spacer(modifier = Modifier.height(3.dp))
-                SettingsItem(
-                  title = "Palette Style",
-                  subtitle = when (paletteStyle) {
-                    "TonalSpot" -> "Tonal Spot"
-                    "Expressive" -> "Expressive"
-                    "FruitSalad" -> "Fruit Salad"
-                    "Spritz" -> "Spritz"
-                    "Rainbow" -> "Rainbow"
-                    "Vibrant" -> "Vibrant"
-                    "Fidelity" -> "Fidelity"
-                    "Content" -> "Content"
-                    else -> paletteStyle
-                  },
-                  leadingIcon = {
-                    Icon(
-                      Icons.Rounded.Palette,
-                      contentDescription = null,
-                      tint = MaterialTheme.colorScheme.primary
-                    )
-                  },
-                  onClick = { showPaletteStyleSheet = true }
-                )
-                Spacer(modifier = Modifier.height(3.dp))
               }
             }
 
@@ -649,30 +618,6 @@ fun SettingsScreen(onBackClick: () -> Unit, onNavigateToCredentials: () -> Unit)
         showChartPaletteSheet = false
       },
       onDismiss = { showChartPaletteSheet = false }
-    )
-  }
-
-  if (showPaletteStyleSheet) {
-    val paletteOptions = listOf(
-      SelectionOption("TonalSpot", Icons.Rounded.Palette, "Tonal Spot"),
-      SelectionOption("Expressive", Icons.Rounded.Palette, "Expressive"),
-      SelectionOption("FruitSalad", Icons.Rounded.Palette, "Fruit Salad"),
-      SelectionOption("Spritz", Icons.Rounded.Palette, "Spritz"),
-      SelectionOption("Rainbow", Icons.Rounded.Palette, "Rainbow"),
-      SelectionOption("Vibrant", Icons.Rounded.Palette, "Vibrant"),
-      SelectionOption("Fidelity", Icons.Rounded.Palette, "Fidelity"),
-      SelectionOption("Content", Icons.Rounded.Palette, "Content")
-    )
-    SettingsSelectionBottomSheet(
-      title = "Palette Style",
-      description = "Choose the Material You palette algorithm",
-      options = paletteOptions,
-      selected = paletteStyle,
-      onSelect = {
-        SettingsManager.setPaletteStyle(it.label)
-        showPaletteStyleSheet = false
-      },
-      onDismiss = { showPaletteStyleSheet = false }
     )
   }
 }

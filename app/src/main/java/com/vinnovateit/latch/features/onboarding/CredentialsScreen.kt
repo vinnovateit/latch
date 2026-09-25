@@ -30,12 +30,17 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.VisualTransformation
@@ -43,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.core.view.WindowCompat
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.common.ui.LeafOverlay
+import com.vinnovateit.latch.common.util.TooltipHint
 import com.vinnovateit.latch.core.platform.android.StoredCredentials
 import com.vinnovateit.latch.features.home.MainActivity
 import com.vinnovateit.latch.ui.theme.LatchTheme
@@ -51,7 +57,11 @@ import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 private val REG_NO_REGEX = Regex("^[0-9]{2}[A-Z]{3}[0-9]{4}$")
 
 @Composable
-fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
+fun CredentialsScreen(
+    editMode: Boolean,
+    onCredentialsSaved: () -> Unit,
+    onBackClick: (() -> Unit)? = null
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var regNo by remember { mutableStateOf("") }
@@ -132,6 +142,29 @@ fun CredentialsScreen(editMode: Boolean, onCredentialsSaved: () -> Unit) {
             contentScale = ContentScale.Crop,
             alignment = Alignment.Center
         )
+
+        if (onBackClick != null) {
+            TooltipHint(tooltipText = "Back") {
+                FilledIconButton(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(start = 16.dp, top = 16.dp)
+                        .size(40.dp)
+                        .clip(CircleShape),
+                    onClick = onBackClick,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
 
         if (isLandscape) {
             // --- Landscape Layout ---

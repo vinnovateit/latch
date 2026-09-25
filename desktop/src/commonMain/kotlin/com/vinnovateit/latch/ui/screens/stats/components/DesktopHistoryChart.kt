@@ -3,9 +3,13 @@ package com.vinnovateit.latch.ui.screens.stats.components
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.defaultScrollbarStyle
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +28,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -42,12 +48,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -70,6 +79,7 @@ data class DesktopChartDetailState(
     val durationFormatted: String = "",
 )
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HistoryBarChart(
     chartItems: List<HistoryChartItem>,
@@ -78,6 +88,13 @@ fun HistoryBarChart(
     isAmoled: Boolean,
 ) {
     if (chartItems.isEmpty()) return
+
+    var isHovered by remember { mutableStateOf(false) }
+    val scrollbarAlpha by animateFloatAsState(
+        targetValue = if (isHovered) 1f else 0f,
+        animationSpec = tween(150),
+        label = "DesktopChartScrollbarAlpha",
+    )
 
     val todayIdx = remember(chartItems) {
         val todayKey = formatDate(System.currentTimeMillis(), "yyyy-MM-dd")
@@ -206,104 +223,137 @@ fun HistoryBarChart(
             )
         }
 
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val barWidth = 14.dp
-            val rowHeight = 160.dp
-            val barAreaHeight = 160.dp
-            val centerPadding = ((maxWidth - barWidth) / 2).coerceAtLeast(16.dp)
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+                .onPointerEvent(PointerEventType.Exit) { isHovered = false },
+        ) {
+            val barWidth = if (maxWidth > 700.dp) 18.dp else 14.dp
+            val barAreaHeight = if (maxWidth > 700.dp) 180.dp else 160.dp
+            val rowHeight = barAreaHeight + 20.dp
+            val centerPadding = ((maxWidth - barWidth) / 2).coerceIn(24.dp, 100.dp)
 
-            LazyRow(
-                state = lazyListState,
-                modifier = Modifier.height(rowHeight),
-                contentPadding = PaddingValues(horizontal = centerPadding),
-                flingBehavior = rememberSnapFlingBehavior(lazyListState = lazyListState),
-                horizontalArrangement = Arrangement.spacedBy(0.2.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                itemsIndexed(
-                    items = chartItems,
-                    key = { index, item ->
-                        when (item) {
-                            is HistoryChartItem.BarData -> "bar_${item.timestamp}_$index"
-                            is HistoryChartItem.MonthSeparator -> "month_${item.monthName}_$index"
-                            is HistoryChartItem.CollapsedMonth -> "collapsed_${item.monthName}_$index"
-                        }
-                    },
-                ) { idx, item ->
-                    when (item) {
-                        is HistoryChartItem.BarData -> {
-                            DesktopCanvasBar(
-                                modifier = Modifier.width(barWidth).fillMaxHeight(),
-                                usage = item.usage,
-                                maxUsage = { animatedMaxUsage },
-                                isSelected = (idx == selectedIndex),
-                                hasSelection = (selectedIndex != -1),
-                                isAmoled = isAmoled,
-                                barWidth = barWidth,
-                                barAreaHeight = barAreaHeight,
-                                dlColor = dlColor,
-                                ulColor = ulColor,
-                                onTap = {
-                                    selectedIndex = idx
-                                    displayedData = DesktopChartDetailState(
-                                        usage = item.usage,
-                                        label = item.formattedDate.ifBlank {
-                                            formatDate(item.timestamp, "EEEE, MMMM d, yyyy")
-                                        },
-                                        sessionCount = item.sessionCount,
-                                        durationFormatted = item.durationFormatted,
-                                    )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                LazyRow(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(rowHeight)
+                        .onPointerEvent(PointerEventType.Scroll) { event ->
+                            val delta = event.changes.firstOrNull()?.scrollDelta
+                            if (delta != null) {
+                                val scrollAmount = if (delta.x != 0f) delta.x else delta.y
+                                if (scrollAmount != 0f) {
                                     coroutineScope.launch {
-                                        val layoutInfo = lazyListState.layoutInfo
-                                        val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx }
-                                        if (targetItem != null) {
-                                            val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-                                            val itemCenter = targetItem.offset + targetItem.size / 2
-                                            val delta = (itemCenter - viewportCenter).toFloat()
-                                            if (kotlin.math.abs(delta) > 1f) {
-                                                lazyListState.animateScrollBy(
-                                                    value = delta,
-                                                    animationSpec = spring(
-                                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                                        stiffness = Spring.StiffnessMediumLow,
-                                                    ),
-                                                )
+                                        lazyListState.scrollBy(scrollAmount * 36f)
+                                    }
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        },
+                    contentPadding = PaddingValues(horizontal = centerPadding),
+                    flingBehavior = rememberSnapFlingBehavior(lazyListState = lazyListState),
+                    horizontalArrangement = Arrangement.spacedBy(0.2.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    itemsIndexed(
+                        items = chartItems,
+                        key = { index, item ->
+                            when (item) {
+                                is HistoryChartItem.BarData -> "bar_${item.timestamp}_$index"
+                                is HistoryChartItem.MonthSeparator -> "month_${item.monthName}_$index"
+                                is HistoryChartItem.CollapsedMonth -> "collapsed_${item.monthName}_$index"
+                            }
+                        },
+                    ) { idx, item ->
+                        when (item) {
+                            is HistoryChartItem.BarData -> {
+                                DesktopCanvasBar(
+                                    modifier = Modifier.width(barWidth).fillMaxHeight(),
+                                    usage = item.usage,
+                                    maxUsage = { animatedMaxUsage },
+                                    isSelected = (idx == selectedIndex),
+                                    hasSelection = (selectedIndex != -1),
+                                    isAmoled = isAmoled,
+                                    barWidth = barWidth,
+                                    barAreaHeight = barAreaHeight,
+                                    dlColor = dlColor,
+                                    ulColor = ulColor,
+                                    onTap = {
+                                        selectedIndex = idx
+                                        displayedData = DesktopChartDetailState(
+                                            usage = item.usage,
+                                            label = item.formattedDate.ifBlank {
+                                                formatDate(item.timestamp, "EEEE, MMMM d, yyyy")
+                                            },
+                                            sessionCount = item.sessionCount,
+                                            durationFormatted = item.durationFormatted,
+                                        )
+                                        coroutineScope.launch {
+                                            val layoutInfo = lazyListState.layoutInfo
+                                            val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx }
+                                            if (targetItem != null) {
+                                                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                                                val itemCenter = targetItem.offset + targetItem.size / 2
+                                                val delta = (itemCenter - viewportCenter).toFloat()
+                                                if (kotlin.math.abs(delta) > 1f) {
+                                                    lazyListState.animateScrollBy(
+                                                        value = delta,
+                                                        animationSpec = spring(
+                                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                                            stiffness = Spring.StiffnessMediumLow,
+                                                        ),
+                                                    )
+                                                }
                                             }
                                         }
-                                    }
-                                },
-                            )
-                        }
-                        is HistoryChartItem.MonthSeparator -> {
-                            Box(
-                                modifier = Modifier.fillMaxHeight().padding(horizontal = 8.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = item.monthName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    modifier = Modifier.rotate(-90f),
+                                    },
                                 )
                             }
-                        }
-                        is HistoryChartItem.CollapsedMonth -> {
-                            Box(
-                                modifier = Modifier.fillMaxHeight().padding(horizontal = 8.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = item.monthName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    modifier = Modifier.rotate(-90f),
-                                )
+                            is HistoryChartItem.MonthSeparator -> {
+                                Box(
+                                    modifier = Modifier.fillMaxHeight().padding(horizontal = 8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = item.monthName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        modifier = Modifier.rotate(-90f),
+                                    )
+                                }
+                            }
+                            is HistoryChartItem.CollapsedMonth -> {
+                                Box(
+                                    modifier = Modifier.fillMaxHeight().padding(horizontal = 8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = item.monthName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        modifier = Modifier.rotate(-90f),
+                                    )
+                                }
                             }
                         }
                     }
                 }
+
+                HorizontalScrollbar(
+                    adapter = rememberScrollbarAdapter(lazyListState),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = centerPadding, vertical = 4.dp)
+                        .graphicsLayer { alpha = scrollbarAlpha },
+                    style = defaultScrollbarStyle().copy(
+                        unhoverColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
+                        hoverColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                    ),
+                )
             }
         }
 

@@ -109,20 +109,19 @@ fun StatsList(
       }
     }
 
-    item {
-      Text(
-        text = "Today's Sessions",
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onBackground,
-        textAlign = TextAlign.Left,
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 16.dp, vertical = 8.dp)
-      )
-    }
-
     if (todaySessions.isNotEmpty()) {
+      item {
+        Text(
+          text = "Today's Sessions",
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.Bold,
+          color = MaterialTheme.colorScheme.onBackground,
+          textAlign = TextAlign.Left,
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+      }
       itemsIndexed(todaySessions, key = { index, session -> "today_${session.loginTime}_$index" }) { index, session ->
         TodaySessionListItem(
           session = session,
@@ -131,23 +130,6 @@ fun StatsList(
           dlColor = dlColor,
           ulColor = ulColor
         )
-      }
-    } else {
-      item {
-        Surface(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-          shape = RoundedCornerShape(16.dp),
-          color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ) {
-          Text(
-            text = "No active portal sessions recorded today.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(16.dp)
-          )
-        }
       }
     }
   }

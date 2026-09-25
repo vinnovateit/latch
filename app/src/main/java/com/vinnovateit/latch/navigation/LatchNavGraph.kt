@@ -181,7 +181,8 @@ fun LatchNavGraph(
                     onCredentialsSaved = {
                         LatchAppGraph.triggerHistorySync(force = true)
                         triggerBack()
-                    }
+                    },
+                    onBackClick = triggerBack
                 )
             }
         }

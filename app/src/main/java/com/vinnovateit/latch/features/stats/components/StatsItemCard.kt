@@ -160,23 +160,22 @@ fun DayAggregateListItem(
     ListItem(
       modifier = Modifier.fillMaxWidth(),
       content = {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          modifier = Modifier.fillMaxWidth()
+        ) {
           Text(
             text = record.dateFormatted,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
-            color = if (record.isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            color = if (record.isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.align(Alignment.CenterStart)
           )
-          Spacer(modifier = Modifier.width(6.dp))
-          Surface(
-            shape = RoundedCornerShape(4.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
-          ) {
+          if (record.durationFormatted.isNotBlank()) {
             Text(
-              text = if (record.sessionCount == 1) "1 session" else "${record.sessionCount} sessions",
+              text = record.durationFormatted,
               style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.onSecondaryContainer,
-              modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+              modifier = Modifier.align(Alignment.Center)
             )
           }
         }
@@ -203,13 +202,6 @@ fun DayAggregateListItem(
               "${record.uploadFormatted.first} ${record.uploadFormatted.second}",
               style = MaterialTheme.typography.labelSmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-          }
-          if (record.durationFormatted.isNotBlank()) {
-            Text(
-              text = record.durationFormatted,
-              style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.outline
             )
           }
         }

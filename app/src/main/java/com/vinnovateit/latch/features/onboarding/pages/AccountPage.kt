@@ -31,13 +31,15 @@ import com.vinnovateit.latch.ui.theme.SatoshiFontFamily
 @Composable
 fun SetUpAccountPage(
     slide: SlideContent,
+    credentialsExist: Boolean = false,
     onCredentialsClick: () -> Unit
 ) {
     val context = LocalContext.current
-    var credentialsExist by remember { mutableStateOf(false) }
+    var hasCreds by remember(credentialsExist) { mutableStateOf(credentialsExist || StoredCredentials.credentialsExist(context)) }
 
-    LaunchedEffect(Unit) {
-        credentialsExist = StoredCredentials.credentialsExist(context)
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        hasCreds = StoredCredentials.credentialsExist(context)
+        onPauseOrDispose { }
     }
 
     Column(
@@ -89,15 +91,22 @@ fun SetUpAccountPage(
 
             Button(
                 onClick = onCredentialsClick,
-                enabled = !credentialsExist,
+                colors = if (hasCreds) {
+                    androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                } else {
+                    androidx.compose.material3.ButtonDefaults.buttonColors()
+                },
                 contentPadding = PaddingValues(horizontal = 28.dp, vertical = 14.dp)
             ) {
-                if (credentialsExist) {
+                if (hasCreds) {
                     Icon(Icons.Rounded.Check, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text(
-                    text = if (credentialsExist) "Credentials Set" else "Set Up Credentials",
+                    text = if (hasCreds) "Credentials Set" else "Set Up Credentials",
                     fontFamily = SatoshiFontFamily,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
@@ -140,26 +149,39 @@ fun SetUpAccountPage(
 
 
 @Composable
-fun SetUpAccountPageLandscape(slide: SlideContent, onCredentialsClick: () -> Unit) {
+fun SetUpAccountPageLandscape(
+    slide: SlideContent,
+    credentialsExist: Boolean = false,
+    onCredentialsClick: () -> Unit
+) {
     val context = LocalContext.current
-    var credentialsExist by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        credentialsExist = StoredCredentials.credentialsExist(context)
+    var hasCreds by remember(credentialsExist) { mutableStateOf(credentialsExist || StoredCredentials.credentialsExist(context)) }
+
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        hasCreds = StoredCredentials.credentialsExist(context)
+        onPauseOrDispose { }
     }
 
     PageScaffoldLandscape(slide) {
         Spacer(modifier = Modifier.height(24.dp))
         Button(
             onClick = onCredentialsClick,
-            enabled = !credentialsExist,
+            colors = if (hasCreds) {
+                androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            } else {
+                androidx.compose.material3.ButtonDefaults.buttonColors()
+            },
             contentPadding = PaddingValues(horizontal = 28.dp, vertical = 14.dp)
         ) {
-            if (credentialsExist) {
+            if (hasCreds) {
                 Icon(Icons.Rounded.Check, null)
                 Spacer(Modifier.width(8.dp))
             }
             Text(
-                if (credentialsExist) "Credentials Set" else "Set Up Credentials",
+                if (hasCreds) "Credentials Set" else "Set Up Credentials",
                 fontFamily = SatoshiFontFamily,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold

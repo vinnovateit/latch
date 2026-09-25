@@ -18,17 +18,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForwardIos
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFloatingActionButton
 import androidx.compose.material3.Surface
@@ -53,6 +58,7 @@ fun LatchSetupBottomBar(
     pagerState: PagerState,
     onNextClicked: () -> Unit,
     onFinishClicked: () -> Unit,
+    onBackClicked: (() -> Unit)? = null,
     isFinishButtonEnabled: Boolean
 ) {
     val morphAnimationSpec = tween<Float>(durationMillis = 600, easing = FastOutSlowInEasing)
@@ -113,26 +119,46 @@ fun LatchSetupBottomBar(
                         if (currentPage == 0) {
                             VinnovateITLogo(modifier = Modifier.padding(start = 10.dp))
                         } else {
-                            Text(
-                                text = "Step $currentPage of ${pagerState.pageCount - 1}",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontFamily = SatoshiFontFamily,
-                                modifier = Modifier.padding(start = 16.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (onBackClicked != null) {
+                                    IconButton(
+                                        onClick = onBackClicked,
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                            contentDescription = "Back",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                Text(
+                                    text = "Step $currentPage of ${pagerState.pageCount - 1}",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontFamily = SatoshiFontFamily,
+                                    modifier = Modifier.padding(start = if (onBackClicked != null) 0.dp else 16.dp)
+                                )
+                            }
                         }
                     }
                 }
 
                 val isLastPage = pagerState.currentPage == pagerState.pageCount - 1
                 val containerColor = if (!isFinishButtonEnabled) { MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) } else { MaterialTheme.colorScheme.primaryContainer }
-                val contentColor = if (!isFinishButtonEnabled) { MaterialTheme.colorScheme.onSurface.copy() } else { MaterialTheme.colorScheme.onPrimaryContainer }
+                val contentColor = if (!isFinishButtonEnabled) { MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) } else { MaterialTheme.colorScheme.onPrimaryContainer }
 
                 MediumFloatingActionButton(
                     onClick = {
-                        if (!isFinishButtonEnabled) return@MediumFloatingActionButton
-                        if (isLastPage) { onFinishClicked() } else { onNextClicked() }
+                        if (isLastPage) {
+                            if (isFinishButtonEnabled) onFinishClicked()
+                        } else {
+                            onNextClicked()
+                        }
                     },
                     shape = RoundedCornerShape(
                         topStart = animatedTopStart.toInt().dp,
@@ -178,6 +204,7 @@ fun LandscapeFloatingNavControls(
     pagerState: PagerState,
     onNextClicked: () -> Unit,
     onFinishClicked: () -> Unit,
+    onBackClicked: (() -> Unit)? = null,
     isFinishButtonEnabled: Boolean
 ) {
     val morphAnimationSpec = tween<Float>(durationMillis = 600, easing = FastOutSlowInEasing)
@@ -230,26 +257,46 @@ fun LandscapeFloatingNavControls(
                 if (currentPage == 0) {
                     VinnovateITLogo(modifier = Modifier.padding(start = 10.dp))
                 } else {
-                    Text(
-                        text = "Step $currentPage of ${pagerState.pageCount - 1}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = SatoshiFontFamily
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (onBackClicked != null) {
+                            IconButton(
+                                onClick = onBackClicked,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(
+                            text = "Step $currentPage of ${pagerState.pageCount - 1}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = SatoshiFontFamily
+                        )
+                    }
                 }
             }
         }
 
         val isLastPage = pagerState.currentPage == pagerState.pageCount - 1
-        val containerColor = if (!isFinishButtonEnabled) { MaterialTheme.colorScheme.onSurface } else { MaterialTheme.colorScheme.primaryContainer }
-        val contentColor = if (!isFinishButtonEnabled) { MaterialTheme.colorScheme.onSurface.copy() } else { MaterialTheme.colorScheme.onPrimaryContainer }
+        val containerColor = if (!isFinishButtonEnabled) { MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) } else { MaterialTheme.colorScheme.primaryContainer }
+        val contentColor = if (!isFinishButtonEnabled) { MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) } else { MaterialTheme.colorScheme.onPrimaryContainer }
 
         // --- Button updated to MediumFloatingActionButton with animation modifiers ---
         MediumFloatingActionButton(
             onClick = {
-                if (!isFinishButtonEnabled) return@MediumFloatingActionButton
-                if (isLastPage) { onFinishClicked() } else { onNextClicked() }
+                if (isLastPage) {
+                    if (isFinishButtonEnabled) onFinishClicked()
+                } else {
+                    onNextClicked()
+                }
             },
             shape = RoundedCornerShape(
                 topStart = animatedTopStart.toInt().dp,

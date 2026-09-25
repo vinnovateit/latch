@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -51,6 +52,20 @@ fun DesktopOnboardingScreen(
     pagerState: PagerState = rememberPagerState(initialPage = 0, pageCount = { 6 }),
 ) {
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(pagerState.isScrollInProgress, pagerState.targetPage, hasCredentials) {
+        if (pagerState.isScrollInProgress && pagerState.targetPage > 3 && !hasCredentials) {
+            scope.launch { pagerState.scrollToPage(3) }
+        }
+    }
+
+    val onBackClicked: () -> Unit = {
+        scope.launch {
+            if (pagerState.currentPage > 0) {
+                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+            }
+        }
+    }
 
     val slides = remember {
         listOf(
@@ -130,17 +145,22 @@ fun DesktopOnboardingScreen(
                 isFinishButtonEnabled = hasCredentials,
                 onNextClicked = {
                     scope.launch {
+                        if (pagerState.currentPage == 3 && !hasCredentials) {
+                            return@launch
+                        }
                         if (pagerState.currentPage < slides.size - 1) {
                             pagerState.animateScrollToPage(pagerState.currentPage + 1)
                         }
                     }
                 },
                 onFinishClicked = onComplete,
+                onBackClicked = onBackClicked,
             )
         },
     ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = true,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),

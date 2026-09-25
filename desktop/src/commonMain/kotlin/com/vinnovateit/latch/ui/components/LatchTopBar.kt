@@ -121,14 +121,14 @@ internal fun LatchHomeTopBar(
             }
         },
         actions = {
-            // Menu icon with matching 40dp circular ripple
+            // Menu icon
             Box {
-                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = LatchIcons.Menu,
                         contentDescription = "Menu",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(26.dp),
                     )
                 }
                 DropdownMenu(
@@ -173,9 +173,6 @@ internal fun LatchHomeTopBar(
                     )
                 }
             }
-
-            // Reserve space for static WindowControlButtons overlay (100dp)
-            Spacer(Modifier.width(100.dp))
         },
     )
 }
@@ -195,7 +192,7 @@ internal fun LatchDetailHeader(
         modifier = modifier
             .fillMaxWidth()
             .height(64.dp)
-            .padding(start = 12.dp),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
@@ -233,9 +230,6 @@ internal fun LatchDetailHeader(
         if (actions != null) {
             actions()
         }
-
-        // Reserve space for static WindowControlButtons overlay (100dp)
-        Spacer(Modifier.width(100.dp))
     }
 }
 
