@@ -704,6 +704,7 @@ fun HowItWorksBottomSheet(onDismiss: () -> Unit) {
                 text = "How it Works",
                 style = MaterialTheme.typography.headlineMedium,
                 fontFamily = ModernizFontFamily,
+                color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 32.dp)

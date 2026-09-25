@@ -692,6 +692,7 @@ fun SettingsSelectionBottomSheet(
           fontWeight = FontWeight.Bold,
           fontFamily = ModernizFontFamily
         ),
+        color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(horizontal = 16.dp)
       )
       Spacer(Modifier.height(16.dp))
@@ -755,6 +756,15 @@ fun SettingsActionBottomSheet(
             fontWeight = FontWeight.ExtraBold,
             fontFamily = ModernizFontFamily
           ),
+          color = MaterialTheme.colorScheme.primary,
+          textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+          description,
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.padding(horizontal = 24.dp),
           textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
         Spacer(Modifier.height(24.dp))

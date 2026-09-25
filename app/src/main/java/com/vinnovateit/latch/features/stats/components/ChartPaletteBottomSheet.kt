@@ -58,6 +58,7 @@ fun ChartPaletteBottomSheet(
                     fontWeight = FontWeight.Bold,
                     fontFamily = ModernizFontFamily
                 ),
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
 
