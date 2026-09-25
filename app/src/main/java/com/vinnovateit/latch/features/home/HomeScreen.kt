@@ -566,7 +566,6 @@ fun TopBarSection(
 
     TopAppBar(
         modifier = modifier,
-        windowInsets = WindowInsets(0.dp),
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
             scrolledContainerColor = Color.Transparent,
@@ -574,6 +573,7 @@ fun TopBarSection(
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 4.dp),
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_latch),
