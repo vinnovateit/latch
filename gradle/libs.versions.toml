@@ -25,11 +25,11 @@ foundationVersion = "1.12.0"
 # --- :desktop (Compose Multiplatform / JVM) ---
 # Kept separate from the Android versions above: the desktop module resolves the
 # multiplatform artifact variants, which are versioned independently.
-composeMultiplatform = "1.12.0"
+composeMultiplatform = "1.12.1"
 # Explicitly NOT compose.material3 (which tracks composeMultiplatform). The
 # desktop UI uses expressive APIs -- LoadingIndicator, ExperimentalMaterial3-
 # ExpressiveApi -- that only exist in the alpha line.
-composeMaterial3Mp = "1.12.0-alpha03"
+composeMaterial3Mp = "1.13.0-alpha01"
 ksp = "2.3.12"
 lifecycleMp = "2.11.0"
 kotlinxCoroutines = "1.11.0"
