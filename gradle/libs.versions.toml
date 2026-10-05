@@ -35,7 +35,7 @@ lifecycleMp = "2.11.0"
 kotlinxCoroutines = "1.11.0"
 roomKmp = "2.8.5"
 sqliteBundled = "2.7.0"
-oshi = "7.6.1"
+oshi = "7.7.0"
 jna = "5.19.1"
 slf4jSimple = "2.0.19"
 
