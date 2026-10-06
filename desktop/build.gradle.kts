@@ -222,3 +222,52 @@ tasks.register<Tar>("packageReleaseTarGz") {
         into("latch-$latchVersion")
     }
 }
+
+val packageWindowsBootstrapper = tasks.register("packageWindowsBootstrapper") {
+    group = "compose desktop"
+    description = "Builds the lightweight version-independent Windows bootstrapper (LatchSetup.exe)"
+    onlyIf {
+        System.getProperty("os.name").contains("Windows", ignoreCase = true)
+    }
+    doLast {
+        val outDir = layout.buildDirectory.dir("distributions").get().asFile
+        outDir.mkdirs()
+        val csc = File(System.getenv("SystemRoot") ?: "C:\\Windows", "Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe")
+        if (!csc.exists()) {
+            throw GradleException("csc.exe not found at ${csc.absolutePath}")
+        }
+        val outExe = File(outDir, "LatchSetup.exe")
+        val srcDir = rootProject.file("installer/windows/src")
+        val sources = srcDir.listFiles { _, name -> name.endsWith(".cs") } ?: emptyArray()
+
+        val cmd = listOf(
+            csc.absolutePath,
+            "/nologo",
+            "/target:winexe",
+            "/optimize+",
+            "/out:${outExe.absolutePath}",
+            "/r:System.dll,System.Drawing.dll,System.Windows.Forms.dll"
+        ) + sources.map { it.absolutePath }
+
+        val process = ProcessBuilder(cmd).inheritIO().start()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) {
+            throw GradleException("csc.exe failed with exit code $exitCode")
+        }
+    }
+}
+
+val packageLinuxBootstrapper = tasks.register("packageLinuxBootstrapper") {
+    group = "compose desktop"
+    description = "Packages the lightweight version-independent Linux bootstrapper (LatchSetup)"
+    doLast {
+        val outDir = layout.buildDirectory.dir("distributions").get().asFile
+        outDir.mkdirs()
+        val srcFile = rootProject.file("installer/linux/LatchSetup")
+        val outFile = File(outDir, "LatchSetup")
+        srcFile.copyTo(outFile, overwrite = true)
+        outFile.setExecutable(true, false)
+    }
+}
+
+

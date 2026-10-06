@@ -31,3 +31,4 @@ trace_processor
 release-notes.md
 # Flat staging directory the release workflow uploads artifacts from
 staging/
+installer/windows/bin/

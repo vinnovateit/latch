@@ -2,43 +2,53 @@
 set -e
 
 # ==============================================================================
-# Latch Universal Linux Installer Script
-# Usage: curl -fsSL https://latch.vinnovateit.com/install.sh | sh
-# Options:
-#   sh install.sh --uninstall   # Removes Latch Desktop from system or user path
-#   sh install.sh --reinstall   # Forces re-download and reinstall
-#   sh install.sh --update      # Installs latest release
-#   sh install.sh --launch      # Launches installed Latch
-#
-# To install from a local tarball instead of downloading the latest release:
-#   LATCH_LOCAL_TAR=/path/to/latch-custom-linux-x64.tar.gz sh install.sh
+# Latch Universal Linux Bootstrapper Installer
+# Standalone executable installer for Latch Desktop on Linux.
+# Features:
+#   - Auto-detection of existing Latch installations
+#   - GUI mode via Zenity if display is available; terminal fallback
+#   - Resilient 4-thread parallel chunk download with resume
+#   - Automatic reconnect retries on transient connection drops
+#   - SHA-256 integrity verification
+#   - Credential store & Secret Service keyring wipe on uninstall
 # ==============================================================================
 
 REPO="vinnovateit/latch"
-
 ACTION="install"
+FORCE_TERMINAL=0
+
 for arg in "$@"; do
     case "$arg" in
         --uninstall|-u) ACTION="uninstall" ;;
         --reinstall|-r) ACTION="reinstall" ;;
         --update) ACTION="update" ;;
         --launch|-l) ACTION="launch" ;;
+        --terminal|-t) FORCE_TERMINAL=1 ;;
         --help|-h)
-            echo "Usage: install.sh [OPTIONS]"
+            echo "Usage: LatchSetup [OPTIONS]"
             echo "Options:"
-            echo "  -u, --uninstall   Uninstall Latch Desktop"
+            echo "  -u, --uninstall   Uninstall Latch Desktop and wipe stored credentials"
             echo "  -r, --reinstall   Force re-download and reinstall"
             echo "      --update      Update Latch to latest release"
             echo "  -l, --launch      Launch installed Latch Desktop"
+            echo "  -t, --terminal    Force terminal mode (disable GUI dialogs)"
             echo "  -h, --help        Show this help message"
             exit 0
             ;;
     esac
 done
 
+# Detect GUI capability
+USE_GUI=0
+if [ "$FORCE_TERMINAL" -eq 0 ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v zenity >/dev/null 2>&1; then
+    USE_GUI=1
+fi
+
 # Detect existing installation
 IS_INSTALLED=0
 INSTALLED_LOCATION=""
+INSTALLED_VERSION=""
+
 if [ -x "/opt/latch/bin/Latch" ]; then
     IS_INSTALLED=1
     INSTALLED_LOCATION="system"
@@ -48,6 +58,12 @@ elif [ -x "$HOME/.local/share/latch/bin/Latch" ]; then
 fi
 
 do_uninstall() {
+    if [ "$USE_GUI" -eq 1 ]; then
+        if ! zenity --question --title="Uninstall Latch" --text="Are you sure you want to uninstall Latch Desktop?" --ok-label="Uninstall" --cancel-label="Cancel" 2>/dev/null; then
+            exit 0
+        fi
+    fi
+
     echo "==== Uninstalling Latch Desktop ===="
     REMOVED=0
 
@@ -82,17 +98,19 @@ do_uninstall() {
 
     if [ "$REMOVED" -eq 1 ]; then
         echo "==== Latch Desktop successfully uninstalled! ===="
+        if [ "$USE_GUI" -eq 1 ]; then
+            zenity --info --title="Uninstall Complete" --text="Latch Desktop was uninstalled successfully" 2>/dev/null || true
+        fi
     else
         echo "No existing Latch Desktop installation found to remove."
+        if [ "$USE_GUI" -eq 1 ]; then
+            zenity --info --title="Uninstall" --text="No existing Latch Desktop installation found" 2>/dev/null || true
+        fi
     fi
     exit 0
 }
 
-if [ "$ACTION" = "uninstall" ]; then
-    do_uninstall
-fi
-
-if [ "$ACTION" = "launch" ]; then
+do_launch() {
     if [ "$INSTALLED_LOCATION" = "system" ]; then
         exec /opt/latch/bin/Latch
     elif [ "$INSTALLED_LOCATION" = "user" ]; then
@@ -101,31 +119,55 @@ if [ "$ACTION" = "launch" ]; then
         exec latch
     else
         echo "ERROR: Latch Desktop is not installed." >&2
+        if [ "$USE_GUI" -eq 1 ]; then
+            zenity --error --title="Launch Failed" --text="Latch Desktop is not installed" 2>/dev/null || true
+        fi
         exit 1
+    fi
+}
+
+if [ "$ACTION" = "uninstall" ]; then
+    do_uninstall
+fi
+
+if [ "$ACTION" = "launch" ]; then
+    do_launch
+fi
+
+# Up-to-date handling if already installed
+if [ "$IS_INSTALLED" -eq 1 ] && [ "$ACTION" = "install" ]; then
+    if [ "$USE_GUI" -eq 1 ]; then
+        CHOICE=$(zenity --list --title="Latch Setup" --text="Latch Desktop is already installed ($INSTALLED_LOCATION)" \
+            --column="Action" --column="Description" \
+            "Launch" "Open Latch Desktop" \
+            "Reinstall" "Re-download and reinstall latest version" \
+            "Uninstall" "Remove Latch and wipe saved credentials" \
+            --hide-header --height=220 --width=380 2>/dev/null || true)
+
+        case "$CHOICE" in
+            Launch) do_launch ;;
+            Reinstall) ACTION="reinstall" ;;
+            Uninstall) do_uninstall ;;
+            *) exit 0 ;;
+        esac
+    elif [ -t 0 ] && [ $# -eq 0 ]; then
+        echo "==== Latch Desktop is already installed ($INSTALLED_LOCATION) ===="
+        echo "1) Update / Reinstall Latch"
+        echo "2) Launch Latch"
+        echo "3) Uninstall Latch"
+        echo "4) Exit"
+        printf "Choose an option [1-4]: "
+        read choice || choice=""
+        case "$choice" in
+            1) ACTION="reinstall" ;;
+            2) do_launch ;;
+            3) do_uninstall ;;
+            *) exit 0 ;;
+        esac
     fi
 fi
 
-# Interactive menu if already installed and run in terminal without explicit flags
-if [ -t 0 ] && [ $# -eq 0 ] && [ "$IS_INSTALLED" -eq 1 ]; then
-    echo "==== Latch Desktop is already installed ($INSTALLED_LOCATION) ===="
-    echo "1) Update / Reinstall Latch"
-    echo "2) Launch Latch"
-    echo "3) Uninstall Latch"
-    echo "4) Exit"
-    printf "Choose an option [1-4]: "
-    read choice || choice=""
-    case "$choice" in
-        1) ACTION="reinstall" ;;
-        2)
-            [ "$INSTALLED_LOCATION" = "system" ] && exec /opt/latch/bin/Latch
-            exec "$HOME/.local/share/latch/bin/Latch"
-            ;;
-        3) do_uninstall ;;
-        *) exit 0 ;;
-    esac
-fi
-
-# Prints the download URL, expected size, and expected SHA-256 of the newest release's desktop tarball.
+# Resolve release info from GitHub API with retry
 resolve_release_info() {
     RELEASE_JSON=""
     for attempt in 1 2 3; do
@@ -162,7 +204,7 @@ resolve_release_info() {
     return 0
 }
 
-# Resilient 4-thread parallel chunk downloader with resume and reconnect retries.
+# 4-thread parallel chunk downloader with resume and reconnect retries
 download_tarball() {
     url="$1"
     target="$2"
@@ -177,7 +219,6 @@ download_tarball() {
         size=$(curl -fsSLI "$url" 2>/dev/null | tr -d '\r' | grep -i '^Content-Length:' | tail -n1 | awk '{print $2}' || true)
     fi
 
-    # Fall back to single-stream if size is unknown or under 4MB
     if [ -z "$size" ] || [ "$size" -lt 4194304 ]; then
         single_fallback
         return $?
@@ -247,41 +288,41 @@ download_tarball() {
 
 echo "Initialising"
 
-CLEANUP_TMP_TAR=0
-if [ -n "$LATCH_LOCAL_TAR" ]; then
-    if [ ! -f "$LATCH_LOCAL_TAR" ]; then
-        echo "ERROR: LATCH_LOCAL_TAR is set but '$LATCH_LOCAL_TAR' does not exist." >&2
-        exit 1
+if ! command -v curl >/dev/null 2>&1; then
+    echo "ERROR: curl is required to download Latch." >&2
+    if [ "$USE_GUI" -eq 1 ]; then
+        zenity --error --title="Setup Error" --text="curl is required to download Latch" 2>/dev/null || true
     fi
-    echo "--> Using local tarball: $LATCH_LOCAL_TAR"
-    TMP_TAR="$LATCH_LOCAL_TAR"
-else
-    if ! command -v curl >/dev/null 2>&1; then
-        echo "ERROR: curl is required to download Latch." >&2
-        exit 1
-    fi
-    if ! TAR_URL=$(resolve_release_info); then
-        echo "ERROR: Could not find the latest Latch release on GitHub. Check your connection, or download the tarball from https://github.com/${REPO}/releases and install it with LATCH_LOCAL_TAR." >&2
-        exit 1
-    fi
+    exit 1
+fi
 
-    TMP_TAR=$(mktemp /tmp/latch-XXXXXX.tar.gz)
-    CLEANUP_TMP_TAR=1
-    echo "--> Downloading latest release from GitHub..."
-    download_tarball "$TAR_URL" "$TMP_TAR" "$EXPECTED_SIZE"
+if ! TAR_URL=$(resolve_release_info); then
+    echo "ERROR: Could not find the latest Latch release on GitHub." >&2
+    if [ "$USE_GUI" -eq 1 ]; then
+        zenity --error --title="Setup Error" --text="Could not find the latest Latch release on GitHub. Please check your network connection." 2>/dev/null || true
+    fi
+    exit 1
+fi
 
-    if [ -n "$EXPECTED_SHA256" ]; then
-        ACTUAL_SHA256=""
-        if command -v sha256sum >/dev/null 2>&1; then
-            ACTUAL_SHA256=$(sha256sum "$TMP_TAR" 2>/dev/null | awk '{print $1}')
-        elif command -v shasum >/dev/null 2>&1; then
-            ACTUAL_SHA256=$(shasum -a 256 "$TMP_TAR" 2>/dev/null | awk '{print $1}')
+TMP_TAR=$(mktemp /tmp/latch-XXXXXX.tar.gz)
+trap 'rm -f "$TMP_TAR" "${TMP_TAR}.part"*' EXIT
+
+echo "--> Downloading latest release..."
+download_tarball "$TAR_URL" "$TMP_TAR" "$EXPECTED_SIZE"
+
+if [ -n "$EXPECTED_SHA256" ]; then
+    ACTUAL_SHA256=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL_SHA256=$(sha256sum "$TMP_TAR" 2>/dev/null | awk '{print $1}')
+    elif command -v shasum >/dev/null 2>&1; then
+        ACTUAL_SHA256=$(shasum -a 256 "$TMP_TAR" 2>/dev/null | awk '{print $1}')
+    fi
+    if [ -n "$ACTUAL_SHA256" ] && [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+        echo "ERROR: SHA-256 verification failed (expected $EXPECTED_SHA256, got $ACTUAL_SHA256)" >&2
+        if [ "$USE_GUI" -eq 1 ]; then
+            zenity --error --title="Security Error" --text="SHA-256 verification failed. Download may be corrupted." 2>/dev/null || true
         fi
-        if [ -n "$ACTUAL_SHA256" ] && [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
-            echo "ERROR: SHA-256 verification failed (expected $EXPECTED_SHA256, got $ACTUAL_SHA256)" >&2
-            rm -f "$TMP_TAR"
-            exit 1
-        fi
+        exit 1
     fi
 fi
 
@@ -292,8 +333,8 @@ if [ $(id -u) -ne 0 ] && command -v sudo >/dev/null 2>&1; then
     fi
 fi
 
+echo "--> Installing..."
 if [ $(id -u) -eq 0 ] || [ $USE_SUDO -eq 1 ]; then
-    echo "--> Installing system-wide to /opt/latch..."
     SUDO_CMD=""
     [ $USE_SUDO -eq 1 ] && SUDO_CMD="sudo"
 
@@ -312,7 +353,6 @@ Type=Application
 Categories=Network;Utility;
 EOF
 else
-    echo "--> No sudo privileges given: installing user-local to $HOME/.local..."
     LOCAL_OPT="$HOME/.local/share/latch"
     LOCAL_BIN="$HOME/.local/bin"
     LOCAL_APPS="$HOME/.local/share/applications"
@@ -333,7 +373,11 @@ Categories=Network;Utility;
 EOF
 fi
 
-[ "$CLEANUP_TMP_TAR" -eq 1 ] && rm -f "$TMP_TAR"
-
 echo "==== Latch Desktop successfully installed! ===="
-echo "Launch from your application menu or run 'latch' in terminal."
+if [ "$USE_GUI" -eq 1 ]; then
+    if zenity --question --title="Installation Complete" --text="Latch Desktop was installed successfully!\n\nWould you like to launch Latch now?" --ok-label="Launch" --cancel-label="Close" 2>/dev/null; then
+        do_launch
+    fi
+else
+    echo "Launch from your application menu or run 'latch' in terminal."
+fi

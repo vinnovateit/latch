@@ -38,23 +38,27 @@ Before you start, make sure you have:
 
 ### Windows (desktop)
 
-1. Download `LatchSetup.msi` from the [latest release](https://github.com/vinnovateit/latch/releases/latest)
-2. Run the installer and follow the setup wizard
-3. Launch Latch from the Start menu and enter your VIT hostel credentials
+1. Download and run `LatchSetup.exe` from the [latest release](https://github.com/vinnovateit/latch/releases/latest). It automatically installs or updates Latch with a single click.
+2. Alternatively, install directly from PowerShell:
+
+   ```powershell
+   irm https://latch.vinnovateit.com/install.ps1 | iex
+   ```
+
+   Or download `LatchSetup.msi` for traditional offline MSI installation.
 
 ### Linux (desktop)
 
-1. Run the install script:
+1. Download and run `LatchSetup` from the [latest release](https://github.com/vinnovateit/latch/releases/latest). It automatically detects installed versions and handles installation/updates via GUI dialogs or terminal.
+2. Alternatively, run the universal install script directly from your terminal:
 
    ```sh
    curl -fsSL https://latch.vinnovateit.com/install.sh | sh
    ```
 
-   This installs Latch to `/opt/latch` (system-wide, if run with `sudo` access) or `~/.local/share/latch` (user-local otherwise), and registers a desktop entry.
+   This installs Latch to `/opt/latch` (system-wide with `sudo`) or `~/.local/share/latch` (user-local), and registers an application menu entry. Both installer methods support `--update`, `--reinstall`, and `--uninstall` (wiping stored credentials cleanly).
 
-2. Launch Latch from your application menu, or run `latch` in a terminal.
-
-   To install manually instead, download the `latch-<version>-linux-x64.tar.gz` archive from the [latest release](https://github.com/vinnovateit/latch/releases/latest) and extract it.
+3. Launch Latch from your application menu, or run `latch` in a terminal.
 
 ### Command-line app
 

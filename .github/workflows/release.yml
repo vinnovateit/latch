@@ -84,6 +84,7 @@ jobs:
         run: |
           ./gradlew \
             :desktop:packageReleaseTarGz \
+            :desktop:packageLinuxBootstrapper \
             :cli:packageCliTarGz \
             :cli:packageCliDeb \
             :cli:packageCliRpm
@@ -120,6 +121,8 @@ jobs:
         run: |
           mkdir -p staging
           cp desktop/build/distributions/*.tar.gz staging/
+          cp desktop/build/distributions/LatchSetup staging/LatchSetup
+          cp install.sh staging/install.sh
           cp cli/build/distributions/*.tar.gz staging/
           cp cli/build/distributions/*.deb staging/
           cp cli/build/distributions/*.rpm staging/
@@ -153,7 +156,7 @@ jobs:
         run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest"
 
       - name: Build Desktop MSI and portable CLI
-        run: .\gradlew.bat :desktop:packageReleaseMsi :cli:packageCliZip
+        run: .\gradlew.bat :desktop:packageReleaseMsi :cli:packageCliZip :desktop:packageWindowsBootstrapper
 
       - name: Smoke-test bundled CLI
         shell: pwsh
@@ -179,6 +182,8 @@ jobs:
             throw "Expected exactly one Desktop MSI, found $($msi.Count)"
           }
           Copy-Item $msi.FullName staging\LatchSetup.msi
+          Copy-Item desktop\build\distributions\LatchSetup.exe staging\LatchSetup.exe
+          Copy-Item install.ps1 staging\install.ps1
           # Updaters up to 1.4.2 only show an update when a Latch-*.msi is
           # published, so this carries the manual-install notice to them. It
           # is the notice text, not an installer: if they choose to download
