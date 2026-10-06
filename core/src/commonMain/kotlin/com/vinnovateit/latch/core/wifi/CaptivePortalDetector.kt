@@ -35,7 +35,7 @@ class CaptivePortalDetector(
         private const val TAG = "CaptivePortalDetector"
     }
 
-    fun probe(handle: NetworkHandle? = null): PortalProbeResult {
+    fun probeDetailed(handle: NetworkHandle? = null, timeoutMs: Long = 3000L): InternetProbeResult {
         val start = System.currentTimeMillis()
         logger.d(TAG, "Probing portal endpoint: $PROBE_URL (handle=${handle?.id ?: "default"})")
         var connection: java.net.HttpURLConnection? = null
@@ -43,33 +43,67 @@ class CaptivePortalDetector(
             val conn = transport.open(URL(PROBE_URL), handle)
             connection = conn
             conn.instanceFollowRedirects = false
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
+            conn.connectTimeout = timeoutMs.toInt()
+            conn.readTimeout = timeoutMs.toInt()
             conn.useCaches = false
             conn.connect()
 
             val responseCode = conn.responseCode
             val elapsed = System.currentTimeMillis() - start
             val location = conn.getHeaderField("Location")
+            val isRedirect = responseCode in 300..399 || location != null
 
             logger.d(TAG, "Portal probe completed in ${elapsed}ms: HTTP $responseCode ${if (location != null) "(Location: $location)" else ""}")
             if (responseCode == 204) {
-                PortalProbeResult.Online
+                InternetProbeResult(
+                    reachable = true,
+                    captivePortalSuspected = false,
+                    latencyMs = elapsed,
+                    statusCode = 204,
+                    redirectDetected = false,
+                )
             } else {
-                PortalProbeResult.Portal(responseCode, location)
+                InternetProbeResult(
+                    reachable = true,
+                    captivePortalSuspected = true,
+                    latencyMs = elapsed,
+                    statusCode = responseCode,
+                    redirectDetected = isRedirect,
+                )
             }
         } catch (e: UnknownHostException) {
             val elapsed = System.currentTimeMillis() - start
             logger.e(TAG, "Portal check failed after ${elapsed}ms: DNS resolution failed for $PROBE_URL (${e.message})")
-            PortalProbeResult.DnsBlocked
+            InternetProbeResult(
+                reachable = false,
+                captivePortalSuspected = false,
+                latencyMs = elapsed,
+                error = "DNS resolution failed",
+            )
         } catch (e: Exception) {
             val elapsed = System.currentTimeMillis() - start
             logger.e(TAG, "Portal check failed after ${elapsed}ms with exception: ${e::class.simpleName}: ${e.message}")
-            PortalProbeResult.Error(e.message)
+            InternetProbeResult(
+                reachable = false,
+                captivePortalSuspected = false,
+                latencyMs = elapsed,
+                error = e.message ?: e::class.simpleName,
+            )
         } finally {
             try {
                 connection?.disconnect()
             } catch (_: Throwable) {}
+        }
+    }
+
+    fun probe(handle: NetworkHandle? = null): PortalProbeResult {
+        val detailed = probeDetailed(handle)
+        return when {
+            detailed.statusCode == 204 -> PortalProbeResult.Online
+            detailed.error == "DNS resolution failed" -> PortalProbeResult.DnsBlocked
+            detailed.reachable && detailed.captivePortalSuspected ->
+                PortalProbeResult.Portal(detailed.statusCode ?: 200, null)
+            else -> PortalProbeResult.Error(detailed.error)
         }
     }
 }

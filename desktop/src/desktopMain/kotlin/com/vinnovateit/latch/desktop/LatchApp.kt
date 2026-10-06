@@ -95,6 +95,28 @@ class LatchApp private constructor(
             }
         }
 
+        runtime.monitor?.let { mon ->
+            scope.launch {
+                mon.state.collect { snapshot ->
+                    when (snapshot.state) {
+                        com.vinnovateit.latch.core.wifi.HostelConnectivityState.CAPTIVE_PORTAL ->
+                            notifier.showOngoing(APP_DISPLAY_NAME, "Hostel login required")
+                        com.vinnovateit.latch.core.wifi.HostelConnectivityState.AUTHENTICATING ->
+                            notifier.showOngoing(APP_DISPLAY_NAME, "Connecting to hostel network")
+                        com.vinnovateit.latch.core.wifi.HostelConnectivityState.VERIFYING ->
+                            notifier.showOngoing(APP_DISPLAY_NAME, "Verifying Internet access")
+                        com.vinnovateit.latch.core.wifi.HostelConnectivityState.DEGRADED ->
+                            notifier.showOngoing(APP_DISPLAY_NAME, "Connection degraded")
+                        com.vinnovateit.latch.core.wifi.HostelConnectivityState.RECOVERING ->
+                            notifier.showOngoing(APP_DISPLAY_NAME, "Reconnecting")
+                        com.vinnovateit.latch.core.wifi.HostelConnectivityState.FAILED ->
+                            notifier.showOngoing(APP_DISPLAY_NAME, "Authentication failed")
+                        else -> Unit
+                    }
+                }
+            }
+        }
+
         // Switch the radio back on if the user left Wi-Fi off, *then* probe.
         // enableWifi() shells out to PowerShell and waits for the adapter to
         // associate, so it must stay off the main thread; probing first would

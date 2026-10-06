@@ -51,14 +51,32 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
         val radioOn: Boolean?,
         val ssid: String?,
         val gateway: String?,
+        val connectivityLevel: WindowsConnectivityLevel = WindowsConnectivityLevel.Unknown,
+        val profileName: String? = null,
+        val isWlan: Boolean = true,
     )
 
     private var cached: WifiSnapshot? = null
     private var cachedAt: Long = 0
 
-    private fun invalidate() {
+    fun invalidate() {
         cached = null
         cachedAt = 0
+    }
+
+    fun queryWindowsNetworkInfo(forceRefresh: Boolean = false): WindowsNetworkInfo {
+        if (forceRefresh) invalidate()
+        val snap = snapshot()
+        return WindowsNetworkInfo(
+            adapterName = snap.adapterName,
+            adapterUp = snap.adapterUp,
+            radioOn = snap.radioOn,
+            ssid = snap.ssid,
+            gateway = snap.gateway,
+            connectivityLevel = snap.connectivityLevel,
+            profileName = snap.profileName,
+            isWlan = snap.isWlan,
+        )
     }
 
     /**
@@ -99,6 +117,12 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
         val script = """
             ${'$'}ErrorActionPreference = 'SilentlyContinue'
             $PS_AWAIT
+            [void][Windows.Networking.Connectivity.NetworkInformation, Windows.Networking.Connectivity, ContentType = WindowsRuntime]
+            ${'$'}cp = [Windows.Networking.Connectivity.NetworkInformation]::GetInternetConnectionProfile()
+            ${'$'}connLevel = if (${'$'}cp) { ${'$'}cp.GetNetworkConnectivityLevel().ToString() } else { 'None' }
+            ${'$'}cpName = if (${'$'}cp) { ${'$'}cp.ProfileName } else { '' }
+            ${'$'}isWlan = if (${'$'}cp) { if (${'$'}cp.IsWlanConnectionProfile) { '1' } else { '0' } } else { '0' }
+
             ${'$'}a = Get-NetAdapter -Physical | Where-Object { ${'$'}_.PhysicalMediaType -match '802.11' } | Select-Object -First 1
             ${'$'}name = if (${'$'}a) { ${'$'}a.Name } else { '' }
             ${'$'}up = if (${'$'}a -and ${'$'}a.Status -eq 'Up') { '1' } else { '0' }
@@ -109,17 +133,6 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
             } catch { ${'$'}radio = '' }
             ${'$'}ssid = ''
             ${'$'}src = ''
-            # The WLAN interface first. Get-NetConnectionProfile returns a
-            # *network profile* name, which is only incidentally the SSID: while
-            # Network Location Awareness has not classified the network it reads
-            # "Identifying..." instead, and on a captive portal -- the exact case
-            # this app exists for -- it can sit there indefinitely, because NLA
-            # cannot reach the internet to classify anything. netsh reports the
-            # real SSID throughout.
-            #
-            # Anchoring the label at line start is what keeps this off the BSSID
-            # line. The label itself is localized on some Windows builds, in
-            # which case this finds nothing and the profile name below is used.
             foreach (${'$'}line in (netsh wlan show interfaces)) {
               if (${'$'}line -match '^\s*SSID\s*:\s*(.+)${'$'}') { ${'$'}ssid = ${'$'}matches[1].Trim(); ${'$'}src = 'wlan'; break }
             }
@@ -132,12 +145,12 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
               ${'$'}r = Get-NetRoute -InterfaceAlias ${'$'}name -DestinationPrefix '0.0.0.0/0' | Select-Object -First 1
               if (${'$'}r) { ${'$'}gw = ${'$'}r.NextHop }
             }
-            Write-Output ("RESULT|" + ${'$'}name + "|" + ${'$'}up + "|" + ${'$'}radio + "|" + ${'$'}ssid + "|" + ${'$'}gw + "|" + ${'$'}src)
+            Write-Output ("RESULT|" + ${'$'}name + "|" + ${'$'}up + "|" + ${'$'}radio + "|" + ${'$'}ssid + "|" + ${'$'}gw + "|" + ${'$'}src + "|" + ${'$'}connLevel + "|" + ${'$'}cpName + "|" + ${'$'}isWlan)
         """.trimIndent()
 
         val result = runPowerShell(script)
         val snap = if (result == null) {
-            WifiSnapshot(null, false, null, null, null)
+            WifiSnapshot(null, false, null, null, null, WindowsConnectivityLevel.Unknown, null, true)
         } else {
             val parts = result.removePrefix("RESULT|").split('|')
             WifiSnapshot(
@@ -153,6 +166,9 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
                     source = parts.getOrNull(5)?.trim(),
                 ),
                 gateway = parts.getOrNull(4)?.trim()?.takeIf { it.isNotEmpty() },
+                connectivityLevel = WindowsConnectivityLevel.fromString(parts.getOrNull(6)),
+                profileName = parts.getOrNull(7)?.trim()?.takeIf { it.isNotEmpty() },
+                isWlan = parts.getOrNull(8)?.trim() != "0",
             )
         }
         cached = snap

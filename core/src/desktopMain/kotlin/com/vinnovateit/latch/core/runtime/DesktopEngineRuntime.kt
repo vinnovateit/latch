@@ -14,6 +14,12 @@ import com.vinnovateit.latch.core.stats.ThroughputMonitor
 import com.vinnovateit.latch.desktop.AppPaths
 import com.vinnovateit.latch.desktop.LegacyDataMigration
 import com.vinnovateit.latch.desktop.platform.DesktopPlatformServices
+import com.vinnovateit.latch.core.wifi.AutoLoginManager
+import com.vinnovateit.latch.core.wifi.CaptivePortalDetector
+import com.vinnovateit.latch.core.wifi.HostelConnectivityMonitor
+import com.vinnovateit.latch.desktop.platform.windows.LatchEngineHostelAuthenticator
+import com.vinnovateit.latch.desktop.platform.windows.WindowsHostelConnectivityMonitor
+import com.vinnovateit.latch.desktop.platform.windows.WindowsWifiPlatform
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +34,7 @@ class DesktopEngineRuntime private constructor(
     val database: LatchDatabase,
     val sessions: SessionRepository,
     val engine: LatchEngine,
+    val monitor: HostelConnectivityMonitor? = null,
 ) {
     private val started = AtomicBoolean(false)
     private val closed = AtomicBoolean(false)
@@ -38,11 +45,15 @@ class DesktopEngineRuntime private constructor(
 
     fun start() {
         check(!closed.get()) { "Runtime is closed." }
-        if (started.compareAndSet(false, true)) engine.start()
+        if (started.compareAndSet(false, true)) {
+            engine.start()
+            monitor?.start()
+        }
     }
 
     suspend fun close() {
         if (!closed.compareAndSet(false, true)) return
+        monitor?.stop()
         if (started.get()) engine.submitAndAwait(LatchCommand.Shutdown, ENGINE_SHUTDOWN_TIMEOUT_MS)
         // Both of these own coroutines that read and write the database, so they
         // have to stop before it closes underneath them.
@@ -92,11 +103,29 @@ class DesktopEngineRuntime private constructor(
             val portalClient = PortalHistoryClient(platform.httpTransport)
             val sessions = SessionRepository(database.statsDao(), ThroughputMonitor(platform.counters), portalClient = portalClient)
             sessions.initialize()
+
+            val monitor: HostelConnectivityMonitor? = if (AppPaths.isWindows && platform.wifi is WindowsWifiPlatform) {
+                val winWifi = platform.wifi
+                val autoLogin = AutoLoginManager(platform.httpTransport, platform.logger, platform.buildInfo)
+                val authenticator = LatchEngineHostelAuthenticator(autoLogin, platform.credentials, winWifi, platform.logger)
+                val detector = CaptivePortalDetector(platform.httpTransport, platform.logger)
+                WindowsHostelConnectivityMonitor(
+                    queryProvider = { winWifi.queryWindowsNetworkInfo() },
+                    probeProvider = { handle -> detector.probeDetailed(handle) },
+                    authenticator = authenticator,
+                    activeHandleProvider = { winWifi.activeHandle() },
+                    logger = platform.logger,
+                )
+            } else {
+                null
+            }
+
             val runtime = DesktopEngineRuntime(
                 platform = platform,
                 database = database,
                 sessions = sessions,
                 engine = LatchEngine(platform, sessions),
+                monitor = monitor,
             )
             if (syncHistoryOnStart) {
                 val userId = platform.credentials.userId()
