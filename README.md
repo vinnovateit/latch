@@ -170,6 +170,7 @@ To build it from source instead, see [Dev setup](#dev-setup) below.
    ./gradlew :desktop:packageReleaseRpm          # .rpm
    ./gradlew :desktop:packageReleaseAppImage     # AppImage
    ./gradlew :desktop:packageReleaseTarGz        # .tar.gz (Linux)
+   ./gradlew :desktop:packageReleaseApp          # .App (MacOS)
    ```
 
    Build artifacts land in `desktop/build/distributions/`.
