@@ -11,9 +11,9 @@ android {
     defaultConfig {
         applicationId = "com.vinnovateit.latch"
         minSdk = 26
-        versionCode = 7
+        versionCode = 9
         targetSdk = 37
-        versionName = "1.3"
+        versionName = "1.4.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
