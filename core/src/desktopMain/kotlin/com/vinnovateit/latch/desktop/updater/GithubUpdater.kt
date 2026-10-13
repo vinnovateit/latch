@@ -5,7 +5,9 @@ import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.desktop.AppPaths
+import com.vinnovateit.latch.desktop.platform.DesktopOs
 import com.vinnovateit.latch.desktop.platform.InstalledBuild
+import com.vinnovateit.latch.desktop.platform.currentDesktopOs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -32,6 +34,10 @@ private const val GITHUB_API = "https://api.github.com/repos/vinnovateit/latch/r
 // own release downloads. The API response is what vouches for the asset's
 // size and digest, so the URL it points at has to be the one it describes.
 private const val RELEASE_DOWNLOAD_PREFIX = "https://github.com/vinnovateit/latch/releases/download/"
+
+// Where a macOS user is sent to install an update by hand: this repository's
+// own release pages, and nowhere else the API response might point.
+private const val RELEASE_PAGE_PREFIX = "https://github.com/vinnovateit/latch/releases/tag/"
 /**
  * The Windows installer's release asset name, matched exactly.
  *
@@ -42,6 +48,9 @@ private const val RELEASE_DOWNLOAD_PREFIX = "https://github.com/vinnovateit/latc
  * them update once by hand. Must never start with "Latch-" again.
  */
 internal const val WINDOWS_PACKAGE_ASSET = "LatchSetup.msi"
+
+/** A release carries a macOS build when it has an asset with this suffix. */
+internal const val MAC_DISK_IMAGE_SUFFIX = ".dmg"
 private const val PIPE = 32 * 1024
 private const val TAG = "GithubUpdater"
 
@@ -58,6 +67,7 @@ private data class GithubRelease(
     val tag_name: String,
     val body: String,
     val assets: List<GithubAsset>,
+    val html_url: String? = null,
 )
 
 @Serializable
@@ -92,7 +102,7 @@ class GithubUpdater internal constructor(
     private val logger: Logger,
     private val http: UpdateHttp,
     private val updatesDir: () -> File,
-    private val isWindows: Boolean,
+    private val os: DesktopOs,
     /** Replaces the real msiexec/tar handoff in tests; null means the real one. */
     private val installerLauncher: ((File) -> Unit)?,
 ) {
@@ -101,9 +111,11 @@ class GithubUpdater internal constructor(
         logger = logger,
         http = UrlConnectionUpdateHttp,
         updatesDir = { AppPaths.updatesDir },
-        isWindows = AppPaths.isWindows,
+        os = currentDesktopOs(),
         installerLauncher = null,
     )
+
+    private val isWindows get() = os == DesktopOs.WINDOWS
 
     private val json = Json { ignoreUnknownKeys = true }
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -137,6 +149,10 @@ class GithubUpdater internal constructor(
         _state.value = UpdateState.Checking
         try {
             val release = fetchLatestRelease()
+            if (os == DesktopOs.MACOS) {
+                checkManually(release, today)
+                return@withContext
+            }
             val packageAsset = release.assets.find { asset ->
                 if (isWindows) {
                     asset.name == WINDOWS_PACKAGE_ASSET
@@ -182,6 +198,47 @@ class GithubUpdater internal constructor(
             logger.e(TAG, "Update check failed", e)
             _state.value = UpdateState.Error("Check failed: ${e.message ?: "Unknown error"}")
         }
+    }
+
+    /**
+     * macOS: discovery only. There is no in-app install -- replacing a signed,
+     * notarized Latch.app safely needs its own signature checks, which this
+     * updater does not have -- so the offer points at the release page and
+     * the user installs the new disk image by hand. [offer] stays null, so
+     * [download] and [installAndExit] have nothing to act on.
+     *
+     * Offered only when that release actually carries a macOS disk image.
+     */
+    private fun checkManually(release: GithubRelease, today: Long) {
+        val latestTag = release.tag_name.removePrefix("v")
+        val hasMacBuild = release.assets.any { it.name.endsWith(MAC_DISK_IMAGE_SUFFIX) }
+        val cmp = compareVersions(latestTag, buildInfo.versionName)
+        when {
+            !hasMacBuild -> {
+                logger.d(TAG, "Latest release $latestTag has no macOS build")
+                _state.value = UpdateState.UpToDate
+            }
+            cmp == null -> {
+                logger.e(TAG, "Could not compare versions: latest='$latestTag', current='${buildInfo.versionName}'")
+                _state.value = UpdateState.Error("Version check failed: unexpected version format")
+                return
+            }
+            cmp <= 0 -> {
+                logger.d(TAG, "Already up to date ($latestTag)")
+                _state.value = UpdateState.UpToDate
+            }
+            else -> {
+                val page = release.html_url?.takeIf { it.startsWith(RELEASE_PAGE_PREFIX) }
+                if (page == null) {
+                    logger.e(TAG, "Refusing release $latestTag: release page outside this repository")
+                    _state.value = UpdateState.Error("Update check failed: release metadata could not be verified")
+                    return
+                }
+                offer = null
+                _state.value = UpdateState.UpdateAvailable(latestTag, page, release.body, manualInstall = true)
+            }
+        }
+        SettingsManager.lastUpdateCheckEpochDay = today
     }
 
     private fun trustedAsset(asset: GithubAsset): TrustedAsset? {
@@ -369,6 +426,9 @@ class GithubUpdater internal constructor(
         a.toPath().toAbsolutePath().normalize() == b.toPath().toAbsolutePath().normalize()
 
     private fun launchInstaller(packageFile: File) {
+        // Unreachable through check(), which never makes a macOS offer to
+        // download; refused here as well so it can never become reachable.
+        check(os != DesktopOs.MACOS) { "macOS updates are installed by hand from the release page" }
         if (isWindows) {
             val script = writeRelaunchScript()
             val builder = ProcessBuilder("cmd", "/c", script.absolutePath)

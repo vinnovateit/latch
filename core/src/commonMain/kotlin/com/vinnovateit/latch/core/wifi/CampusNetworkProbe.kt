@@ -15,13 +15,15 @@ data class CampusNetworkState(
     val connected: Boolean,
     val online: Boolean,
     val ssid: String?,
+    /** From WifiPlatform.requiresKnownSsid: whether an unreadable [ssid] rules the network out. */
+    val requiresKnownSsid: Boolean = false,
 ) {
     /**
      * Latch's own definition of latched: real internet on a campus network,
      * i.e. someone has already cleared the portal. Real internet on a cafe
      * network is online but not latched.
      */
-    val latched: Boolean get() = online && isVitCampusSsid(ssid)
+    val latched: Boolean get() = online && isVitCampusSsid(ssid, unknownIsCampus = !requiresKnownSsid)
 }
 
 /**
@@ -38,9 +40,14 @@ suspend fun probeCampusNetwork(
     logger: Logger,
 ): CampusNetworkState = withContext(Dispatchers.IO) {
     val ssid = wifi.currentSsid()
-    if (!wifi.isConnectedToWifi()) return@withContext CampusNetworkState(false, false, ssid)
+    if (!wifi.isConnectedToWifi()) return@withContext CampusNetworkState(false, false, ssid, wifi.requiresKnownSsid)
 
     val detector = CaptivePortalDetector(transport, logger)
     val result = withTimeoutOrNull(PROBE_TIMEOUT_MS) { detector.probe(wifi.activeHandle()) }
-    CampusNetworkState(connected = true, online = result is PortalProbeResult.Online, ssid = ssid)
+    CampusNetworkState(
+        connected = true,
+        online = result is PortalProbeResult.Online,
+        ssid = ssid,
+        requiresKnownSsid = wifi.requiresKnownSsid,
+    )
 }

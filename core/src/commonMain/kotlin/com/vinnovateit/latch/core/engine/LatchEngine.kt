@@ -266,7 +266,7 @@ class LatchEngine(
 
         if (probeResult is PortalProbeResult.Online) {
             val ssid = platform.wifi.currentSsid()
-            if (!isVitCampusSsid(ssid)) {
+            if (!isCampusSsid(ssid)) {
                 logger.d(TAG, "[ConnectAnalysis] Network has 204 internet but SSID '$ssid' is not a VIT campus network; not latching.")
                 unlatch()
                 postStatus(
@@ -336,19 +336,26 @@ class LatchEngine(
         handleCaptivePortal(handle)
     }
 
+    /** The campus-SSID test, judging an unreadable SSID the way this platform requires. */
+    private fun isCampusSsid(ssid: String?): Boolean =
+        isVitCampusSsid(ssid, unknownIsCampus = !platform.wifi.requiresKnownSsid)
+
     /**
      * Gate before any credential-bearing request.
      */
     private suspend fun isTargetNetwork(): Boolean = withContext(Dispatchers.IO) {
         val ssid = platform.wifi.currentSsid()
         logger.d(TAG, "[ConnectAnalysis] Step 3/4: Target Network Verification: SSID='$ssid'")
-        if (!isVitCampusSsid(ssid)) {
+        if (!isCampusSsid(ssid)) {
             logger.w(TAG, "[ConnectAnalysis] SSID '$ssid' failed VIT campus match; refusing login.")
             return@withContext false
         }
-        if (isVitCampusSsid(ssid) && !ssid.isNullOrEmpty()) {
+        if (!ssid.isNullOrEmpty()) {
             return@withContext true
         }
+        // Only a platform that reads a null SSID as "unknown, don't block" gets
+        // here -- one with requiresKnownSsid was refused above -- and the portal
+        // host resolving is then the only evidence of the campus network.
 
         var resolves = withTimeoutOrNull(1500L) {
             runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess

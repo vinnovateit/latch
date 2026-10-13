@@ -5,8 +5,10 @@ import com.vinnovateit.latch.core.runtime.DesktopEngineRuntime
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.formatBitsPerSecond
 import com.vinnovateit.latch.core.stats.formatClockTime
+import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.desktop.platform.TrayNotifier
 import com.vinnovateit.latch.desktop.platform.linux.LinuxNotifier
+import com.vinnovateit.latch.desktop.platform.mac.MacWifiPlatform
 import com.vinnovateit.latch.desktop.platform.windows.WindowsBalloonNotifier
 import com.vinnovateit.latch.desktop.updater.GithubUpdater
 import kotlinx.coroutines.CoroutineScope
@@ -100,6 +102,11 @@ class LatchApp private constructor(
         // associate, so it must stay off the main thread; probing first would
         // just report "no Wi-Fi" and give up before the radio came up.
         scope.launch(Dispatchers.IO) {
+            // macOS hides the Wi-Fi network name without Location access, and
+            // Latch will not log in to a network it cannot name. Off the main
+            // thread: reading the current authorization can wait on locationd.
+            (platform.wifi as? MacWifiPlatform)?.requestNetworkNameAccess()
+
             if (!platform.wifi.isWifiEnabled()) {
                 val enabled = platform.wifi.enableWifi()
                 platform.logger.d(
@@ -169,8 +176,16 @@ class LatchApp private constructor(
     /**
      * Fetches the update and leaves it at "ready to install". Installing is the
      * user's next, separate decision -- see the "Install and restart" button.
+     *
+     * An update that can only be installed by hand (macOS) opens its release
+     * page instead; nothing is downloaded by the app.
      */
     fun downloadUpdate() {
+        val state = updater.state.value
+        if (state is UpdateState.UpdateAvailable && state.manualInstall) {
+            platform.systemActions.openUrl(state.downloadUrl)
+            return
+        }
         scope.launch { updater.download() }
     }
 

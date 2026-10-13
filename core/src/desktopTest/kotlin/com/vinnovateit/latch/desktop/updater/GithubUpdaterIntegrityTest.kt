@@ -5,6 +5,7 @@ import com.vinnovateit.latch.core.platform.InMemoryKeyValueStore
 import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
+import com.vinnovateit.latch.desktop.platform.DesktopOs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -82,7 +83,7 @@ class GithubUpdaterIntegrityTest {
             logger = logger,
             http = http,
             updatesDir = { updatesDir() },
-            isWindows = true,
+            os = DesktopOs.WINDOWS,
             installerLauncher = { launched += it },
         )
     }

@@ -388,7 +388,9 @@ internal fun UpdatePanel(
                         Spacer(Modifier.height(12.dp))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onDownloadUpdate) { Text("Download") }
+                        Button(onClick = onDownloadUpdate) {
+                            Text(if (state.manualInstall) "Open download page" else "Download")
+                        }
                         TextButton(onClick = onDismissUpdate) { Text("Not now") }
                     }
                 }

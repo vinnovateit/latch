@@ -1,6 +1,7 @@
 /*
  * Regenerates latch.ico, the icon jpackage burns into Latch.exe and uses for the
- * Start menu / desktop shortcuts the MSI creates.
+ * Start menu / desktop shortcuts the MSI creates, along with latch.png (Linux)
+ * and latch.icns (the macOS app bundle).
  *
  * Run from this directory with the JDK's single-file launcher -- no build step,
  * no dependency, and nothing to wire into Gradle:
@@ -27,6 +28,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -95,6 +97,10 @@ public final class GenerateIcon {
         System.out.println("Wrote " + out.toAbsolutePath() + " ("
             + Files.size(out) + " bytes, " + SIZES.length + " entries)");
         System.out.println("Wrote " + outPng.toAbsolutePath() + " (" + Files.size(outPng) + " bytes)");
+        Path outIcns = Path.of("latch.icns");
+        Files.write(outIcns, icns(paths, bounds));
+        System.out.println("Wrote " + outIcns.toAbsolutePath() + " (" + Files.size(outIcns) + " bytes, "
+            + ICNS_SIZES.length + " entries)");
         for (int i = 0; i < SIZES.length; i++) {
             System.out.println("  " + SIZES[i] + "x" + SIZES[i] + "  "
                 + (isPng.get(i) ? "PNG " : "DIB ") + payloads.get(i).length + " bytes");
@@ -212,6 +218,30 @@ public final class GenerateIcon {
         }
         cursor = i;
         return out;
+    }
+
+    /** The .icns entry types macOS reads PNG data from, and the pixel size of each. */
+    private static final String[] ICNS_TYPES = { "icp4", "icp5", "icp6", "ic07", "ic08", "ic09", "ic10" };
+    private static final int[] ICNS_SIZES = { 16, 32, 64, 128, 256, 512, 1024 };
+
+    /**
+     * Apple's .icns container: the magic "icns" and the total length, then one
+     * entry per size -- a four-character type, a length that counts its own
+     * 8-byte header, and a PNG. Lengths are big-endian, ByteBuffer's default.
+     */
+    private static byte[] icns(List<Path2D.Double> paths, Rectangle2D bounds) throws IOException {
+        ByteArrayOutputStream entries = new ByteArrayOutputStream();
+        for (int i = 0; i < ICNS_TYPES.length; i++) {
+            byte[] png = toPng(render(paths, bounds, ICNS_SIZES[i]));
+            entries.write(ICNS_TYPES[i].getBytes(StandardCharsets.US_ASCII));
+            entries.write(ByteBuffer.allocate(4).putInt(8 + png.length).array());
+            entries.write(png);
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write("icns".getBytes(StandardCharsets.US_ASCII));
+        out.write(ByteBuffer.allocate(4).putInt(8 + entries.size()).array());
+        entries.writeTo(out);
+        return out.toByteArray();
     }
 
     private static byte[] toPng(BufferedImage image) throws IOException {
