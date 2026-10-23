@@ -93,7 +93,7 @@ install_case() {
     shift
     mkdir -p "$root/$name"
     status=0
-    env -i PATH="$root/stubs:/usr/bin:/bin" HOME="$root/$name" \
+    env -i PATH="$root/stubs:$PATH" HOME="$root/$name" \
         STUB_LOG="$root/$name.urls" STUB_TARBALL="$fixture" "$@" \
         sh "$repo_root/install.sh" >"$root/$name.out" 2>&1 || status=$?
 }
