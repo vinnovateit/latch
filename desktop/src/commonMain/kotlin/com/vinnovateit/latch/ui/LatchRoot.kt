@@ -286,11 +286,9 @@ fun LatchRoot(
                                         label = "LatchDestination",
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
                                     ) { current ->
-                                        val back: (() -> Unit)? = if (railVisible) {
-                                            null
-                                        } else {
-                                            { destination = LatchDestination.Home }
-                                        }
+                                        // Stats and Settings always lead back to Home,
+                                        // with or without the rail beside them.
+                                        val back: () -> Unit = { destination = LatchDestination.Home }
 
                                         when (current) {
                                             LatchDestination.Home -> HomeScreen(
