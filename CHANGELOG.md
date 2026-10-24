@@ -6,6 +6,30 @@ that release's body, so a release is only as good as its entry in this file. Add
 the section in the same commit that bumps the version; the release job fails
 before it builds anything if the section is missing.
 
+## 1.5.0
+
+Desktop improvements, safer Windows data migration and a macOS source preview.
+
+### What's new
+
+- **Desktop**: improved statistics charts, session history and usage insights
+- **Desktop**: refreshed settings and onboarding, with updated power-button behavior
+- **macOS preview**: native CoreWLAN Wi-Fi detection, Keychain credential storage, start at login and manual update discovery. Latch refuses to send credentials when macOS cannot reveal the network name
+- **Development**: pinned NixOS development tools for the desktop app and CLI
+
+### What's fixed
+
+- **Desktop**: Back remains available when the navigation rail is shown
+- **Windows data**: legacy database migration keeps the database and its journal together under the shared runtime lock
+
+### Platform availability
+
+The downloads below contain the Linux and Windows desktop app and CLI.
+macOS remains a source preview: signed and notarized downloads are pending,
+along with real-Mac qualification. Android is not part of this release.
+
+Download the compatible version for your machine from the assets below.
+
 ## 1.4.3
 
 Windows update recovery and packaging reliability release.
