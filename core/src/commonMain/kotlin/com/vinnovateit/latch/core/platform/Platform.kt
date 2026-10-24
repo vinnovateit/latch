@@ -87,6 +87,18 @@ interface WifiPlatform {
      */
     fun currentSsid(): String?
 
+    /**
+     * Whether a null [currentSsid] must be read as "not a campus network".
+     *
+     * False keeps the long-standing reading of null as "unknown, don't block",
+     * which Android relies on: it never reads the SSID at all and gates on the
+     * portal probe alone. A platform whose SSID can be hidden from Latch for
+     * reasons that say nothing about the network -- macOS without Location
+     * permission, a failed or timed-out read -- sets this, so that being
+     * unable to tell is never taken as permission to send credentials.
+     */
+    val requiresKnownSsid: Boolean get() = false
+
     /** Best-effort; only used as a fallback when portal DNS fails. */
     fun gatewayIp(): String?
 

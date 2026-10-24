@@ -104,7 +104,11 @@ fun UpdateScreen(
                 when (state) {
                     is UpdateState.UpdateAvailable -> {
                         Text(
-                            text = "A new version of Latch is ready to download.",
+                            text = if (state.manualInstall) {
+                                "Download it from the release page and install it over this copy of Latch."
+                            } else {
+                                "A new version of Latch is ready to download."
+                            },
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 20.dp),
@@ -115,7 +119,9 @@ fun UpdateScreen(
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             TextButton(onClick = onSkip) { Text("Not now") }
-                            Button(onClick = onDownload) { Text("Download update") }
+                            Button(onClick = onDownload) {
+                                Text(if (state.manualInstall) "Open download page" else "Download update")
+                            }
                         }
                     }
 

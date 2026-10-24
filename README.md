@@ -56,6 +56,19 @@ Before you start, make sure you have:
 
    To install manually instead, download the `latch-<version>-linux-x64.tar.gz` archive from the [latest release](https://github.com/vinnovateit/latch/releases/latest) and extract it.
 
+### macOS (desktop, preview)
+
+macOS support is in preview: there is no signed release build yet, so for now
+Latch for macOS is built from source (see [Dev setup](#desktop-app)). It needs
+macOS 12 or later.
+
+The first time Latch runs, macOS asks to let it use your location. Since
+macOS 14 the name of the Wi-Fi network you are on counts as location
+information, and Latch only ever signs in once it has read that name and it
+is a VIT network. If you decline, Latch keeps running but never signs in; turn
+it on later in System Settings > Privacy & Security > Location Services >
+Latch. Your credentials are kept in your login Keychain.
+
 ### Command-line app
 
 `latch-cli` bundles its own trimmed Java runtime, so Java does not need to be
@@ -170,9 +183,13 @@ To build it from source instead, see [Dev setup](#dev-setup) below.
    ./gradlew :desktop:packageReleaseRpm          # .rpm
    ./gradlew :desktop:packageReleaseAppImage     # AppImage
    ./gradlew :desktop:packageReleaseTarGz        # .tar.gz (Linux)
+   ./gradlew :desktop:packageReleaseDmg          # .dmg containing Latch.app (macOS only)
    ```
 
-   Build artifacts land in `desktop/build/distributions/`.
+   Build artifacts land in `desktop/build/distributions/` (the `.tar.gz`) and
+   `desktop/build/compose/binaries/main-release/<format>/` (the rest). The
+   `.dmg` is unsigned and not notarized: it is for running on the Mac that
+   built it, not for handing out.
 
 4. To test a locally-built (or otherwise custom) tarball without publishing a release, point `install.sh` at it directly instead of letting it download from GitHub:
 

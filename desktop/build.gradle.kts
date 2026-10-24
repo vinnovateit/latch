@@ -153,7 +153,8 @@ compose.desktop {
 
 
         nativeDistributions {
-            targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.AppImage, TargetFormat.Rpm)
+            // Each format is built only on its own OS; Dmg only on macOS.
+            targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.AppImage, TargetFormat.Rpm, TargetFormat.Dmg)
             packageName = "Latch"
             // jpackage REQUIRES MAJOR.MINOR.PATCH with MAJOR >= 1. The Android
             // versionName "1.3" has only two components and would be rejected.
@@ -193,6 +194,31 @@ compose.desktop {
                 menuGroup = "Latch"
                 appCategory = "Network"
                 shortcut = true
+            }
+
+            macOS {
+                // MUST stay fixed: macOS ties Keychain access, Location
+                // permission and the Login Items entry to this identifier.
+                bundleID = "com.vinnovateit.latch"
+                dockName = "Latch"
+                appCategory = "public.app-category.utilities"
+                // Regenerate with `java GenerateIcon.java` in icons/.
+                iconFile.set(project.file("icons/latch.icns"))
+                // CLLocationManager's instance authorizationStatus is macOS 11+;
+                // 12 is the oldest release still receiving security updates
+                // when this was set.
+                minimumSystemVersion = "12.0"
+                infoPlist {
+                    // Since macOS 14 the Wi-Fi network name is location data.
+                    // Without these keys the system never shows the prompt,
+                    // the name stays hidden, and Latch never logs in.
+                    extraKeysRawXml = """
+                        <key>NSLocationUsageDescription</key>
+                        <string>Latch reads the name of your Wi-Fi network so that it only signs in on VIT Wi-Fi. macOS treats the network name as location information.</string>
+                        <key>NSLocationWhenInUseUsageDescription</key>
+                        <string>Latch reads the name of your Wi-Fi network so that it only signs in on VIT Wi-Fi. macOS treats the network name as location information.</string>
+                    """.trimIndent()
+                }
             }
         }
     }

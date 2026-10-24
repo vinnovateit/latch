@@ -14,6 +14,11 @@ sealed interface UpdateState {
         val version: String,
         val downloadUrl: String,
         val releaseNotes: String,
+        /**
+         * The update cannot be installed from inside the app; [downloadUrl] is
+         * then the release page, for the user to download and install by hand.
+         */
+        val manualInstall: Boolean = false,
     ) : UpdateState
     data class Downloading(val progress: Float) : UpdateState
     data class Downloaded(val version: String, val filePath: String) : UpdateState
