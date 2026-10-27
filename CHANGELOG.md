@@ -6,6 +6,14 @@ that release's body, so a release is only as good as its entry in this file. Add
 the section in the same commit that bumps the version; the release job fails
 before it builds anything if the section is missing.
 
+## 1.5.1
+
+- Fix Windows clipping and display scaling.
+
+Windows desktop only. Linux and CLI stay on 1.5.0.
+Windows 1.4.2 or older: exit Latch, install the MSI manually, then sign in again.
+Linux: refresh [install.sh](https://raw.githubusercontent.com/vinnovateit/latch/main/install.sh). Cached scripts may fail.
+
 ## 1.5.0
 
 Desktop improvements, safer Windows data migration and a macOS source preview.

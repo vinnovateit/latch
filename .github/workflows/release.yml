@@ -5,6 +5,15 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      release_mode:
+        description: Artifacts to publish
+        type: choice
+        required: true
+        default: full
+        options:
+          - full
+          - windows-desktop
 
 concurrency:
   group: release-${{ github.ref }}
@@ -21,6 +30,7 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
+      mode: ${{ steps.release.outputs.mode }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
@@ -28,7 +38,13 @@ jobs:
       - name: Match the tag to the project version
         id: release
         shell: bash
+        env:
+          RELEASE_MODE: ${{ inputs.release_mode || 'full' }}
         run: |
+          case "$RELEASE_MODE" in
+            full|windows-desktop) ;;
+            *) echo "Unknown release mode: $RELEASE_MODE" >&2; exit 1 ;;
+          esac
           version="$(sed -n 's/^latchVersion=//p' gradle.properties)"
           if [[ -z "$version" ]]; then
             echo "latchVersion is missing from gradle.properties" >&2
@@ -46,8 +62,11 @@ jobs:
             exit 1
           fi
 
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "mode=$RELEASE_MODE"
+          } >> "$GITHUB_OUTPUT"
 
       # Fails here in seconds rather than after both build jobs have run.
       - name: Require a changelog entry
@@ -58,6 +77,7 @@ jobs:
   build-linux:
     name: Build Linux artifacts
     needs: prepare
+    if: needs.prepare.outputs.mode == 'full'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -152,10 +172,18 @@ jobs:
       - name: Verify DPAPI credential store
         run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest"
 
-      - name: Build Desktop MSI and portable CLI
-        run: .\gradlew.bat :desktop:packageReleaseMsi :cli:packageCliZip
+      - name: Verify desktop layout
+        run: .\gradlew.bat :desktop:desktopTest
+
+      - name: Build Desktop MSI
+        run: .\gradlew.bat :desktop:packageReleaseMsi
+
+      - name: Build portable CLI
+        if: needs.prepare.outputs.mode == 'full'
+        run: .\gradlew.bat :cli:packageCliZip
 
       - name: Smoke-test bundled CLI
+        if: needs.prepare.outputs.mode == 'full'
         shell: pwsh
         run: |
           $launcher = "cli\build\cli-package\image\latch-cli\latch-cli.exe"
@@ -186,8 +214,12 @@ jobs:
           # the old version relaunches unchanged. The qualification step
           # below proves that. Drop it once no install older than 1.4.3 remains.
           Copy-Item packaging\windows-legacy-update-notice.md staging\Latch-Update-Notice.msi
-          Copy-Item cli\build\distributions\*.zip staging\
           Get-ChildItem staging
+
+      - name: Stage Windows CLI
+        if: needs.prepare.outputs.mode == 'full'
+        shell: pwsh
+        run: Copy-Item cli\build\distributions\*.zip staging\
 
       # Installs the exact file about to be uploaded: database open, silent
       # per-user install, installed files and version, silent uninstall, and
@@ -221,16 +253,28 @@ jobs:
   release:
     name: Create GitHub release
     needs: [prepare, build-linux, build-windows]
+    if: >-
+      ${{ !cancelled() && needs.prepare.result == 'success' &&
+          needs.build-windows.result == 'success' &&
+          ((needs.prepare.outputs.mode == 'full' && needs.build-linux.result == 'success') ||
+           (needs.prepare.outputs.mode == 'windows-desktop' && needs.build-linux.result == 'skipped')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
 
-      - name: Download all artifacts
+      - name: Download Windows artifacts
         uses: actions/download-artifact@v8
         with:
+          name: windows-artifacts
           path: release-assets
-          merge-multiple: true
+
+      - name: Download Linux artifacts
+        if: needs.prepare.outputs.mode == 'full'
+        uses: actions/download-artifact@v8
+        with:
+          name: linux-artifacts
+          path: release-assets
 
       # Every downstream step here addresses release-assets/<file> directly, so
       # fail with the actual listing rather than a bare "must exist" if the
@@ -242,6 +286,7 @@ jobs:
       # so their manifests are generated here against the exact files and
       # checksums that ship.
       - name: Generate package-manager manifests
+        if: needs.prepare.outputs.mode == 'full'
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
@@ -261,12 +306,13 @@ jobs:
       - name: Extract release notes
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_MODE: ${{ needs.prepare.outputs.mode }}
         run: |
           packaging/extract-release-notes.sh "$VERSION" release-notes.md
           # Updaters up to 1.4.2 show these notes on their update screen;
           # the notice at the top is how their users learn to install by
           # hand. Kept while Latch-Update-Notice.msi is published.
-          if [[ -f release-assets/Latch-Update-Notice.msi ]]; then
+          if [[ "$RELEASE_MODE" == "full" && -f release-assets/Latch-Update-Notice.msi ]]; then
             { cat packaging/windows-legacy-update-notice.md; echo; cat release-notes.md; } > release-notes.with-notice.md
             mv release-notes.with-notice.md release-notes.md
           fi
@@ -275,23 +321,30 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: ${{ needs.prepare.outputs.tag }}
           draft: false
           prerelease: false
+          # Keep /releases/latest discoverable by installed Windows updaters.
           make_latest: true
           body_path: release-notes.md
           files: release-assets/*
 
-      - name: Clear build artifacts storage
+      - name: Clear Windows build artifacts storage
         uses: geekyeggo/delete-artifact@v6
         with:
-          name: |
-            linux-artifacts
-            windows-artifacts
+          name: windows-artifacts
+
+      - name: Clear Linux build artifacts storage
+        if: needs.prepare.outputs.mode == 'full'
+        uses: geekyeggo/delete-artifact@v6
+        with:
+          name: linux-artifacts
 
   publish-repos:
     name: Publish Linux repositories
     needs: [prepare, release]
+    if: needs.prepare.outputs.mode == 'full'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -363,6 +416,7 @@ jobs:
   submit-winget:
     name: Submit to winget
     needs: [prepare, release]
+    if: needs.prepare.outputs.mode == 'full'
     runs-on: ubuntu-latest
     concurrency:
       group: winget-submission

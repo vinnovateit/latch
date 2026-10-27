@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,7 +61,9 @@ import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.Frame
+import java.awt.GraphicsConfiguration
 import java.awt.GraphicsEnvironment
+import java.awt.Insets
 import java.awt.Toolkit
 
 /** Windows/GNOME close-button hover colour -- kept consistent for native feel. */
@@ -88,24 +91,26 @@ private fun preferredWindowSize(): DpSize {
         val gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
             .defaultScreenDevice.defaultConfiguration
         val insets = Toolkit.getDefaultToolkit().getScreenInsets(gc)
-        val scale = gc.defaultTransform.scaleY.toFloat().coerceAtLeast(1f)
-
-        val usableW = (gc.bounds.width - insets.left - insets.right) / scale
-        val usableH = (gc.bounds.height - insets.top - insets.bottom) / scale
-
-        val fit = minOf(
-            1f,
-            usableW * MAX_SCREEN_FRACTION / PREFERRED_W,
-            usableH * MAX_SCREEN_FRACTION / PREFERRED_H,
-        )
-
-        val h = (PREFERRED_H * fit).coerceAtLeast(MIN_H.toFloat()).coerceAtMost(usableH)
-        val w = (PREFERRED_W * fit).coerceAtLeast(MIN_W.toFloat()).coerceAtMost(usableW)
-
-        DpSize(w.dp, h.dp)
+        preferredWindowSize(gc, insets)
     } catch (e: Throwable) {
         DpSize(PREFERRED_W.dp, PREFERRED_H.dp)
     }
+}
+
+internal fun preferredWindowSize(configuration: GraphicsConfiguration, insets: Insets): DpSize {
+    // Keep AWT screen bounds and insets in logical units, matching WindowState.size.
+    val bounds = configuration.bounds
+    val usableW = (bounds.width - insets.left - insets.right).coerceAtLeast(1).toFloat()
+    val usableH = (bounds.height - insets.top - insets.bottom).coerceAtLeast(1).toFloat()
+    val fit = minOf(
+        1f,
+        usableW * MAX_SCREEN_FRACTION / PREFERRED_W,
+        usableH * MAX_SCREEN_FRACTION / PREFERRED_H,
+    )
+
+    val h = (PREFERRED_H * fit).coerceAtLeast(MIN_H.toFloat()).coerceAtMost(usableH)
+    val w = (PREFERRED_W * fit).coerceAtLeast(MIN_W.toFloat()).coerceAtMost(usableW)
+    return DpSize(w.dp, h.dp)
 }
 
 /**
@@ -155,6 +160,7 @@ internal fun LatchWindow(
         size = initialSize,
     )
     val minimizeToTray by SettingsManager.minimizeToTray.collectAsState()
+    val isWindows = remember { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
 
     LaunchedEffect(visible, restoreTrigger) {
         if (visible) {
@@ -179,8 +185,19 @@ internal fun LatchWindow(
         title = "Latch",
         icon = remember { LatchIcon.brand() },
     ) {
+        val layoutListener = remember(window) {
+            if (isWindows) WindowContentLayoutListener() else null
+        }
+        DisposableEffect(window, layoutListener) {
+            layoutListener?.let(window::addComponentListener)
+            onDispose { layoutListener?.let(window::removeComponentListener) }
+        }
+
         LaunchedEffect(Unit) {
-            window.minimumSize = Dimension(MIN_W, MIN_H)
+            window.minimumSize = Dimension(
+                minOf(MIN_W, initialSize.width.value.toInt()),
+                minOf(MIN_H, initialSize.height.value.toInt()),
+            )
 
             // Intercept OS maximize shortcuts (e.g. Super+Up, F11) and restore to normal.
             // When minimizeToTray is enabled, intercept OS minimize and hide to tray.
@@ -197,8 +214,7 @@ internal fun LatchWindow(
                 }
             }
 
-            // Deliberately no componentResized listener. Answering a resize with a
-            // resize is what fought the compositor; see the note on this function.
+            // Leave externally assigned bounds alone to avoid resize feedback loops.
         }
 
         LaunchedEffect(visible, restoreTrigger) {
@@ -206,6 +222,7 @@ internal fun LatchWindow(
                 state.isMinimized = false
                 (window as? Frame)?.state = Frame.NORMAL
                 (window as? Frame)?.extendedState = Frame.NORMAL
+                layoutListener?.refreshContent(window)
                 window.toFront()
                 window.requestFocus()
             }

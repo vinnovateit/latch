@@ -55,6 +55,9 @@ class GithubUpdaterIntegrityTest {
     private var assetUrl = ASSET_URL
     private var msiName = WINDOWS_PACKAGE_ASSET
     private var publishLegacyNotice = false
+    private var publishCli = true
+    private var releaseVersion = "1.4.2"
+    private var installedVersion = "1.4.1"
     private var assetResponse: () -> UpdateHttpResponse = { ok(payload) }
 
     private val logger = object : Logger {
@@ -76,7 +79,7 @@ class GithubUpdaterIntegrityTest {
     private val updater by lazy {
         GithubUpdater(
             buildInfo = object : BuildInfo {
-                override val versionName = "1.4.1"
+                override val versionName get() = installedVersion
                 override val isDebug = false
                 override val isInstalled = true
             },
@@ -100,6 +103,26 @@ class GithubUpdaterIntegrityTest {
     }
 
     // --- 1. The good path ---------------------------------------------------
+
+    @Test
+    fun windowsOnlyPatchRemainsDiscoverableAndInstallableFromLatest() = runBlocking<Unit> {
+        installedVersion = "1.5.0"
+        releaseVersion = "1.5.1"
+        assetUrl = "https://github.com/vinnovateit/latch/releases/download/v1.5.1/LatchSetup.msi"
+        publishCli = false
+        publishLegacyNotice = true
+
+        updater.check(force = true)
+        val available = assertIs<UpdateState.UpdateAvailable>(updater.state.value)
+        assertEquals("1.5.1", available.version)
+
+        updater.download()
+        val downloaded = assertIs<UpdateState.Downloaded>(updater.state.value)
+        val msi = File(downloaded.filePath)
+        assertContentEquals(payload, msi.readBytes())
+        assertTrue(updater.installAndExit(downloaded.filePath))
+        assertEquals(listOf(msi.absoluteFile), launched)
+    }
 
     @Test
     fun correctPayloadIsFinalizedVerifiedAndInstallable() = runBlocking<Unit> {
@@ -516,21 +539,23 @@ class GithubUpdaterIntegrityTest {
         val noticeAsset = if (!publishLegacyNotice) "" else """
                 {
                   "name": "Latch-Update-Notice.msi",
-                  "browser_download_url": "https://github.com/vinnovateit/latch/releases/download/v1.4.2/Latch-Update-Notice.msi",
+                  "browser_download_url": "https://github.com/vinnovateit/latch/releases/download/v$releaseVersion/Latch-Update-Notice.msi",
                   "size": 512,
                   "digest": "sha256:${"1".repeat(64)}"
                 },"""
-        return """
-            {
-              "tag_name": "v1.4.2",
-              "body": "notes",
-              "assets": [
+        val cliAsset = if (!publishCli) "" else """
                 {
-                  "name": "latch-cli-1.4.2-windows-x64.zip",
-                  "browser_download_url": "https://github.com/vinnovateit/latch/releases/download/v1.4.2/latch-cli-1.4.2-windows-x64.zip",
+                  "name": "latch-cli-$releaseVersion-windows-x64.zip",
+                  "browser_download_url": "https://github.com/vinnovateit/latch/releases/download/v$releaseVersion/latch-cli-$releaseVersion-windows-x64.zip",
                   "size": 1,
                   "digest": "sha256:${"0".repeat(64)}"
-                },
+                },"""
+        return """
+            {
+              "tag_name": "v$releaseVersion",
+              "body": "notes",
+              "assets": [
+                $cliAsset
                 $noticeAsset
                 {
                   "name": "$msiName",
