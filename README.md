@@ -5,7 +5,7 @@
 <img src="https://raw.githubusercontent.com/vinnovateit/latch/main/.github/assets/redLogoLatch.svg" alt="Project Logo" width="120">
 
 
-Cross-platform app that automates login to VIT hostel Wi-Fi networks.
+Cross-platform app that automates login to VIT Wi-Fi networks.
 
 [![Latest Release](https://img.shields.io/github/v/release/vinnovateit/latch?style=flat&color=E53935&logoColor=white&label=Release)](https://github.com/vinnovateit/latch/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/vinnovateit/latch/total?style=flat&logo=github&color=E53935&logoColor=white&label=Downloads)](https://github.com/vinnovateit/latch/releases)
