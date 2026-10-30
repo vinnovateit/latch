@@ -236,6 +236,7 @@ private class DesktopRuntimeTarget(private val runtime: DesktopEngineRuntime) : 
             ConnectionStatus.Reason.WifiOff,
             ConnectionStatus.Reason.NotOnWifi,
             ConnectionStatus.Reason.NotTargetNetwork,
+            ConnectionStatus.Reason.NetworkNameHidden,
             ConnectionStatus.Reason.Disconnected -> "NO_WIFI"
             else -> "INTERNAL_ERROR"
         }

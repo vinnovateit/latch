@@ -47,8 +47,9 @@ interface NetworkHandle {
  * The seam that lets AutoLoginManager stay otherwise untouched.
  *
  * Android binds a connection to a specific Network via Network.openConnection().
- * The JVM has no equivalent, so the desktop implementation uses the default
- * route. That is correct on a single-homed laptop but wrong when docked with
+ * The JVM has no equivalent. macOS binds each connection's socket to the Wi-Fi
+ * address instead (BoundHttpTransport). Windows and Linux use the default
+ * route, which is correct on a single-homed laptop but wrong when docked with
  * both Ethernet and Wi-Fi -- see DesktopHttpTransport.
  */
 interface HttpTransport {
@@ -98,6 +99,13 @@ interface WifiPlatform {
      * unable to tell is never taken as permission to send credentials.
      */
     val requiresKnownSsid: Boolean get() = false
+
+    /**
+     * Whether the OS is withholding the connected network's name from Latch,
+     * as macOS does without Location access. Lets the UI say how to fix it
+     * instead of calling the network unknown.
+     */
+    fun isNetworkNameHidden(): Boolean = false
 
     /** Best-effort; only used as a fallback when portal DNS fails. */
     fun gatewayIp(): String?
@@ -178,6 +186,9 @@ interface UserNotifier {
 
 interface SystemActions {
     fun openWifiSettings()
+
+    /** Opens the OS settings that let Latch read the Wi-Fi name. Only macOS has any. */
+    fun openLocationSettings() {}
     fun openUrl(url: String)
     fun setAutostart(enabled: Boolean)
     fun isAutostartEnabled(): Boolean
