@@ -7,6 +7,7 @@ import com.vinnovateit.latch.core.platform.WifiPlatform
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import java.net.InetAddress
 
 internal data class MacNetworkHandle(override val id: String) : NetworkHandle
 
@@ -129,12 +130,33 @@ class MacWifiPlatform internal constructor(
 
     override fun currentSsid(): String? = snapshot().ssid
 
+    /** Connected, with the name withheld because Location access is not granted. */
+    override fun isNetworkNameHidden(): Boolean = snapshot().let { snap ->
+        val reading = snap.reading
+        snap.connected && snap.ssid == null &&
+            reading is MacWifiReading.PoweredOn && reading.location != MacLocationAccess.Granted
+    }
+
     override fun gatewayIp(): String? = snapshot().gateway
 
     override fun activeHandle(): NetworkHandle? =
         snapshot().takeIf { it.connected }?.interfaceName?.let(::MacNetworkHandle)
 
     override fun wifiInterfaceName(): String? = snapshot().interfaceName
+
+    /**
+     * The IPv4 address that [handle]'s interface (the Wi-Fi interface when
+     * null) sends from, for [com.vinnovateit.latch.desktop.platform.BoundHttpTransport].
+     * Null while Wi-Fi is not connected.
+     */
+    fun localAddress(handle: NetworkHandle?): InetAddress? {
+        val snap = snapshot()
+        if (!snap.connected) return null
+        val interfaceName = handle?.id ?: snap.interfaceName ?: return null
+        val address = if (interfaceName == snap.interfaceName) snap.address else links.ipv4Address(interfaceName)
+        // Always a literal from the interface table, so this never does a DNS lookup.
+        return address?.let { runCatching { InetAddress.getByName(it) }.getOrNull() }
+    }
 
     /**
      * Switches the radio on only when it is positively reported off. An

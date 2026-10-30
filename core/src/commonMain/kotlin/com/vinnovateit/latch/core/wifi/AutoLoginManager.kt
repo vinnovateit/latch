@@ -10,18 +10,30 @@ import java.net.URLEncoder
 
 sealed interface LoginResult {
     data object Success : LoginResult
+
+    /**
+     * The portal answered and refused the credentials. Sending them again
+     * gets the same answer and counts towards the portal's lockout.
+     */
+    data object Rejected : LoginResult
+
+    /** The request failed or the portal gave an answer Latch does not recognise. */
     data object Failure : LoginResult
 }
 
 /**
- * Ported from the Android app. The HTTP behaviour is intentionally byte-identical:
- * same endpoints, same POST body, same User-Agent, same 10s timeouts, same
- * redirect handling, same HTML success heuristics, same gateway-IP retry on DNS
- * failure. Only three things changed:
+ * Ported from the Android app. The requests are intentionally byte-identical:
+ * same endpoints, same POST body, same User-Agent, same timeouts, same
+ * redirect handling, same HTML success heuristics. The port swaps
  *
  *   android.net.Network       -> NetworkHandle
  *   network.openConnection()  -> transport.open()
  *   android.util.Log / BuildConfig.DEBUG -> Logger / BuildInfo
+ *
+ * A request that fails gets one retry through the gateway IP. That covers a
+ * portal host that does not resolve (a custom DNS or VPN resolver before
+ * login), cannot be reached (no route off the subnet before login) or gives
+ * an answer Latch does not recognise. A refusal is never retried.
  *
  * Do not "improve" the success detection. Matching on response HTML is ugly but
  * it is the only signal Pronto's portal gives us.
@@ -122,7 +134,7 @@ class AutoLoginManager(
                         logWarning("Login response indicated failure in ${elapsed}ms. Snippet: ${response.take(300).replace("\n", " ")}")
                     }
 
-                    if (isSuccess) LoginResult.Success else LoginResult.Failure
+                    if (isSuccess) LoginResult.Success else LoginResult.Rejected
                 }
 
                 HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP -> {
@@ -138,22 +150,11 @@ class AutoLoginManager(
             }
         }
 
-        return try {
-            doAttempt(targetUrlStr)
+        fun attemptOrFailure(urlStr: String): LoginResult = try {
+            doAttempt(urlStr)
         } catch (e: java.net.UnknownHostException) {
             logError("Login failed with UnknownHostException.", e)
-            if (fallbackIp != null) {
-                val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
-                logDebug("Retrying login with fallback IP: $fallbackTargetUrlStr")
-                try {
-                    doAttempt(fallbackTargetUrlStr)
-                } catch (fallbackE: Exception) {
-                    logError("Fallback login failed: ${fallbackE.message}", fallbackE)
-                    LoginResult.Failure
-                }
-            } else {
-                LoginResult.Failure
-            }
+            LoginResult.Failure
         } catch (e: javax.net.ssl.SSLException) {
             // Some portal deployments serve HTTPS off a cert chain signed with a
             // legacy/weak-hash CA that the platform TLS stack now hard-rejects
@@ -166,6 +167,12 @@ class AutoLoginManager(
             logError("Login failed with exception: ${e.message}", e)
             LoginResult.Failure
         }
+
+        val result = attemptOrFailure(targetUrlStr)
+        if (result != LoginResult.Failure || fallbackIp == null) return result
+        val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
+        logDebug("Retrying login with fallback IP: $fallbackTargetUrlStr")
+        return attemptOrFailure(fallbackTargetUrlStr)
     }
 
     data class LogoutResult(
@@ -219,8 +226,9 @@ class AutoLoginManager(
 
         return try {
             doAttempt(targetUrlStr)
-        } catch (e: java.net.UnknownHostException) {
-            logError("Logout failed with UnknownHostException.", e)
+        } catch (e: java.io.IOException) {
+            // The same unreachable portal host the login falls back on.
+            logError("Logout failed with ${e::class.simpleName}.", e)
             if (fallbackIp != null) {
                 val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
                 try {

@@ -23,6 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -88,6 +91,22 @@ fun HomeScreen(
 
     val history = liveStatus?.liveData?.takeLast(CHART_WINDOW) ?: emptyList()
 
+    // A failed status fades back to Idle after two seconds. The hint that macOS
+    // is hiding the Wi-Fi name stays until a check gives a different answer.
+    var networkNameHidden by remember { mutableStateOf(false) }
+    LaunchedEffect(status) {
+        when (val current = status) {
+            is ConnectionStatus.Failed -> networkNameHidden = current.reason == ConnectionStatus.Reason.NetworkNameHidden
+            is ConnectionStatus.Success -> networkNameHidden = false
+            else -> Unit
+        }
+    }
+    val settingsLink = if (networkNameHidden) {
+        SettingsLink("Allow Location access") { platform.systemActions.openLocationSettings() }
+    } else {
+        SettingsLink("Open Wi-Fi settings") { platform.systemActions.openWifiSettings() }
+    }
+
     /*
      * Mirrors the Android app's "smart" power button: when there is no Wi-Fi to
      * log in to, the button opens the OS Wi-Fi UI instead of failing. Toggling it
@@ -114,7 +133,7 @@ fun HomeScreen(
                 topBar = topBar,
                 isLatched = isLatched,
                 onPowerClick = onPowerClick,
-                onOpenWifiSettings = { platform.systemActions.openWifiSettings() },
+                settingsLink = settingsLink,
                 history = history,
                 connectionStatus = status,
                 speedUnit = speedUnit,
@@ -126,7 +145,7 @@ fun HomeScreen(
                 availableWidth = maxWidth,
                 isLatched = isLatched,
                 onPowerClick = onPowerClick,
-                onOpenWifiSettings = { platform.systemActions.openWifiSettings() },
+                settingsLink = settingsLink,
                 history = history,
                 connectionStatus = status,
                 speedUnit = speedUnit,
@@ -143,7 +162,7 @@ private fun CompactHome(
     availableWidth: Dp,
     isLatched: Boolean,
     onPowerClick: () -> Unit,
-    onOpenWifiSettings: () -> Unit,
+    settingsLink: SettingsLink,
     history: List<LiveDataPoint>,
     connectionStatus: ConnectionStatus,
     speedUnit: String,
@@ -174,7 +193,7 @@ private fun CompactHome(
                 topBar()
                 Spacer(Modifier.weight(1f))
                 WifiSettingsLink(
-                    onClick = onOpenWifiSettings,
+                    link = settingsLink,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                 )
                 // Clears the top half of the power button, which is centred on the
@@ -234,7 +253,7 @@ private fun WideHome(
     topBar: @Composable () -> Unit,
     isLatched: Boolean,
     onPowerClick: () -> Unit,
-    onOpenWifiSettings: () -> Unit,
+    settingsLink: SettingsLink,
     history: List<LiveDataPoint>,
     connectionStatus: ConnectionStatus,
     speedUnit: String,
@@ -270,7 +289,7 @@ private fun WideHome(
                         modifier = Modifier.sizeIn(maxWidth = 340.dp, maxHeight = 340.dp),
                     )
                 }
-                WifiSettingsLink(onClick = onOpenWifiSettings)
+                WifiSettingsLink(link = settingsLink)
                 Spacer(Modifier.height(16.dp))
             }
 
@@ -296,16 +315,19 @@ private fun WideHome(
  * Kept as an explicit affordance even though the power button already falls back
  * to it: the fallback only fires when Latch can tell there is no Wi-Fi, and
  * "let me go look at the network list" is a thing people want on a laptop that
- * has just been carried between buildings.
+ * has just been carried between buildings. While macOS hides the Wi-Fi name it
+ * points at Location Services instead, the setting that fixes that.
  */
+private class SettingsLink(val label: String, val onClick: () -> Unit)
+
 @Composable
-private fun WifiSettingsLink(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun WifiSettingsLink(link: SettingsLink, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onClick) {
+        TextButton(onClick = link.onClick) {
             Icon(
                 imageVector = LatchIcons.WifiLock,
                 contentDescription = null,
@@ -314,7 +336,7 @@ private fun WifiSettingsLink(onClick: () -> Unit, modifier: Modifier = Modifier)
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "Open Wi-Fi settings",
+                text = link.label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

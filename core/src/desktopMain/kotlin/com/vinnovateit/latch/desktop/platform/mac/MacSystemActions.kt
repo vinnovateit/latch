@@ -43,6 +43,13 @@ class MacSystemActions internal constructor(
             "x-apple.systempreferences:com.apple.preference.network",
         )
 
+        // Location Services under Privacy & Security (macOS 13+), then under
+        // Security & Privacy in System Preferences (macOS 12).
+        val LOCATION_SETTINGS = listOf(
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_LocationServices",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices",
+        )
+
         /** The launchd job that starts [executable] at login. Paths are XML-escaped. */
         fun launchAgentPlist(executable: String): String = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -87,6 +94,11 @@ class MacSystemActions internal constructor(
     override fun openWifiSettings() {
         if (WIFI_SETTINGS.any { open(it) }) return
         logger.w(TAG, "Could not open Wi-Fi settings.")
+    }
+
+    override fun openLocationSettings() {
+        if (LOCATION_SETTINGS.any { open(it) }) return
+        logger.w(TAG, "Could not open Location Services settings.")
     }
 
     override fun openUrl(url: String) {

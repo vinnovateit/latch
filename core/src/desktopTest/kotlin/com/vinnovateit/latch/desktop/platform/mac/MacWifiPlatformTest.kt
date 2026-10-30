@@ -58,6 +58,28 @@ class MacWifiPlatformTest {
     }
 
     @Test
+    fun `the name counts as hidden only while Location access withholds it`() {
+        assertTrue(platform(ScriptedProbe(on(ssid = null, location = MacLocationAccess.Denied))).isNetworkNameHidden())
+        assertTrue(platform(ScriptedProbe(on(ssid = null, location = MacLocationAccess.NotDetermined))).isNetworkNameHidden())
+        assertFalse(platform(ScriptedProbe(on(ssid = null, location = MacLocationAccess.Granted))).isNetworkNameHidden())
+        assertFalse(platform(ScriptedProbe(on("VIT-Hostel"))).isNetworkNameHidden())
+        assertFalse(
+            platform(ScriptedProbe(on(ssid = null, location = MacLocationAccess.Denied)), links = ScriptedLinks()).isNetworkNameHidden(),
+            "not connected, so there is no name to hide",
+        )
+    }
+
+    @Test
+    fun `connections bind to the Wi-Fi address while Wi-Fi is connected`() {
+        val wifi = platform(ScriptedProbe(on("VIT-Hostel")))
+        assertEquals("10.1.2.3", wifi.localAddress(null)?.hostAddress)
+        assertEquals("10.1.2.3", wifi.localAddress(MacNetworkHandle("en0"))?.hostAddress)
+
+        assertNull(platform(ScriptedProbe(on("VIT-Hostel")), links = ScriptedLinks()).localAddress(null))
+        assertNull(platform(ScriptedProbe(MacWifiReading.PoweredOff("en0"))).localAddress(null))
+    }
+
+    @Test
     fun `a connected network reports its actual SSID, gateway and handle`() {
         val wifi = platform(ScriptedProbe(on("VIT-Hostel")))
 
