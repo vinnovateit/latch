@@ -71,12 +71,12 @@ class MacCredentialGateEngineTest {
 
     @Test
     fun `when Location permission is denied credentials are never sent`() =
-        assertRefused(on(ssid = null, location = MacLocationAccess.Denied))
+        assertRefused(on(ssid = null, location = MacLocationAccess.Denied), expected = ConnectionStatus.Reason.NetworkNameHidden)
 
     @Test
     fun `when Location permission is undecided or restricted credentials are never sent`() {
-        assertRefused(on(ssid = null, location = MacLocationAccess.NotDetermined))
-        assertRefused(on(ssid = null, location = MacLocationAccess.Restricted))
+        assertRefused(on(ssid = null, location = MacLocationAccess.NotDetermined), expected = ConnectionStatus.Reason.NetworkNameHidden)
+        assertRefused(on(ssid = null, location = MacLocationAccess.Restricted), expected = ConnectionStatus.Reason.NetworkNameHidden)
     }
 
     @Test
