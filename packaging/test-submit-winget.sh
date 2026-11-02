@@ -4,7 +4,7 @@
 # A fake `gh` on PATH answers each API call from a per-case route table and
 # logs every call, so each case asserts both the outcome and exactly which
 # mutations (POST/PUT/PATCH/DELETE) were made. An unrouted call fails the case.
-# PR shapes come from testdata/winget/pull.json and pull-files.json, trimmed
+# PR shapes come from testdata/winget/pull.json, trimmed
 # from a real submission (microsoft/winget-pkgs#439934).
 #
 # Usage: packaging/test-submit-winget.sh
@@ -73,9 +73,6 @@ pull() {
         | .head.ref = "latch-cli-\($v)" | .head.label = "\($repo | split("/")[0]):latch-cli-\($v)"
         | .head.repo.full_name = $repo' "$fixtures/pull.json"
 }
-files() {
-    jq --arg v "$1" 'map(.filename |= sub("/LatchCLI/[^/]+/"; "/LatchCLI/\($v)/"))' "$fixtures/pull-files.json"
-}
 json() { # json NAME CONTENT -> path of a body file
     printf '%s' "$2" >"$case_dir/$1.json"
     echo "$case_dir/$1.json"
@@ -98,7 +95,6 @@ state() {
         if [[ -n $n ]]; then
             route GET "$UP/pulls?state=open&head=vinnovateit:latch-cli-$v&per_page=100" 200 "$(json "open-$v" "[$(pull "$n" "$v")]")"
             route GET "$UP/pulls/$n" 200 "$(json "pull-$n" "$(pull "$n" "$v")")"
-            route GET "$UP/pulls/$n/files?per_page=100" 200 "$(json "files-$n" "$(files "$v")")"
         else
             route GET "$UP/pulls?state=open&head=vinnovateit:latch-cli-$v&per_page=100" 200 "$(json empty '[]')"
         fi
@@ -119,12 +115,6 @@ submission() {
         route PUT "$FK/contents/manifests/v/VinnovateIT/LatchCLI/$version/$name" 201 "$(json put '{}')"
     done
     route POST "$UP/pulls" 201 "$(json "new-$number" "$(pull "$number" "$version" | jq '{number, html_url}')")"
-}
-
-supersession() { # supersession NUMBER VERSION
-    route POST "$UP/issues/$1/comments" 201 "$(json comment '{}')"
-    route PATCH "$UP/pulls/$1" 200 "$(json "closed-$1" "$(pull "$1" "$2" | jq '.state = "closed"')")"
-    route DELETE "$FK/git/refs/heads/latch-cli-$2" 204 -
 }
 
 # --- running and asserting --------------------------------------------------
@@ -218,6 +208,7 @@ no_pending_submission_submits() {
         check "reports not published" says "upstream:  not yet published" &&
         check "one PR opened" mutation_count "POST $UP/pulls" 1 &&
         check "three manifests" [ "$(mutations | grep -c '^PUT ')" = 3 ] &&
+        check "no forced sync" not grep -q -- --force "$case_dir/calls.log" &&
         check "nothing closed" not mutated "PATCH $UP/pulls/500001"
 }
 
@@ -229,19 +220,13 @@ same_version_pending_is_noop() {
         check "no mutations" no_mutations
 }
 
-older_owned_pending_is_superseded() {
+older_owned_pending_is_preserved() {
     state "" "1.4.1:439934" "439934"
-    submission 1.4.2 500002
-    supersession 439934 1.4.1
     run 1.4.2
     check "exit 0" expect_exit 0 &&
         check "reports pending" says "pending:   1.4.1 (#439934)" &&
-        check "new PR opened" mutation_count "POST $UP/pulls" 1 &&
-        check "old PR commented" mutated "POST $UP/issues/439934/comments" &&
-        check "comment text" grep -q "body=Superseded by VinnovateIT.LatchCLI 1.4.2 (#500002)." "$case_dir/calls.log" &&
-        check "old PR closed" mutated "PATCH $UP/pulls/439934" &&
-        check "old branch deleted" mutated "DELETE $FK/git/refs/heads/latch-cli-1.4.1" &&
-        check "new PR exists before the old one closes" before "POST $UP/pulls" "PATCH $UP/pulls/439934"
+        check "keeps review open" says "keep pending 1.4.1 submission #439934 before submitting 1.4.2" &&
+        check "no mutations" no_mutations
 }
 
 newer_owned_pending_is_noop() {
@@ -256,7 +241,7 @@ older_foreign_pr_is_never_touched() {
     state "" "" "600001"
     route GET "$UP/pulls/600001" 200 "$(json foreign "$(pull 600001 1.4.0 someone/winget-pkgs someone)")"
     run 1.4.2
-    check "fails" expect_exit 1 &&
+    check "exit 0" expect_exit 0 &&
         check "names the foreign PR" says "#600001 by someone from someone/winget-pkgs" &&
         check "no mutations" no_mutations
 }
@@ -267,16 +252,6 @@ newer_foreign_pr_is_noop() {
     run 1.4.2
     check "exit 0" expect_exit 0 &&
         check "defers to it" says "#600002 by someone already submits 1.5.0" &&
-        check "no mutations" no_mutations
-}
-
-unprovable_owned_pr_is_never_touched() {
-    state "" "1.4.1:439934" "439934"
-    # Same fork and branch, but the PR also changes a file outside the package.
-    json "files-439934" "$(files 1.4.1 | jq '. + [{filename: "manifests/o/Other/App/1.0/Other.App.yaml"}]')" >/dev/null
-    run 1.4.2
-    check "fails" expect_exit 1 &&
-        check "explains" says "does not look like a submission from this automation" &&
         check "no mutations" no_mutations
 }
 
@@ -330,65 +305,24 @@ failure_while_opening_pr_is_visible() {
 }
 
 rerun_after_success_is_noop() {
-    # State after the supersede case: 1.4.2 open, 1.4.1 closed and its branch gone.
     state "" "1.4.2:500002" "500002"
     run 1.4.2
     check "exit 0" expect_exit 0 && check "no mutations" no_mutations
 }
 
-rerun_after_partial_supersede_converges() {
-    # 1.4.2 was opened but the job died before closing 1.4.1.
+multiple_pending_submissions_are_preserved() {
     state "" "1.4.1:439934 1.4.2:500002" "439934 500002"
-    supersession 439934 1.4.1
     run 1.4.2
     check "exit 0" expect_exit 0 &&
-        check "keeps the new PR" says "keep #500002 for 1.4.2" &&
-        check "no second PR" mutation_count "POST $UP/pulls" 0 &&
-        check "closes the old one" mutated "PATCH $UP/pulls/439934"
-}
-
-failed_branch_delete_after_close_is_visible() {
-    state "" "1.4.1:439934" "439934"
-    submission 1.4.2 500006
-    supersession 439934 1.4.1
-    grep -v "^DELETE $FK/git/refs/heads/latch-cli-1.4.1 " "$case_dir/routes" >"$case_dir/routes.tmp" && mv "$case_dir/routes.tmp" "$case_dir/routes"
-    route DELETE "$FK/git/refs/heads/latch-cli-1.4.1" 500 "$(json err '{"message":"Server Error"}')"
-    run 1.4.2
-    check "fails" expect_exit 1 &&
-        check "old PR was closed first" mutated "PATCH $UP/pulls/439934" &&
-        check "classifies" says "Deleting vinnovateit/winget-pkgs:latch-cli-1.4.1: HTTP 500"
-}
-
-rerun_after_closed_pr_with_leftover_branch_cleans_up() {
-    # The state the previous case leaves: 1.4.2 open, 1.4.1 closed, but its
-    # branch still on the fork. The rerun must not stop at "1.4.2 is open".
-    state "" "1.4.1: 1.4.2:500006" "500006"
-    route DELETE "$FK/git/refs/heads/latch-cli-1.4.1" 204 -
-    run 1.4.2
-    check "exit 0" expect_exit 0 &&
-        check "keeps the current PR" says "keep #500006 for 1.4.2" &&
-        check "deletes the leftover branch" mutated "DELETE $FK/git/refs/heads/latch-cli-1.4.1" &&
-        check "opens nothing" mutation_count "POST $UP/pulls" 0 &&
-        check "closes nothing" not mutated "PATCH $UP/pulls/500006" &&
-        check "only that deletion" [ "$(mutations | wc -l)" = 1 ]
-}
-
-files_beyond_the_first_page_are_not_trusted() {
-    state "" "1.4.1:439934" "439934"
-    # The first page of files shows exactly our three manifests, but GitHub
-    # counts 150 changed files: the rest are on pages the script never reads.
-    json "pull-439934" "$(pull 439934 1.4.1 | jq '.changed_files = 150')" >/dev/null
-    run 1.4.2
-    check "fails" expect_exit 1 &&
-        check "explains" says "does not look like a submission from this automation" &&
         check "no mutations" no_mutations
 }
 
-right_count_wrong_files_are_not_trusted() {
-    state "" "1.4.1:439934" "439934"
-    json "files-439934" "$(files 1.4.1 | jq '.[2].filename = "manifests/v/VinnovateIT/LatchCLI/1.4.1/Other.yaml"')" >/dev/null
+pending_pr_keeps_unrelated_stale_branches() {
+    state "" "1.4.1: 1.4.2:500006" "500006"
     run 1.4.2
-    check "fails" expect_exit 1 && check "no mutations" no_mutations
+    check "exit 0" expect_exit 0 &&
+        check "keeps the current PR" says "1.4.2 already has open PR #500006" &&
+        check "no mutations" no_mutations
 }
 
 pr_created_by_a_racing_run_is_reused() {
@@ -402,19 +336,18 @@ pr_created_by_a_racing_run_is_reused() {
         check "one attempt" mutation_count "POST $UP/pulls" 1
 }
 
-stale_branches_without_prs_are_rebuilt_and_removed() {
+selected_stale_branch_is_rebuilt() {
     state "" "1.4.0: 1.4.2:" ""
     submission 1.4.2 500005
     # latch-cli-1.4.2 exists (a failed earlier run) with no open PR.
     grep -v "^GET $FK/git/ref/heads/latch-cli-1.4.2 404" "$case_dir/routes" >"$case_dir/routes.tmp" && mv "$case_dir/routes.tmp" "$case_dir/routes"
     route GET "$FK/git/ref/heads/latch-cli-1.4.2" 200 "$(json ref '{"object":{"sha":"old"}}')"
     route DELETE "$FK/git/refs/heads/latch-cli-1.4.2" 204 -
-    route DELETE "$FK/git/refs/heads/latch-cli-1.4.0" 204 -
     run 1.4.2
     check "exit 0" expect_exit 0 &&
         check "stale 1.4.2 branch rebuilt" before "DELETE $FK/git/refs/heads/latch-cli-1.4.2" "POST $FK/git/refs" &&
         check "PR opened" mutation_count "POST $UP/pulls" 1 &&
-        check "stale 1.4.0 branch removed" mutated "DELETE $FK/git/refs/heads/latch-cli-1.4.0"
+        check "unrelated branch preserved" not mutated "DELETE $FK/git/refs/heads/latch-cli-1.4.0"
 }
 
 upstream_has_version_is_noop() {
@@ -432,11 +365,18 @@ upstream_newer_is_noop() {
 }
 
 dry_run_changes_nothing() {
-    state "" "1.4.0: 1.4.1:439934" "439934"
+    state "" "" ""
     run 1.4.2 --dry-run
     check "exit 0" expect_exit 0 &&
         check "plans the submission" says "[dry-run] would open a PR for 1.4.2" &&
-        check "plans the supersede" says "[dry-run] would comment on and close #439934 (1.4.1)" &&
+        check "no mutations" no_mutations
+}
+
+dry_run_preserves_pending_submission() {
+    state "" "1.4.1:439934" "439934"
+    run 1.4.2 --dry-run
+    check "exit 0" expect_exit 0 &&
+        check "keeps review open" says "keep pending 1.4.1 submission #439934 before submitting 1.4.2" &&
         check "no mutations" no_mutations
 }
 
@@ -444,11 +384,10 @@ for case_name in \
     version_ordering \
     no_pending_submission_submits \
     same_version_pending_is_noop \
-    older_owned_pending_is_superseded \
+    older_owned_pending_is_preserved \
     newer_owned_pending_is_noop \
     older_foreign_pr_is_never_touched \
     newer_foreign_pr_is_noop \
-    unprovable_owned_pr_is_never_touched \
     malformed_response_fails_safely \
     server_error_fails_safely \
     rate_limit_fails_safely \
@@ -456,16 +395,14 @@ for case_name in \
     network_failure_fails_safely \
     failure_while_opening_pr_is_visible \
     rerun_after_success_is_noop \
-    rerun_after_partial_supersede_converges \
-    failed_branch_delete_after_close_is_visible \
-    rerun_after_closed_pr_with_leftover_branch_cleans_up \
-    files_beyond_the_first_page_are_not_trusted \
-    right_count_wrong_files_are_not_trusted \
+    multiple_pending_submissions_are_preserved \
+    pending_pr_keeps_unrelated_stale_branches \
     pr_created_by_a_racing_run_is_reused \
-    stale_branches_without_prs_are_rebuilt_and_removed \
+    selected_stale_branch_is_rebuilt \
     upstream_has_version_is_noop \
     upstream_newer_is_noop \
-    dry_run_changes_nothing; do
+    dry_run_changes_nothing \
+    dry_run_preserves_pending_submission; do
     scenario "$case_name"
 done
 
