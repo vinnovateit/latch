@@ -6,7 +6,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Desktop HTTP transport.
+ * Desktop HTTP transport for Windows and Linux. macOS uses [BoundHttpTransport].
  *
  * Uses the OS default route. This mirrors how the Android app's attemptLogout
  * already worked (a plain url.openConnection() relying on the caller having bound
@@ -18,12 +18,12 @@ import java.net.URL
  * Symptom: a false "latched" state, or a login attempt that never reaches the
  * portal.
  *
- * The fix is a socket bound to the Wi-Fi interface's local address. It is not
- * implemented here because HttpURLConnection exposes no SocketFactory hook (only
- * HttpsURLConnection does), so it requires either OkHttp or a hand-rolled
- * request over a bound Socket. [WindowsWifiPlatform.wifiLocalAddress] already
- * provides the address that work would need, and this interface is shaped so the
- * change lands here without touching AutoLoginManager.
+ * The fix is a socket bound to the Wi-Fi interface's local address, as
+ * [BoundHttpTransport] does on macOS. Windows picks the interface from the
+ * source address too, and [WindowsWifiPlatform.wifiLocalAddress] already
+ * provides the address it would need. Linux does not: its routing ignores
+ * the source address unless policy routing is set up, so binding there would
+ * send Wi-Fi-addressed packets out of the Ethernet port.
  */
 class DesktopHttpTransport : HttpTransport {
     override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection =

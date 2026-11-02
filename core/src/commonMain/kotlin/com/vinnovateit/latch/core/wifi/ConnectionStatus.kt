@@ -23,6 +23,11 @@ sealed interface ConnectionStatus {
         WifiOff,
         NotOnWifi,
         NotTargetNetwork,
+        /**
+         * The OS hides the network's name from Latch (macOS without Location
+         * access), so it cannot be confirmed as VIT and no login is attempted.
+         */
+        NetworkNameHidden,
         NoCredentials,
         LoginFailed,
         LogoutFailed,

@@ -108,5 +108,8 @@ class DesktopPlatformServices(
         DesktopOs.UNSUPPORTED -> error("unreachable: guarded by init")
     }
 
-    override val httpTransport: HttpTransport = DesktopHttpTransport()
+    override val httpTransport: HttpTransport = when (os) {
+        DesktopOs.MACOS -> (wifi as MacWifiPlatform).let { mac -> BoundHttpTransport(mac::localAddress) }
+        else -> DesktopHttpTransport()
+    }
 }

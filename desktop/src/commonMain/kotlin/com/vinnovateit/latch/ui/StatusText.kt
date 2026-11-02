@@ -38,6 +38,7 @@ fun ConnectionStatus.displayText(): String = when (this) {
         ConnectionStatus.Reason.NotOnWifi -> stringResource(Res.string.status_not_on_wifi)
         // Desktop-only: no Android string exists for the SSID gate.
         ConnectionStatus.Reason.NotTargetNetwork -> "Not a known Latch network"
+        ConnectionStatus.Reason.NetworkNameHidden -> "Wi-Fi name hidden (allow Location access)"
         ConnectionStatus.Reason.NoCredentials -> stringResource(Res.string.status_login_failed)
         ConnectionStatus.Reason.LoginFailed -> stringResource(Res.string.status_login_failed)
         ConnectionStatus.Reason.LogoutFailed -> stringResource(Res.string.status_logout_failed)

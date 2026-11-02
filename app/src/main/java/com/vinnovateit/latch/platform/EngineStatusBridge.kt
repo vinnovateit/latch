@@ -42,6 +42,8 @@ private fun SharedStatus.Reason.toMessage(context: Context): String = when (this
     // and isVitCampusSsid()/isTargetNetwork() only reach this via the portal
     // host DNS check, not an SSID mismatch.
     SharedStatus.Reason.NotTargetNetwork -> "Not a known Latch network"
+    // Only macOS withholds the network name. Android never reads it.
+    SharedStatus.Reason.NetworkNameHidden -> "Not a known Latch network"
     SharedStatus.Reason.DnsResolutionFailed -> if (isPrivateDnsActive(context)) {
         context.getString(R.string.status_private_dns_blocking)
     } else {

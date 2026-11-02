@@ -117,6 +117,13 @@ private class DebounceTransport : HttpTransport {
             override fun connect() = Unit
             override fun disconnect() = Unit
             override fun usingProxy(): Boolean = false
+            // VIT's portal redirects every intercepted request to Pronto.
+            override fun getHeaderField(name: String?): String? =
+                if (urlStr.contains("generate_204") && name.equals("Location", ignoreCase = true)) {
+                    "http://phc.prontonetworks.com/cgi-bin/authlogin?URI=http://example.com"
+                } else {
+                    null
+                }
             override fun getResponseCode(): Int = when {
                 urlStr.contains("generate_204") -> probeCode.get()
                 urlStr.contains("authlogin") -> {

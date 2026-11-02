@@ -9,6 +9,7 @@ import com.vinnovateit.latch.core.wifi.AutoLoginManager
 import com.vinnovateit.latch.core.wifi.CaptivePortalDetector
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.core.wifi.LoginResult
+import com.vinnovateit.latch.core.wifi.PRONTO_PORTAL_HOST
 import com.vinnovateit.latch.core.wifi.PortalProbeResult
 import com.vinnovateit.latch.core.wifi.isVitCampusSsid
 import com.vinnovateit.latch.core.wifi.probeCampusNetwork
@@ -29,7 +30,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.net.InetAddress
 
 enum class LatchCommand { CheckAndLogin, SilentCheck, Logout, Shutdown }
 
@@ -39,11 +39,12 @@ class LatchEngine(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     /** Overridable so tests can drive the health check without waiting a minute. */
     private val healthCheckIntervalMs: Long = HEALTH_CHECK_INTERVAL_MS,
+    /** Wall-clock time, which keeps running while the machine sleeps. Overridable so tests can fake a wake. */
+    private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
 
     private companion object {
         const val TAG = "LatchEngine"
-        const val PORTAL_HOST = "phc.prontonetworks.com"
         const val HEALTH_CHECK_INTERVAL_MS = 60_000L
         const val MAX_HEALTH_CHECK_FAILURES = 3
         const val REVALIDATE_DELAY_MS = 2000L
@@ -266,12 +267,11 @@ class LatchEngine(
 
         if (probeResult is PortalProbeResult.Online) {
             val ssid = platform.wifi.currentSsid()
-            if (!isCampusSsid(ssid)) {
+            val refusal = ssidRefusal(ssid)
+            if (refusal != null) {
                 logger.d(TAG, "[ConnectAnalysis] Network has 204 internet but SSID '$ssid' is not a VIT campus network; not latching.")
                 unlatch()
-                postStatus(
-                    ConnectionStatus.Failed(ConnectionStatus.Reason.NotTargetNetwork)
-                )
+                postStatus(ConnectionStatus.Failed(refusal))
                 return
             }
             logger.d(TAG, "[ConnectAnalysis] Network has real internet (HTTP 204). Starting session.")
@@ -280,20 +280,6 @@ class LatchEngine(
             _isLatched.value = true
             sessions.startSession()
             startHealthCheck(handle)
-            return
-        }
-
-        // DNS resolution failing outright (as opposed to resolving but the
-        // portal not answering) usually means Private DNS is blocking
-        // captive-portal detection entirely -- retrying the same probe would
-        // just fail the same way, so this is reported distinctly rather than
-        // falling into the generic login-failure path below.
-        if (probeResult is PortalProbeResult.DnsBlocked && !revalidating) {
-            logger.w(TAG, "[ConnectAnalysis] Portal host DNS resolution failed.")
-            unlatch()
-            postStatus(
-                ConnectionStatus.Failed(ConnectionStatus.Reason.DnsResolutionFailed)
-            )
             return
         }
 
@@ -314,6 +300,23 @@ class LatchEngine(
             return
         }
 
+        val portalSeen = portalEvidence(probeResult, handle)
+
+        // DNS resolution failing outright (as opposed to resolving but the
+        // portal not answering) usually means Private DNS is blocking
+        // captive-portal detection entirely -- retrying the same probe would
+        // just fail the same way, so this is reported distinctly rather than
+        // falling into the generic login-failure path below. A gateway that
+        // fronts Pronto still lets the login go ahead through it.
+        if (probeResult is PortalProbeResult.DnsBlocked && portalSeen?.isPronto != true) {
+            logger.w(TAG, "[ConnectAnalysis] Portal host DNS resolution failed.")
+            unlatch()
+            postStatus(
+                ConnectionStatus.Failed(ConnectionStatus.Reason.DnsResolutionFailed)
+            )
+            return
+        }
+
         if (silent || !SettingsManager.autoLogin.value) {
             logger.d(TAG, "[ConnectAnalysis] Silent check or auto-login disabled; skipping login attempt.")
             unlatch()
@@ -323,12 +326,11 @@ class LatchEngine(
             return
         }
 
-        if (!isTargetNetwork()) {
+        val refusal = targetNetworkRefusal(portalSeen)
+        if (refusal != null) {
             logger.w(TAG, "[ConnectAnalysis] Captive portal present but network target verification failed.")
             unlatch()
-            postStatus(
-                ConnectionStatus.Failed(ConnectionStatus.Reason.NotTargetNetwork)
-            )
+            postStatus(ConnectionStatus.Failed(refusal))
             return
         }
 
@@ -340,43 +342,52 @@ class LatchEngine(
     private fun isCampusSsid(ssid: String?): Boolean =
         isVitCampusSsid(ssid, unknownIsCampus = !platform.wifi.requiresKnownSsid)
 
+    /** Null when [ssid] passes the campus test, otherwise why it does not. */
+    private fun ssidRefusal(ssid: String?): ConnectionStatus.Reason? = when {
+        isCampusSsid(ssid) -> null
+        ssid.isNullOrEmpty() && platform.wifi.isNetworkNameHidden() -> ConnectionStatus.Reason.NetworkNameHidden
+        else -> ConnectionStatus.Reason.NotTargetNetwork
+    }
+
     /**
-     * Gate before any credential-bearing request.
+     * The portal that intercepted this network's traffic, or null when none
+     * was seen. A probe that got no answer at all asks the gateway instead.
      */
-    private suspend fun isTargetNetwork(): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun portalEvidence(
+        probeResult: PortalProbeResult,
+        handle: NetworkHandle,
+    ): PortalProbeResult.Portal? = when (probeResult) {
+        is PortalProbeResult.Portal -> probeResult
+        PortalProbeResult.DnsBlocked, is PortalProbeResult.Error -> platform.wifi.gatewayIp()?.let { gateway ->
+            withTimeoutOrNull(5000L) { portal.probeGateway(gateway, handle) }
+                ?.also { logger.d(TAG, "[ConnectAnalysis] Probe got no answer; gateway answered: $it") }
+        }
+        PortalProbeResult.Online -> null
+    }
+
+    /**
+     * Gate before any credential-bearing request: null when the network is
+     * VIT's, otherwise why it is not.
+     *
+     * Both checks must pass. The SSID must name a campus network, judged the
+     * way this platform requires. The portal must point at Pronto. Without the
+     * second check an SSID that merely contains "VIT" behind some other
+     * captive portal would get the credentials in plain HTTP. On Android,
+     * which cannot read the SSID, any captive portal would.
+     */
+    private fun targetNetworkRefusal(portalSeen: PortalProbeResult.Portal?): ConnectionStatus.Reason? {
         val ssid = platform.wifi.currentSsid()
-        logger.d(TAG, "[ConnectAnalysis] Step 3/4: Target Network Verification: SSID='$ssid'")
-        if (!isCampusSsid(ssid)) {
+        logger.d(TAG, "[ConnectAnalysis] Step 3/4: Target Network Verification: SSID='$ssid', portal=$portalSeen")
+        ssidRefusal(ssid)?.let { reason ->
             logger.w(TAG, "[ConnectAnalysis] SSID '$ssid' failed VIT campus match; refusing login.")
-            return@withContext false
+            return reason
         }
-        if (!ssid.isNullOrEmpty()) {
-            return@withContext true
+        if (portalSeen?.isPronto != true) {
+            logger.w(TAG, "[ConnectAnalysis] Target Verification FAILED: the captive portal does not point at $PRONTO_PORTAL_HOST.")
+            return ConnectionStatus.Reason.NotTargetNetwork
         }
-        // Only a platform that reads a null SSID as "unknown, don't block" gets
-        // here -- one with requiresKnownSsid was refused above -- and the portal
-        // host resolving is then the only evidence of the campus network.
-
-        var resolves = withTimeoutOrNull(1500L) {
-            runCatching { InetAddress.getByName(PORTAL_HOST) }.isSuccess
-        } ?: false
-
-        if (!resolves) {
-            val gatewayIp = platform.wifi.gatewayIp()
-            if (gatewayIp != null) {
-                logger.d(TAG, "[ConnectAnalysis] Checking fallback gateway IP reachable: $gatewayIp")
-                resolves = withTimeoutOrNull(1500L) {
-                    runCatching { InetAddress.getByName(gatewayIp) }.isSuccess
-                } ?: false
-            }
-        }
-
-        if (!resolves) {
-            logger.w(TAG, "[ConnectAnalysis] Target Verification FAILED: Portal host '$PORTAL_HOST' unresolvable.")
-        } else {
-            logger.d(TAG, "[ConnectAnalysis] Target Verification PASSED: Network verified successfully.")
-        }
-        resolves
+        logger.d(TAG, "[ConnectAnalysis] Target Verification PASSED: Network verified successfully.")
+        return null
     }
 
     private suspend fun handleCaptivePortal(handle: NetworkHandle) {
@@ -397,28 +408,20 @@ class LatchEngine(
                 return
             }
             logger.d(TAG, "[ConnectAnalysis] Attempting Portal Login (HTTP)...")
-            var result = login.attemptLogin(
+            // A failed request is retried through the gateway inside
+            // attemptLogin. A refusal is not, so a wrong password is sent once.
+            val result = login.attemptLogin(
                 userId = user,
                 password = pass,
                 handle = handle,
                 useAlternate = false,
                 fallbackIp = platform.wifi.gatewayIp(),
             )
-            if (result is LoginResult.Failure) {
-                val gw = platform.wifi.gatewayIp()
-                if (gw != null) {
-                    logger.d(TAG, "[ConnectAnalysis] Retrying HTTP login with direct Gateway IP ($gw)...")
-                    result = login.attemptLogin(
-                        userId = user,
-                        password = pass,
-                        handle = handle,
-                        useAlternate = false,
-                        fallbackIp = gw,
-                    )
-                }
-            }
 
-            if (result is LoginResult.Failure) {
+            if (result != LoginResult.Success) {
+                if (result == LoginResult.Rejected) {
+                    logger.w(TAG, "[ConnectAnalysis] Portal refused the credentials; not retrying.")
+                }
                 logger.w(TAG, "[ConnectAnalysis] Login failed; not entering revalidation.")
                 unlatch()
                 postStatus(
@@ -495,7 +498,7 @@ class LatchEngine(
     private fun startHealthCheck(handle: NetworkHandle) {
         healthCheckJob?.cancel()
         healthCheckJob = scope.launch {
-            var lastTick = System.currentTimeMillis()
+            var lastTick = wallClock()
             var failCount = 0
             while (isActive) {
                 delay(healthCheckIntervalMs)
@@ -503,10 +506,11 @@ class LatchEngine(
                 // delay() does not track wall-clock across OS suspend, so after a
                 // lid-close the tick can be arbitrarily late. Detect that and
                 // re-check immediately rather than trusting stale state.
-                val now = System.currentTimeMillis()
+                val now = wallClock()
                 val drift = now - lastTick - healthCheckIntervalMs
                 lastTick = now
-                if (drift > healthCheckIntervalMs) {
+                val resumed = drift > healthCheckIntervalMs
+                if (resumed) {
                     logger.d(TAG, "Detected resume from sleep (drift ${drift}ms); re-checking.")
                 }
 
@@ -519,7 +523,12 @@ class LatchEngine(
                     // One timed-out probe on congested campus Wi-Fi is normal.
                     // Re-logging in on it would re-POST the credentials and flap
                     // the UI, so only a sustained failure counts as expiry.
-                    failCount++
+                    // Pronto itself answering right after a sleep is not that
+                    // ambiguous case: the portal ended the session while the
+                    // machine slept, so the re-login goes ahead at once.
+                    val portalAfterResume = resumed &&
+                        portalEvidence(probeResult, handle)?.isPronto == true
+                    failCount = if (portalAfterResume) MAX_HEALTH_CHECK_FAILURES else failCount + 1
                     logger.w(TAG, "Health check probe failed ($failCount/$MAX_HEALTH_CHECK_FAILURES, status $probeResult).")
                     if (failCount >= MAX_HEALTH_CHECK_FAILURES) {
                         logger.w(TAG, "Health check failed $MAX_HEALTH_CHECK_FAILURES consecutive times; session may have expired.")

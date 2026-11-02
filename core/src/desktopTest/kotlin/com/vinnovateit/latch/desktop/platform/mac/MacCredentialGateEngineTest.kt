@@ -71,12 +71,12 @@ class MacCredentialGateEngineTest {
 
     @Test
     fun `when Location permission is denied credentials are never sent`() =
-        assertRefused(on(ssid = null, location = MacLocationAccess.Denied))
+        assertRefused(on(ssid = null, location = MacLocationAccess.Denied), expected = ConnectionStatus.Reason.NetworkNameHidden)
 
     @Test
     fun `when Location permission is undecided or restricted credentials are never sent`() {
-        assertRefused(on(ssid = null, location = MacLocationAccess.NotDetermined))
-        assertRefused(on(ssid = null, location = MacLocationAccess.Restricted))
+        assertRefused(on(ssid = null, location = MacLocationAccess.NotDetermined), expected = ConnectionStatus.Reason.NetworkNameHidden)
+        assertRefused(on(ssid = null, location = MacLocationAccess.Restricted), expected = ConnectionStatus.Reason.NetworkNameHidden)
     }
 
     @Test
@@ -246,6 +246,13 @@ private class PortalTransport(private val online: Boolean) : HttpTransport {
             override fun connect() = Unit
             override fun disconnect() = Unit
             override fun usingProxy(): Boolean = false
+            // VIT's portal redirects every intercepted request to Pronto.
+            override fun getHeaderField(name: String?): String? =
+                if (target.contains("generate_204") && name.equals("Location", ignoreCase = true)) {
+                    "http://phc.prontonetworks.com/cgi-bin/authlogin?URI=http://example.com"
+                } else {
+                    null
+                }
             override fun getResponseCode(): Int = when {
                 target.contains("generate_204") -> {
                     probes.incrementAndGet()
