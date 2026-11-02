@@ -19,26 +19,28 @@ class OneShotAcquisitionTest {
         val files = SecureRuntimeFiles(directory)
         val heldChannel = RandomAccessFile(files.lockFile, "rw").channel
         val heldLock = checkNotNull(heldChannel.tryLock()) { "test setup: expected to acquire the lock" }
+        // Joined before cleanup: the result can arrive as soon as the file is
+        // renamed into place, while the writer is still setting its permissions.
+        val writer = launch(Dispatchers.IO) {
+            delay(150)
+            files.writeToken("transitional-token")
+            files.writeMetadata(
+                OwnerMetadata(
+                    version = INSTANCE_PROTOCOL_VERSION,
+                    ownerKind = OwnerKind.DESKTOP,
+                    port = 1,
+                    pid = ProcessHandle.current().pid(),
+                    startedAt = 1,
+                ),
+            )
+        }
         try {
-            launch(Dispatchers.IO) {
-                delay(150)
-                files.writeToken("transitional-token")
-                files.writeMetadata(
-                    OwnerMetadata(
-                        version = INSTANCE_PROTOCOL_VERSION,
-                        ownerKind = OwnerKind.DESKTOP,
-                        port = 1,
-                        pid = ProcessHandle.current().pid(),
-                        startedAt = 1,
-                    ),
-                )
-            }
-
             val result = tryAcquireOneShot(directory, OwnerKind.CLI_ONESHOT, handler = ::echo)
 
             assertIs<AcquireResult.Existing>(result)
             Unit
         } finally {
+            writer.join()
             runCatching { heldLock.release() }
             heldChannel.close()
             directory.deleteRecursively()
@@ -51,6 +53,12 @@ class OneShotAcquisitionTest {
         val files = SecureRuntimeFiles(directory)
         val heldChannel = RandomAccessFile(files.lockFile, "rw").channel
         val heldLock = checkNotNull(heldChannel.tryLock()) { "test setup: expected to acquire the lock" }
+        // Joined before cleanup: the token can be read as soon as it is renamed
+        // into place, while the writer is still setting its permissions.
+        val writer = launch(Dispatchers.IO) {
+            delay(150)
+            files.writeToken("transitional-token")
+        }
         try {
             files.writeMetadata(
                 OwnerMetadata(
@@ -61,16 +69,13 @@ class OneShotAcquisitionTest {
                     startedAt = 1,
                 ),
             )
-            launch(Dispatchers.IO) {
-                delay(150)
-                files.writeToken("transitional-token")
-            }
 
             val result = tryAcquireOneShot(directory, OwnerKind.CLI_ONESHOT, handler = ::echo)
 
             assertIs<AcquireResult.Existing>(result)
             Unit
         } finally {
+            writer.join()
             runCatching { heldLock.release() }
             heldChannel.close()
             directory.deleteRecursively()
