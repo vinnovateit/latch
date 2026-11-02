@@ -28,11 +28,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,13 +38,11 @@ import com.vinnovateit.latch.desktop.resources.home_status_connected
 import com.vinnovateit.latch.desktop.resources.home_status_disconnected
 import com.vinnovateit.latch.ui.theme.modernizFontFamily
 import com.vinnovateit.latch.ui.theme.satoshiFontFamily
-import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 
-
 /**
- * Home status area: a transient LATCHED / DISCONNECTED pill that shows on a
- * connection change and dismisses itself after 3.5s.
+ * Home status area: a pill that always shows the session state, LATCHED or
+ * DISCONNECTED, and crossfades when it changes.
  *
  * Carries no brand mark. Application identity is already stated by the window
  * title bar, and again by the navigation rail on wide layouts, so a third mark
@@ -65,14 +58,6 @@ internal fun LatchHomeTopBar(
     isLatched: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    var showPill by remember(isLatched) { mutableStateOf(true) }
-
-    LaunchedEffect(isLatched) {
-        showPill = true
-        delay(3500)
-        showPill = false
-    }
-
     TopAppBar(
         modifier = modifier,
         colors = TopAppBarDefaults.topAppBarColors(
@@ -84,23 +69,22 @@ internal fun LatchHomeTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(start = 4.dp),
             ) {
-                AnimatedVisibility(
-                    visible = showPill,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(200)),
-                    label = "TopBarTitlePill",
+                Surface(
+                    shape = CircleShape,
+                    color = if (isLatched) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isLatched) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
+                    AnimatedContent(
+                        targetState = isLatched,
+                        transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
+                        label = "TopBarTitlePill",
+                    ) { latched ->
                         Text(
                             text = stringResource(
-                                if (isLatched) Res.string.home_status_connected
+                                if (latched) Res.string.home_status_connected
                                 else Res.string.home_status_disconnected,
                             ),
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (isLatched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (latched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold,
                             fontFamily = satoshiFontFamily(),
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
