@@ -30,6 +30,11 @@ sealed interface ConnectionStatus {
         NetworkNameHidden,
         NoCredentials,
         LoginFailed,
+        /**
+         * The portal answered and refused the saved login. Automatic logins
+         * stop until the login changes or the user asks to connect again.
+         */
+        CredentialsRejected,
         LogoutFailed,
         Disconnected,
         NetworkTimeoutAfterLogin,
