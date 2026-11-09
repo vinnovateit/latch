@@ -37,13 +37,8 @@ private fun SharedStatus.Reason.toMessage(context: Context): String = when (this
     SharedStatus.Reason.LogoutFailed -> context.getString(R.string.status_logout_failed)
     SharedStatus.Reason.Disconnected -> context.getString(R.string.status_disconnected_message)
     SharedStatus.Reason.NetworkTimeoutAfterLogin -> "Network timeout after login"
-    // No exact match on Android before -- the app has never distinguished
-    // this from a generic login failure, since currentSsid() is always null
-    // and isVitCampusSsid()/isTargetNetwork() only reach this via the portal
-    // host DNS check, not an SSID mismatch.
     SharedStatus.Reason.NotTargetNetwork -> "Not a known Latch network"
-    // Only macOS withholds the network name. Android never reads it.
-    SharedStatus.Reason.NetworkNameHidden -> "Not a known Latch network"
+    SharedStatus.Reason.NetworkNameHidden -> context.getString(R.string.status_network_name_hidden)
     SharedStatus.Reason.DnsResolutionFailed -> if (isPrivateDnsActive(context)) {
         context.getString(R.string.status_private_dns_blocking)
     } else {
