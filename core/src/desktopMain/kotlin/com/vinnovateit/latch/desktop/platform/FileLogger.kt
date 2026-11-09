@@ -2,6 +2,8 @@ package com.vinnovateit.latch.desktop.platform
 
 import com.vinnovateit.latch.core.platform.Logger
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -9,6 +11,11 @@ import java.util.logging.FileHandler
 import java.util.logging.Level
 import java.util.logging.LogRecord
 import java.util.logging.Formatter as JulFormatter
+
+/** Logs describe the user's networks, so other accounts on the machine get no access. No-op without POSIX permissions. */
+private fun restrictToOwner(directory: File) {
+    runCatching { Files.setPosixFilePermissions(directory.toPath(), PosixFilePermissions.fromString("rwx------")) }
+}
 
 /**
  * Rotating file logger.
@@ -25,6 +32,7 @@ class FileLogger(
     private var handler: FileHandler? = null
 
     private val julLogger: java.util.logging.Logger? = try {
+        restrictToOwner(logsDir)
         java.util.logging.Logger.getLogger("latch").apply {
             useParentHandlers = false
             level = Level.ALL
