@@ -2,11 +2,14 @@ package com.vinnovateit.latch.core.platform.android
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.security.UnrecoverableKeyException
+import javax.crypto.AEADBadTagException
 
 object StoredCredentials {
 
@@ -15,26 +18,47 @@ object StoredCredentials {
     private const val KEY_PASSWORD = "password"
     // Default alias used by MasterKey.Builder when no custom alias is set.
     private const val MASTER_KEY_ALIAS = "_androidx_security_master_key"
+    private const val MAX_CAUSE_DEPTH = 8
+
+    /**
+     * Whether [failure] proves the stored credentials can never be read again.
+     *
+     * Everything else (a busy Keystore, a failed disk read) may pass by the
+     * next attempt, so it must not cost the user their saved login.
+     */
+    fun isPermanentStoreFailure(failure: Exception): Boolean =
+        generateSequence<Throwable>(failure) { it.cause }.take(MAX_CAUSE_DEPTH).any {
+            it is AEADBadTagException ||
+                it is KeyPermanentlyInvalidatedException ||
+                it is UnrecoverableKeyException ||
+                // Tink's unreadable keyset; protobuf is not a direct dependency here.
+                it.javaClass.simpleName == "InvalidProtocolBufferException"
+        }
 
     private fun getEncryptedPrefs(context: Context): EncryptedSharedPreferences? {
         return try {
             buildEncryptedPrefs(context)
         } catch (e: GeneralSecurityException) {
-            // Keystore key is stale (e.g. after app-data clear). Wipe everything
-            // so the next attempt starts completely fresh.
-            clearCorruptedState(context)
+            handleReadFailure(context, e)
             null
         } catch (e: IOException) {
-            clearCorruptedState(context)
+            handleReadFailure(context, e)
             null
         }
     }
 
+    private fun handleReadFailure(context: Context, failure: Exception) {
+        // A stale Keystore key (e.g. after app-data clear) needs everything
+        // wiped so the next attempt starts completely fresh.
+        if (isPermanentStoreFailure(failure)) clearCorruptedState(context)
+    }
+
     /**
-     * Same as [getEncryptedPrefs] but performs one recovery attempt after a
-     * corruption is detected. Used by [saveCredentials] so a first-time save
-     * after an app-data clear succeeds in the same call rather than requiring
-     * the user to press the button twice.
+     * Same as [getEncryptedPrefs] but always recovers and tries once more: the
+     * user is replacing what is stored, so nothing is lost by clearing a store
+     * that will not open. Used by [saveCredentials] so a first-time save after
+     * an app-data clear succeeds in the same call rather than requiring the
+     * user to press the button twice.
      */
     private fun getEncryptedPrefsWithRecovery(context: Context): EncryptedSharedPreferences? {
         return try {

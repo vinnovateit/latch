@@ -1,10 +1,12 @@
 package com.vinnovateit.latch.desktop.platform.windows
 
 import com.sun.jna.platform.win32.Crypt32Util
+import com.sun.jna.platform.win32.Win32Exception
 import com.vinnovateit.latch.core.platform.CredentialStore
 import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.desktop.platform.SecureFileWriter
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.nio.file.Files
@@ -22,9 +24,20 @@ internal interface DpapiBackend {
     fun unprotect(encrypted: ByteArray): ByteArray
 }
 
+/** DPAPI reported that the blob itself is malformed, so retrying cannot help. */
+internal class DpapiBlobCorruptException(cause: Throwable) : Exception(cause)
+
+private const val ERROR_INVALID_DATA = 13
+private const val NTE_BAD_DATA = 0x80090005.toInt()
+
 private object JnaDpapiBackend : DpapiBackend {
     override fun protect(plain: ByteArray): ByteArray = Crypt32Util.cryptProtectData(plain)
-    override fun unprotect(encrypted: ByteArray): ByteArray = Crypt32Util.cryptUnprotectData(encrypted)
+    override fun unprotect(encrypted: ByteArray): ByteArray = try {
+        Crypt32Util.cryptUnprotectData(encrypted)
+    } catch (e: Win32Exception) {
+        if (e.errorCode == ERROR_INVALID_DATA || e.errorCode == NTE_BAD_DATA) throw DpapiBlobCorruptException(e)
+        throw e
+    }
 }
 
 /**
@@ -68,11 +81,22 @@ class DpapiCredentialStore internal constructor(
             val decrypted = backend.unprotect(file.readBytes())
             json.decodeFromString<StoredCreds>(decrypted.toString(Charsets.UTF_8))
                 .also { cache = it }
+        } catch (e: DpapiBlobCorruptException) {
+            discardCorruptBlob(e)
+        } catch (e: SerializationException) {
+            discardCorruptBlob(e)
         } catch (e: Throwable) {
-            logger.e(TAG, "Credential blob unreadable; clearing it", e)
-            runCatching { file.delete() }
+            // A locked file, a user profile that has not finished loading: the
+            // blob may read fine next time, and a later save replaces it anyway.
+            logger.e(TAG, "Credential blob could not be read right now; keeping it", e)
             null
         }
+    }
+
+    private fun discardCorruptBlob(cause: Exception): StoredCreds? {
+        logger.e(TAG, "Credential blob is corrupt; clearing it", cause)
+        runCatching { file.delete() }
+        return null
     }
 
     override fun userId(): String? = read()?.userId

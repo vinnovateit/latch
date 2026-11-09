@@ -107,16 +107,41 @@ class DpapiCredentialStoreTest {
     fun `a corrupt blob is cleared rather than surfacing a decryption exception`() {
         file.parentFile?.mkdirs()
         file.writeBytes(byteArrayOf(1, 2, 3))
-        val store = DpapiCredentialStore(file, NoOpLogger, FailingDpapiBackend())
+        val store = DpapiCredentialStore(file, NoOpLogger, CorruptDpapiBackend())
 
         assertEquals(null, store.userId())
-        assertFalse(file.exists(), "an unreadable blob should be cleared, not left behind")
+        assertFalse(file.exists(), "a corrupt blob should be cleared, not left behind")
+    }
+
+    @Test
+    fun `a blob that decrypts to garbage is cleared`() {
+        file.writeBytes(byteArrayOf(1, 2, 3))
+        val store = DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend())
+
+        assertEquals(null, store.userId())
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun `a temporary decryption failure keeps the credentials for the next read`() {
+        DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend()).save("22BCE0001", "secret")
+
+        assertEquals(null, DpapiCredentialStore(file, NoOpLogger, FailingDpapiBackend()).userId())
+
+        assertTrue(file.exists(), "a failure that may pass must not delete the saved login")
+        assertEquals("secret", DpapiCredentialStore(file, NoOpLogger, PassthroughDpapiBackend()).password())
     }
 }
 
 private class PassthroughDpapiBackend : DpapiBackend {
     override fun protect(plain: ByteArray): ByteArray = plain
     override fun unprotect(encrypted: ByteArray): ByteArray = encrypted
+}
+
+private class CorruptDpapiBackend : DpapiBackend {
+    override fun protect(plain: ByteArray): ByteArray = plain
+    override fun unprotect(encrypted: ByteArray): ByteArray =
+        throw DpapiBlobCorruptException(IOException("malformed blob"))
 }
 
 private class FailingDpapiBackend : DpapiBackend {

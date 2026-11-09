@@ -7,6 +7,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
+import java.security.GeneralSecurityException
+import java.security.UnrecoverableKeyException
+import javax.crypto.AEADBadTagException
 
 /**
  * Exercises the synchronous persistence and removal steps behind
@@ -99,6 +103,19 @@ class StoredCredentialsPersistenceTest {
         appPrefs.commitSucceeds = false
 
         assertFalse(StoredCredentials.removeCredentials(credentials, appPrefs))
+    }
+
+    @Test
+    fun onlyProvenCorruptionCountsAsAPermanentStoreFailure() {
+        assertTrue(StoredCredentials.isPermanentStoreFailure(AEADBadTagException("bad tag")))
+        assertTrue(StoredCredentials.isPermanentStoreFailure(UnrecoverableKeyException("key gone")))
+        assertTrue(
+            "the proof is usually wrapped by the crypto library",
+            StoredCredentials.isPermanentStoreFailure(GeneralSecurityException("keyset", AEADBadTagException("bad tag"))),
+        )
+
+        assertFalse(StoredCredentials.isPermanentStoreFailure(IOException("disk busy")))
+        assertFalse(StoredCredentials.isPermanentStoreFailure(GeneralSecurityException("keystore busy")))
     }
 }
 

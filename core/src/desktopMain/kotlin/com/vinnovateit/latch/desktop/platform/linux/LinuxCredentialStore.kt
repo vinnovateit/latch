@@ -4,6 +4,7 @@ import com.vinnovateit.latch.core.platform.CredentialStore
 import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.desktop.platform.SecureFileWriter
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
@@ -12,6 +13,7 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
@@ -185,12 +187,13 @@ class LinuxCredentialStore internal constructor(
         return randomSalt
     }
 
-    private fun deriveKey(salt: ByteArray): SecretKey {
-        val machineId = runCatching {
-            File("/etc/machine-id").takeIf { it.exists() }?.readText()?.trim()
-                ?: File("/var/lib/dbus/machine-id").takeIf { it.exists() }?.readText()?.trim()
-        }.getOrNull() ?: (System.getProperty("user.name") + SALT)
+    private fun readMachineId(): String? = runCatching {
+        File("/etc/machine-id").takeIf { it.exists() }?.readText()?.trim()
+            ?: File("/var/lib/dbus/machine-id").takeIf { it.exists() }?.readText()?.trim()
+    }.getOrNull()
 
+    private fun deriveKey(salt: ByteArray): SecretKey {
+        val machineId = readMachineId() ?: (System.getProperty("user.name") + SALT)
         val user = System.getProperty("user.name").orEmpty()
         val rawPrefix = "$machineId:$user:".toByteArray(Charsets.UTF_8)
         val sha256 = MessageDigest.getInstance("SHA-256").digest(rawPrefix + salt)
@@ -287,11 +290,26 @@ class LinuxCredentialStore internal constructor(
 
         return try {
             decrypt(bytes, saltBytes).also { cache = it }
+        } catch (e: AEADBadTagException) {
+            // The key depends on the machine id, so without one this failure
+            // says nothing about the blob.
+            if (readMachineId() != null) discardCorruptBlob(e) else keepBlob(e)
+        } catch (e: SerializationException) {
+            discardCorruptBlob(e)
         } catch (e: Throwable) {
-            logger.e(TAG, "Credential blob unreadable; clearing it", e)
-            runCatching { file.delete() }
-            null
+            keepBlob(e)
         }
+    }
+
+    private fun discardCorruptBlob(cause: Exception): StoredCreds? {
+        logger.e(TAG, "Credential blob is corrupt; clearing it", cause)
+        runCatching { file.delete() }
+        return null
+    }
+
+    private fun keepBlob(cause: Throwable): StoredCreds? {
+        logger.e(TAG, "Credential blob could not be read right now; keeping it", cause)
+        return null
     }
 
     private fun decrypt(bytes: ByteArray, salt: ByteArray): StoredCreds {
