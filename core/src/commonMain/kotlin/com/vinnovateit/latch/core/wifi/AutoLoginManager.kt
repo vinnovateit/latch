@@ -72,7 +72,8 @@ class AutoLoginManager(
         password: String,
         handle: NetworkHandle? = null,
         useAlternate: Boolean = false,
-        fallbackIp: String? = null,
+        /** Asked only if the first attempt fails. Null means no address is safe to retry through. */
+        fallbackIp: () -> String? = { null },
     ): LoginResult {
         logDebug("Initiating login attempt for user: $userId (useAlternate=$useAlternate)")
         val targetUrlStr = if (useAlternate) SECURE_LOGIN_URL else LOGIN_URL
@@ -103,7 +104,7 @@ class AutoLoginManager(
             val elapsed = System.currentTimeMillis() - start
             return when (responseCode) {
                 HttpURLConnection.HTTP_OK -> {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val response = connection.inputStream.use { it.readTextUpTo(MAX_PORTAL_PAGE_BYTES) }
                     logDebug("Portal responded in ${elapsed}ms: HTTP 200 (Body: ${response.length} chars)")
                     val responseLower = response.lowercase()
                     val hasExplicitError = "invalid" in responseLower ||
@@ -131,7 +132,7 @@ class AutoLoginManager(
                     val isSuccess = !hasExplicitError && hasSuccessToken
                     logDebug("Login evaluation: isSuccess=$isSuccess (hasExplicitError=$hasExplicitError)")
                     if (!isSuccess) {
-                        logWarning("Login response indicated failure in ${elapsed}ms. Snippet: ${response.take(300).replace("\n", " ")}")
+                        logWarning("Login response indicated failure in ${elapsed}ms (${response.length} chars).")
                     }
 
                     if (isSuccess) LoginResult.Success else LoginResult.Rejected
@@ -169,8 +170,9 @@ class AutoLoginManager(
         }
 
         val result = attemptOrFailure(targetUrlStr)
-        if (result != LoginResult.Failure || fallbackIp == null) return result
-        val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
+        if (result != LoginResult.Failure) return result
+        val retryIp = fallbackIp() ?: return result
+        val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, retryIp)
         logDebug("Retrying login with fallback IP: $fallbackTargetUrlStr")
         return attemptOrFailure(fallbackTargetUrlStr)
     }
@@ -211,7 +213,7 @@ class AutoLoginManager(
                 // Read the response body so we can extract logout session metrics
                 val body = try {
                     (if (code >= 400) connection.errorStream else connection.inputStream)
-                        ?.bufferedReader()?.use { it.readText() }
+                        ?.use { it.readTextUpTo(MAX_PORTAL_PAGE_BYTES) }
                 } catch (e: Exception) {
                     logDebug("Stream read exception (ignored): ${e.message}")
                     null

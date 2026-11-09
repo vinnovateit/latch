@@ -108,6 +108,15 @@ class LatchEnginePortalGateTest {
         }
 
     @Test
+    fun `a failed login is not retried through a gateway that does not front Pronto`() =
+        withEngine(PortalScript(portalLogin = 500 to "error", gatewayRedirect = CAFE_REDIRECT)) { engine, portal ->
+            engine.submitAndAwait(LatchCommand.CheckAndLogin, 15_000)
+
+            assertEquals(listOf("phc.prontonetworks.com"), portal.logins, "the gateway must prove itself first")
+            assertFalse(engine.isLatched.value)
+        }
+
+    @Test
     fun `after a sleep a Pronto redirect logs in again without waiting for three failures`() =
         assertProbesBeforeRelogin(sleep = true, expected = 2)
 
