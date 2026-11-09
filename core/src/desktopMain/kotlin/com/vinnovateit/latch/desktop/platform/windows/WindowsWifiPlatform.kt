@@ -12,6 +12,40 @@ import java.util.concurrent.TimeUnit
 
 internal data class SimpleWindowsNetworkHandle(override val id: String) : NetworkHandle
 
+internal data class WindowsWifiFields(
+    val adapterName: String?,
+    val adapterUp: Boolean,
+    val radioOn: Boolean?,
+    val ssid: String?,
+    val gateway: String?,
+    val ssidSource: String?,
+)
+
+/**
+ * Parses the script's `RESULT|name|up|radio|ssid|gateway|source` line. The name
+ * and SSID arrive Base64-encoded so that a `|` in either cannot shift the
+ * fields after it.
+ */
+internal fun parseWifiResult(line: String): WindowsWifiFields {
+    val parts = line.removePrefix("RESULT|").split('|')
+    fun text(index: Int) = parts.getOrNull(index)?.trim()?.takeIf { it.isNotEmpty() }
+    fun decoded(index: Int) = text(index)?.let { encoded ->
+        runCatching { String(java.util.Base64.getDecoder().decode(encoded), Charsets.UTF_8) }.getOrNull()
+    }?.trim()?.takeIf { it.isNotEmpty() }
+    return WindowsWifiFields(
+        adapterName = decoded(0),
+        adapterUp = text(1) == "1",
+        radioOn = when (text(2)) {
+            "1" -> true
+            "0" -> false
+            else -> null
+        },
+        ssid = decoded(3),
+        gateway = text(4),
+        ssidSource = text(5),
+    )
+}
+
 /**
  * Windows Wi-Fi state via PowerShell.
  */
@@ -132,27 +166,22 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
               ${'$'}r = Get-NetRoute -InterfaceAlias ${'$'}name -DestinationPrefix '0.0.0.0/0' | Select-Object -First 1
               if (${'$'}r) { ${'$'}gw = ${'$'}r.NextHop }
             }
-            Write-Output ("RESULT|" + ${'$'}name + "|" + ${'$'}up + "|" + ${'$'}radio + "|" + ${'$'}ssid + "|" + ${'$'}gw + "|" + ${'$'}src)
+            # Names can hold any character, including this line's separator.
+            function Latch-Field(${'$'}value) { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]${'$'}value)) }
+            Write-Output ("RESULT|" + (Latch-Field ${'$'}name) + "|" + ${'$'}up + "|" + ${'$'}radio + "|" + (Latch-Field ${'$'}ssid) + "|" + ${'$'}gw + "|" + ${'$'}src)
         """.trimIndent()
 
         val result = runPowerShell(script)
         val snap = if (result == null) {
             WifiSnapshot(null, false, null, null, null)
         } else {
-            val parts = result.removePrefix("RESULT|").split('|')
+            val fields = parseWifiResult(result)
             WifiSnapshot(
-                adapterName = parts.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() },
-                adapterUp = parts.getOrNull(1)?.trim() == "1",
-                radioOn = when (parts.getOrNull(2)?.trim()) {
-                    "1" -> true
-                    "0" -> false
-                    else -> null
-                },
-                ssid = resolveSsid(
-                    raw = parts.getOrNull(3)?.trim(),
-                    source = parts.getOrNull(5)?.trim(),
-                ),
-                gateway = parts.getOrNull(4)?.trim()?.takeIf { it.isNotEmpty() },
+                adapterName = fields.adapterName,
+                adapterUp = fields.adapterUp,
+                radioOn = fields.radioOn,
+                ssid = resolveSsid(raw = fields.ssid, source = fields.ssidSource),
+                gateway = fields.gateway,
             )
         }
         cached = snap
