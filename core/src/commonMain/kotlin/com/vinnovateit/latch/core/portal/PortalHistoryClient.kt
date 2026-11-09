@@ -6,6 +6,11 @@ import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.NetworkHandle
 import com.vinnovateit.latch.core.platform.Platform
 import com.vinnovateit.latch.core.platform.logger
+import com.vinnovateit.latch.core.wifi.MAX_HISTORY_PAGE_BYTES
+import com.vinnovateit.latch.core.wifi.MAX_PORTAL_PAGE_BYTES
+import com.vinnovateit.latch.core.wifi.readTextUpTo
+import com.vinnovateit.latch.core.wifi.readUpTo
+import java.io.IOException
 import java.net.URL
 import java.net.URLEncoder
 import java.util.regex.Pattern
@@ -19,6 +24,7 @@ class PortalHistoryClient(
         const val DEFAULT_PORTAL_HOST = "136.233.9.110"
         private const val CONNECT_TIMEOUT_MS = 6000
         private const val READ_TIMEOUT_MS = 8000
+        private const val MAX_REDIRECTS = 3
     }
 
     internal data class DateFilter(
@@ -72,15 +78,20 @@ class PortalHistoryClient(
             conn1.instanceFollowRedirects = false
             conn1.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
 
-            val mainHtml = conn1.inputStream.bufferedReader().use { it.readText() }
-            logger.d(TAG, "Response code: ${conn1.responseCode}")
+            val responseCode1 = conn1.responseCode
+            logger.d(TAG, "Response code: $responseCode1")
+            if (responseCode1 != 200) {
+                return Result.failure(IOException("The portal did not serve its login page (HTTP $responseCode1)"))
+            }
+            val mainHtml = conn1.inputStream.use { it.readTextUpTo(MAX_PORTAL_PAGE_BYTES) }
             val setCookieHeader = conn1.getHeaderField("Set-Cookie")
             var cookie = setCookieHeader?.substringBefore(";") ?: ""
 
-            // Extract chooseAuth.do action URL (which may contain ;jsessionid=)
-            val actionMatcher = Pattern.compile("action=[\"']([^\"']*chooseAuth\\.do[^\"']*)[\"']", Pattern.CASE_INSENSITIVE).matcher(mainHtml)
-            val actionPath = if (actionMatcher.find()) actionMatcher.group(1) else "/registration/chooseAuth.do"
-            val loginUrl = if (actionPath.startsWith("http")) URL(actionPath) else URL("http://$host$actionPath")
+            // Only the portal's own login form gets the credentials. Any other
+            // page reachable at this address -- another network's router, say --
+            // has no such form, or one that posts somewhere else.
+            val loginUrl = loginFormAction(mainHtml, mainUrl)
+                ?: return Result.failure(IOException("The page at the portal address is not the portal's login form"))
 
             // Step 2: POST credentials
             val postData = buildString {
@@ -109,7 +120,7 @@ class PortalHistoryClient(
             }
             val responseCode2 = conn2.responseCode
             val stream2 = if (responseCode2 in 200..399) conn2.inputStream else conn2.errorStream
-            stream2?.bufferedReader()?.use { it.readText() }
+            stream2?.use { it.readUpTo(MAX_PORTAL_PAGE_BYTES) }
 
             // Step 3: Query history with registration number date range
             val dateFilter = computeDateFilter(userId)
@@ -127,21 +138,7 @@ class PortalHistoryClient(
 
             val filterUrl = URL("http://$host/registration/customerSessionHistory.do")
             logger.d(TAG, "Requesting portal history URL: $filterUrl")
-            val conn3 = transport.open(filterUrl, handle)
-            conn3.requestMethod = "POST"
-            conn3.doOutput = true
-            conn3.instanceFollowRedirects = true
-            conn3.connectTimeout = CONNECT_TIMEOUT_MS
-            conn3.readTimeout = READ_TIMEOUT_MS
-            conn3.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-            conn3.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
-            if (cookie.isNotEmpty()) {
-                conn3.setRequestProperty("Cookie", cookie)
-            }
-
-            conn3.outputStream.bufferedWriter().use { it.write(filterPostData) }
-            var historyHtml = conn3.inputStream.bufferedReader().use { it.readText() }
-            logger.d(TAG, "Response code: ${conn3.responseCode}")
+            var historyHtml = readPortalPage(filterUrl, handle, cookie, filterPostData)
             var records = PortalHistoryParser.parse(historyHtml)
             logger.d(TAG, "Parsed ${records.size} records")
 
@@ -149,17 +146,7 @@ class PortalHistoryClient(
             if (records.isEmpty()) {
                 val fallbackUrl = URL("http://$host/registration/main.do?content_key=%2FCustomerSessionHistory.jsp")
                 logger.d(TAG, "Requesting portal history URL: $fallbackUrl")
-                val connFallback = transport.open(fallbackUrl, handle)
-                connFallback.requestMethod = "GET"
-                connFallback.instanceFollowRedirects = true
-                connFallback.connectTimeout = CONNECT_TIMEOUT_MS
-                connFallback.readTimeout = READ_TIMEOUT_MS
-                connFallback.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
-                if (cookie.isNotEmpty()) {
-                    connFallback.setRequestProperty("Cookie", cookie)
-                }
-                historyHtml = connFallback.inputStream.bufferedReader().use { it.readText() }
-                logger.d(TAG, "Response code: ${connFallback.responseCode}")
+                historyHtml = readPortalPage(fallbackUrl, handle, cookie, postBody = null)
                 records = PortalHistoryParser.parse(historyHtml)
                 logger.d(TAG, "Parsed ${records.size} records")
             }
@@ -170,4 +157,58 @@ class PortalHistoryClient(
             Result.failure(e)
         }
     }
+
+    /**
+     * Reads a logged-in page, following redirects by hand so that one leaving
+     * the portal is refused instead of being sent the session cookie.
+     */
+    private fun readPortalPage(
+        start: URL,
+        handle: NetworkHandle?,
+        cookie: String,
+        postBody: String?,
+    ): String {
+        var url = start
+        var body = postBody
+        repeat(MAX_REDIRECTS + 1) {
+            val connection = transport.open(url, handle)
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = CONNECT_TIMEOUT_MS
+            connection.readTimeout = READ_TIMEOUT_MS
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
+            if (cookie.isNotEmpty()) connection.setRequestProperty("Cookie", cookie)
+            val sending = body
+            if (sending != null) {
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                connection.outputStream.bufferedWriter().use { it.write(sending) }
+            } else {
+                connection.requestMethod = "GET"
+            }
+
+            val code = connection.responseCode
+            logger.d(TAG, "Response code: $code")
+            if (code !in 300..399) return connection.inputStream.use { it.readTextUpTo(MAX_HISTORY_PAGE_BYTES) }
+
+            val location = connection.getHeaderField("Location") ?: throw IOException("Redirect without a Location")
+            val next = URL(url, location)
+            if (!isSameOrigin(next, url)) throw IOException("The portal redirected away from its own address")
+            url = next
+            body = null
+        }
+        throw IOException("Too many redirects from the portal")
+    }
 }
+
+/** Where the login form at [page] posts to, or null if it has none or it posts off the portal. */
+internal fun loginFormAction(html: String, page: URL): URL? {
+    // The action may carry ;jsessionid=
+    val matcher = Pattern.compile("action=[\"']([^\"']*chooseAuth\\.do[^\"']*)[\"']", Pattern.CASE_INSENSITIVE).matcher(html)
+    if (!matcher.find()) return null
+    val action = runCatching { URL(page, matcher.group(1)) }.getOrNull() ?: return null
+    return action.takeIf { isSameOrigin(it, page) }
+}
+
+private fun isSameOrigin(a: URL, b: URL): Boolean =
+    a.protocol == b.protocol && a.host.equals(b.host, ignoreCase = true) && a.port == b.port
