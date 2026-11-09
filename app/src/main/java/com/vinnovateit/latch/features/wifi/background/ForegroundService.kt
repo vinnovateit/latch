@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import com.vinnovateit.latch.R
 import com.vinnovateit.latch.core.engine.LatchCommand
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.features.home.MainActivity
 import com.vinnovateit.latch.features.wifi.widget.LatchWidgetUpdater
 import com.vinnovateit.latch.core.platform.android.AndroidNetworkHandle
 import com.vinnovateit.latch.platform.AndroidUserNotifier
@@ -47,6 +48,9 @@ class ForegroundService : Service(), ForegroundController {
 
         /** How long ACTION_TRIGGER_LOGOUT waits for a terminal status before stopping anyway. */
         private const val LOGOUT_TIMEOUT_MS = 15_000L
+
+        private const val AUTO_LOGIN_STOPPED_CHANNEL_ID = "AUTO_LOGIN_STOPPED_CHANNEL"
+        private const val AUTO_LOGIN_STOPPED_NOTIFICATION_ID = 3
     }
 
     override fun onCreate() {
@@ -88,6 +92,7 @@ class ForegroundService : Service(), ForegroundController {
         serviceScope.launch {
             delay(5L * 60L * 60L * 1000L + 45L * 60L * 1000L) // 5 hours 45 mins
             Log.w("ForegroundService", "Proactively stopping service to avoid OS FGS time limit.")
+            notifyAutoLoginStopped()
             stopSelf()
         }
 
@@ -144,7 +149,41 @@ class ForegroundService : Service(), ForegroundController {
     override fun onTimeout(startId: Int, fgsType: Int) {
         super.onTimeout(startId, fgsType)
         Log.e("ForegroundService", "Foreground service timeout reached for type $fgsType. Stopping service.")
+        notifyAutoLoginStopped()
         stopSelf()
+    }
+
+    /**
+     * Android caps how long this service type may run, and it cannot restart
+     * itself from the background afterwards. Opening the app starts it again,
+     * and onCreate's cancelAll() clears this notice when that happens.
+     */
+    private fun notifyAutoLoginStopped() {
+        if (!SettingsManager.autoLogin.value) return
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel(
+                AUTO_LOGIN_STOPPED_CHANNEL_ID,
+                getString(R.string.auto_login_stopped_channel_name),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
+        )
+        val openApp = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        manager.notify(
+            AUTO_LOGIN_STOPPED_NOTIFICATION_ID,
+            NotificationCompat.Builder(this, AUTO_LOGIN_STOPPED_CHANNEL_ID)
+                .setContentTitle(getString(R.string.auto_login_stopped_title))
+                .setContentText(getString(R.string.auto_login_stopped_text))
+                .setSmallIcon(R.drawable.ic_latch)
+                .setContentIntent(openApp)
+                .setAutoCancel(true)
+                .build(),
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
