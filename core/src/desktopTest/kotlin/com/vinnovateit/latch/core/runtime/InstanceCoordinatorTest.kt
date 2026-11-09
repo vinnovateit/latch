@@ -12,7 +12,9 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.concurrent.thread
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -251,6 +253,37 @@ class InstanceCoordinatorTest {
             assertTrue(withTimeout(2_000) { slowCall.await() }.ok)
         } finally {
             releaseSlow.complete(Unit)
+            acquired.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `a client trickling a request is cut off at the overall deadline`() = runBlocking {
+        val directory = createTempDirectory("latch-trickle-").toFile()
+        val acquired = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP, ::echo),
+        )
+        try {
+            val elapsedMs = withContext(Dispatchers.IO) {
+                java.net.Socket(java.net.InetAddress.getLoopbackAddress(), acquired.coordinator.port).use { socket ->
+                    socket.soTimeout = 8_000
+                    val started = System.currentTimeMillis()
+                    val trickle = thread(isDaemon = true) {
+                        runCatching {
+                            repeat(40) {
+                                socket.getOutputStream().write('x'.code)
+                                Thread.sleep(150)
+                            }
+                        }
+                    }
+                    while (socket.getInputStream().read() != -1) Unit
+                    trickle.interrupt()
+                    System.currentTimeMillis() - started
+                }
+            }
+            assertTrue(elapsedMs < 4_000, "the handler slot was held for ${elapsedMs}ms")
+        } finally {
             acquired.coordinator.close()
             directory.deleteRecursively()
         }
