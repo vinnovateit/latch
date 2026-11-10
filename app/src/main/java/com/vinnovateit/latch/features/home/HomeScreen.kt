@@ -212,6 +212,8 @@ fun HomeScreen(
         if (showHowItWorksDialog) {
             HowItWorksBottomSheet(onDismiss = { showHowItWorksDialog = false })
         }
+
+        WifiNamePrompt()
     }
 }
 

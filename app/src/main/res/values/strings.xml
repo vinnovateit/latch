@@ -84,4 +84,12 @@
     <string name="notification_channel_name">Latch Service</string>
     <string name="notification_title">Latch Running</string>
     <string name="notification_text">Monitoring Wi-Fi connection…</string>
+    <string name="status_network_name_hidden">Wi-Fi name hidden (allow Location)</string>
+    <string name="wifi_name_prompt_title">Let Latch confirm it\'s VIT Wi-Fi</string>
+    <string name="wifi_name_prompt_text">Latch only sends your password on campus Wi-Fi, and Android reveals a Wi-Fi network\'s name only to apps with location access. Latch uses this solely to read that name. Your location is never stored or shared. Without it, Latch won\'t log you in automatically.</string>
+    <string name="wifi_name_prompt_location_off">Latch only sends your password on campus Wi-Fi, and Android hides Wi-Fi names while Location is off. Turn Location on so Latch can log you in.</string>
+    <string name="wifi_name_prompt_allow">Allow</string>
+    <string name="wifi_name_prompt_turn_on">Turn on Location</string>
+    <string name="wifi_name_prompt_not_now">Not now</string>
+    <string name="portal_sign_in_saved">Sign in with saved login</string>
 </resources>

@@ -21,6 +21,7 @@ import com.vinnovateit.latch.core.stats.ThroughputMonitor
 import com.vinnovateit.latch.core.stats.aggregateDays
 import com.vinnovateit.latch.core.stats.computeChartItems
 import com.vinnovateit.latch.core.stats.computeStatsInsights
+import com.vinnovateit.latch.core.wifi.isKnownCampusNetwork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,7 +60,7 @@ class SessionRepository(
      * supply one without installing a [Platform].
      */
     private val activeHandle: () -> NetworkHandle? = {
-        if (Platform.isInstalled) Platform.services.wifi.activeHandle() else null
+        if (Platform.isInstalled && isKnownCampusNetwork(Platform.services.wifi)) Platform.services.wifi.activeHandle() else null
     },
 ) {
     private var sessionUpdateJob: Job? = null
