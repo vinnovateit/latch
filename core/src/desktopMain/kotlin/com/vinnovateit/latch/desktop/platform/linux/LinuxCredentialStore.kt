@@ -4,6 +4,7 @@ import com.vinnovateit.latch.core.platform.CredentialStore
 import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.desktop.platform.SecureFileWriter
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
@@ -12,6 +13,7 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
@@ -20,6 +22,12 @@ import kotlin.concurrent.thread
 
 @Serializable
 private data class StoredCreds(val userId: String, val password: String)
+
+/** The host's machine id, or null when neither file can be read. */
+private fun readHostMachineId(): String? = runCatching {
+    File("/etc/machine-id").takeIf { it.exists() }?.readText()?.trim()
+        ?: File("/var/lib/dbus/machine-id").takeIf { it.exists() }?.readText()?.trim()
+}.getOrNull()
 
 /**
  * Seam over the `secret-tool` subprocess so tests can exercise every branch of
@@ -149,6 +157,8 @@ class LinuxCredentialStore internal constructor(
     private val logger: Logger,
     private val secretService: SecretServiceBackend,
     private val writer: SecureFileWriter = SecureFileWriter(ownerOnly = true),
+    /** Reads the host's machine id, or null when it cannot be read right now. */
+    private val machineIdSource: () -> String? = ::readHostMachineId,
 ) : CredentialStore {
     constructor(file: File, logger: Logger) : this(file, logger, ProcessSecretServiceBackend())
 
@@ -185,14 +195,15 @@ class LinuxCredentialStore internal constructor(
         return randomSalt
     }
 
-    private fun deriveKey(salt: ByteArray): SecretKey {
-        val machineId = runCatching {
-            File("/etc/machine-id").takeIf { it.exists() }?.readText()?.trim()
-                ?: File("/var/lib/dbus/machine-id").takeIf { it.exists() }?.readText()?.trim()
-        }.getOrNull() ?: (System.getProperty("user.name") + SALT)
-
+    /**
+     * The key for [salt] given the [machineId] read for this attempt. A null
+     * id means it could not be read, and the key falls back to one derived
+     * from the user name, which is what a save in that situation used.
+     */
+    private fun deriveKey(salt: ByteArray, machineId: String?): SecretKey {
+        val keyId = machineId ?: (System.getProperty("user.name") + SALT)
         val user = System.getProperty("user.name").orEmpty()
-        val rawPrefix = "$machineId:$user:".toByteArray(Charsets.UTF_8)
+        val rawPrefix = "$keyId:$user:".toByteArray(Charsets.UTF_8)
         val sha256 = MessageDigest.getInstance("SHA-256").digest(rawPrefix + salt)
         return SecretKeySpec(sha256, "AES")
     }
@@ -233,7 +244,7 @@ class LinuxCredentialStore internal constructor(
             val plain = plainJson.toByteArray(Charsets.UTF_8)
             val iv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, deriveKey(saltForSave()), GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            cipher.init(Cipher.ENCRYPT_MODE, deriveKey(saltForSave(), machineIdSource()), GCMParameterSpec(GCM_TAG_LENGTH, iv))
             val encrypted = cipher.doFinal(plain)
 
             writer.replace(file, iv + encrypted)
@@ -266,6 +277,12 @@ class LinuxCredentialStore internal constructor(
         }
         if (bytes.size <= GCM_IV_LENGTH) return null
 
+        // Read once for the whole attempt, so the key tried and the decision
+        // about a failure below are based on the same answer. A second read
+        // that succeeded after a failed first one would otherwise blame the
+        // blob for a key that was derived without the machine id.
+        val machineId = machineIdSource()
+
         // A missing or unreadable salt makes the blob undecryptable for now,
         // not corrupt: restoring the salt file (or its permissions) makes it
         // readable again. So the blob is kept and reads report no credentials
@@ -276,7 +293,7 @@ class LinuxCredentialStore internal constructor(
         val saltBytes = salt.getOrNull()
         if (saltBytes == null) {
             if (salt.isFailure) {
-                runCatching { decrypt(bytes, SALT.toByteArray(Charsets.UTF_8)) }.getOrNull()?.let {
+                runCatching { decrypt(bytes, SALT.toByteArray(Charsets.UTF_8), machineId) }.getOrNull()?.let {
                     cache = it
                     return it
                 }
@@ -286,19 +303,47 @@ class LinuxCredentialStore internal constructor(
         }
 
         return try {
-            decrypt(bytes, saltBytes).also { cache = it }
+            decrypt(bytes, saltBytes, machineId).also { cache = it }
+        } catch (e: AEADBadTagException) {
+            when {
+                // The key depends on the machine id, so without one this
+                // failure says nothing about the blob.
+                machineId == null -> keepBlob(e)
+                else -> {
+                    // A save made while the machine id was unreadable used the
+                    // fallback key; only a blob neither key opens is corrupt.
+                    val withFallbackKey = runCatching { decrypt(bytes, saltBytes, null) }.getOrNull()
+                    if (withFallbackKey != null) {
+                        cache = withFallbackKey
+                        withFallbackKey
+                    } else {
+                        discardCorruptBlob(e)
+                    }
+                }
+            }
+        } catch (e: SerializationException) {
+            discardCorruptBlob(e)
         } catch (e: Throwable) {
-            logger.e(TAG, "Credential blob unreadable; clearing it", e)
-            runCatching { file.delete() }
-            null
+            keepBlob(e)
         }
     }
 
-    private fun decrypt(bytes: ByteArray, salt: ByteArray): StoredCreds {
+    private fun discardCorruptBlob(cause: Exception): StoredCreds? {
+        logger.e(TAG, "Credential blob is corrupt; clearing it", cause)
+        runCatching { file.delete() }
+        return null
+    }
+
+    private fun keepBlob(cause: Throwable): StoredCreds? {
+        logger.e(TAG, "Credential blob could not be read right now; keeping it", cause)
+        return null
+    }
+
+    private fun decrypt(bytes: ByteArray, salt: ByteArray, machineId: String?): StoredCreds {
         val iv = bytes.copyOfRange(0, GCM_IV_LENGTH)
         val encrypted = bytes.copyOfRange(GCM_IV_LENGTH, bytes.size)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, deriveKey(salt), GCMParameterSpec(GCM_TAG_LENGTH, iv))
+        cipher.init(Cipher.DECRYPT_MODE, deriveKey(salt, machineId), GCMParameterSpec(GCM_TAG_LENGTH, iv))
         val decrypted = cipher.doFinal(encrypted)
         return json.decodeFromString<StoredCreds>(decrypted.toString(Charsets.UTF_8))
     }

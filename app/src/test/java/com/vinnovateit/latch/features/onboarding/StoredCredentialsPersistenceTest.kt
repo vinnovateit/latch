@@ -7,6 +7,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
+import java.security.GeneralSecurityException
+import java.security.UnrecoverableKeyException
+import javax.crypto.AEADBadTagException
 
 /**
  * Exercises the synchronous persistence and removal steps behind
@@ -99,6 +103,37 @@ class StoredCredentialsPersistenceTest {
         appPrefs.commitSucceeds = false
 
         assertFalse(StoredCredentials.removeCredentials(credentials, appPrefs))
+    }
+
+    @Test
+    fun onlyProvenCorruptionCountsAsAPermanentStoreFailure() {
+        assertTrue(StoredCredentials.isPermanentStoreFailure(AEADBadTagException("bad tag")))
+        assertTrue(
+            "the proof is usually wrapped by the crypto library",
+            StoredCredentials.isPermanentStoreFailure(GeneralSecurityException("keyset", AEADBadTagException("bad tag"))),
+        )
+
+        assertFalse(StoredCredentials.isPermanentStoreFailure(IOException("disk busy")))
+        assertFalse(StoredCredentials.isPermanentStoreFailure(GeneralSecurityException("keystore busy")))
+    }
+
+    @Test
+    fun anUnrecoverableKeyFromATemporaryKeystoreFailureIsNotPermanent() {
+        // The Android Keystore reports a failed lookup (e.g. while keystore2 is busy or restarting) as
+        // UnrecoverableKeyException wrapping the provider failure; the key itself is still there.
+        val busyKeystore = UnrecoverableKeyException("Failed to obtain information about key")
+            .apply { initCause(java.security.ProviderException("Keystore operation failed")) }
+
+        assertFalse(StoredCredentials.isPermanentStoreFailure(busyKeystore))
+        assertFalse(StoredCredentials.isPermanentStoreFailure(GeneralSecurityException("open prefs", busyKeystore)))
+        assertFalse(StoredCredentials.isPermanentStoreFailure(UnrecoverableKeyException("no cause given")))
+    }
+
+    @Test
+    fun anUnrecoverableKeyStillCountsWhenItsCauseProvesCorruption() {
+        val corruptKeyset = UnrecoverableKeyException("keyset").apply { initCause(AEADBadTagException("bad tag")) }
+
+        assertTrue(StoredCredentials.isPermanentStoreFailure(corruptKeyset))
     }
 }
 
