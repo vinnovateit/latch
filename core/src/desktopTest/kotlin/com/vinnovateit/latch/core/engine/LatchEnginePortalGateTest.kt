@@ -95,7 +95,7 @@ class LatchEnginePortalGateTest {
             engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
 
             assertEquals(listOf("phc.prontonetworks.com"), portal.logins, "a refusal must not be retried")
-            assertFailed(engine, ConnectionStatus.Reason.LoginFailed)
+            assertFailed(engine, ConnectionStatus.Reason.CredentialsRejected)
         }
 
     @Test
