@@ -24,4 +24,14 @@ class NmcliTerseLineTest {
     fun `empty fields are kept`() {
         assertEquals(listOf("no", "", "wlan0", ""), parseNmcliTerseLine("no::wlan0:"))
     }
+
+    @Test
+    fun `a dev show value keeps its colons`() {
+        assertEquals("Dorm:VIT 5", nmcliDeviceShowValue("GENERAL.CONNECTION:Dorm:VIT 5"))
+    }
+
+    @Test
+    fun `a dev show value keeps its backslashes`() {
+        assertEquals("""Block\A""", nmcliDeviceShowValue("""GENERAL.CONNECTION:Block\A"""))
+    }
 }

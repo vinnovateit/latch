@@ -13,9 +13,17 @@ import java.util.concurrent.TimeUnit
 internal data class SimpleLinuxNetworkHandle(override val id: String) : NetworkHandle
 
 /**
- * Splits one line of `nmcli -t` output into its fields. nmcli separates fields
- * with `:` and escapes a literal `:` or `\` inside a value with a backslash, so
- * a Wi-Fi name may contain either.
+ * The value in `nmcli -t -f GENERAL.CONNECTION dev show` output. `dev show`
+ * stays in multiline mode under `-t`, where nmcli does not escape values, so the
+ * value is everything after the first `:`, taken as is.
+ */
+internal fun nmcliDeviceShowValue(output: String): String =
+    output.substringAfter(":").trim().removeSurrounding("\"")
+
+/**
+ * Splits one line of terse tabular `nmcli -t` output into its fields. nmcli
+ * separates fields with `:` and escapes a literal `:` or `\` inside a value with
+ * a backslash, so a Wi-Fi name may contain either.
  */
 internal fun parseNmcliTerseLine(line: String): List<String> {
     val fields = mutableListOf<String>()
@@ -226,7 +234,7 @@ class LinuxWifiPlatform(private val logger: Logger) : WifiPlatform {
         if (iface != null) {
             val devShow = runCommand("nmcli", "-t", "-f", "GENERAL.CONNECTION", "dev", "show", iface)
             if (!devShow.isNullOrEmpty() && devShow != "--") {
-                val connName = parseNmcliTerseLine(devShow).getOrElse(1) { "" }.trim().removeSurrounding("\"")
+                val connName = nmcliDeviceShowValue(devShow)
                 if (connName.isNotEmpty() && connName != "--") {
                     return Pair(iface, connName)
                 }
