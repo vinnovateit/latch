@@ -7,10 +7,12 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlinx.coroutines.CancellationException
@@ -288,13 +290,27 @@ private sealed interface PayloadResult {
     data object TooLarge : PayloadResult
 }
 
+/**
+ * Reads one newline-terminated request within [REQUEST_READ_TIMEOUT_MS] overall.
+ * A socket timeout alone restarts with every byte, so a client trickling data
+ * could hold one of the limited handler slots indefinitely.
+ */
 private fun readPayload(socket: Socket): PayloadResult {
+    val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(REQUEST_READ_TIMEOUT_MS.toLong())
+    val input = socket.getInputStream()
     val output = ByteArrayOutputStream()
+    val buffer = ByteArray(4 * 1024)
     while (true) {
-        val next = socket.getInputStream().read()
-        if (next == -1 || next == '\n'.code) break
-        if (output.size() >= MAX_INSTANCE_REQUEST_BYTES) return PayloadResult.TooLarge
-        output.write(next)
+        val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
+        if (remainingMs <= 0) throw SocketTimeoutException("Request not received in time")
+        socket.soTimeout = remainingMs.toInt()
+        val read = input.read(buffer)
+        if (read == -1) break
+        val newline = (0 until read).firstOrNull { buffer[it] == '\n'.code.toByte() }
+        val length = newline ?: read
+        if (output.size() + length > MAX_INSTANCE_REQUEST_BYTES) return PayloadResult.TooLarge
+        output.write(buffer, 0, length)
+        if (newline != null) break
     }
     return PayloadResult.Value(output.toString(Charsets.UTF_8))
 }

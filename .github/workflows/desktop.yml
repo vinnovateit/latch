@@ -61,7 +61,8 @@ jobs:
   # Real Windows DPAPI round trip. The job above can only drive
   # DpapiCredentialStore through a fake backend, since Crypt32 does not exist
   # on Linux; this runs the production store on a Windows runner, along with
-  # the runtime token/metadata writes, which share the same atomic writer. The tests
+  # the runtime token/metadata writes, which share the same atomic writer, and
+  # the single-instance coordinator's local socket. The tests
   # are selected by name, so Gradle fails the job if the filter ever stops
   # matching rather than letting it pass with nothing run.
   windows-dpapi:
@@ -82,14 +83,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: DPAPI credential store on Windows
-        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest"
+        run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest" --tests "com.vinnovateit.latch.core.runtime.InstanceCoordinatorTest"
 
       # Gradle prints nothing per test. The timings show the real round trip
       # ran (it spawns a second JVM), rather than the off-Windows early return.
       - name: Show which DPAPI tests ran
         if: always()
         shell: pwsh
-        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml, core\build\test-results\desktopTest\TEST-*.SecureRuntimeFilesTest.xml, core\build\test-results\desktopTest\TEST-*.LegacyDataMigrationTest.xml, core\build\test-results\desktopTest\TEST-*.DatabaseLocationTest.xml | Select-String '<testsuite |<testcase '
+        run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml, core\build\test-results\desktopTest\TEST-*.SecureRuntimeFilesTest.xml, core\build\test-results\desktopTest\TEST-*.LegacyDataMigrationTest.xml, core\build\test-results\desktopTest\TEST-*.DatabaseLocationTest.xml, core\build\test-results\desktopTest\TEST-*.InstanceCoordinatorTest.xml | Select-String '<testsuite |<testcase '
 
   # Builds the release MSI exactly as release.yml does, stages it under the
   # release asset name, and installs it for real: database open, silent
