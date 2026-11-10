@@ -24,8 +24,8 @@ class AndroidPlatformServices(
 ) : PlatformServices {
     private val appContext = context.applicationContext
 
-    override val logger: Logger = AndroidLogger()
     override val buildInfo: BuildInfo = AndroidBuildInfo(appContext)
+    override val logger: Logger = AndroidLogger(buildInfo.isDebug)
     override val capabilities: PlatformCapabilities = AndroidCapabilities
     override val settingsStore: KeyValueStore = AndroidKeyValueStore(appContext)
     override val credentials: CredentialStore = AndroidCredentialStore(appContext)
