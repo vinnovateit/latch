@@ -49,6 +49,29 @@ private const val RELEASE_PAGE_PREFIX = "https://github.com/vinnovateit/latch/re
  */
 internal const val WINDOWS_PACKAGE_ASSET = "LatchSetup.msi"
 
+/**
+ * The Linux desktop tarball's release asset name, matched exactly as install.sh
+ * does. A release also carries CLI tarballs, which are not a desktop app, and
+ * this updater can only unpack a tarball.
+ */
+internal fun linuxPackageAsset(version: String): String = "latch-$version-linux-x64.tar.gz"
+
+/** Where install.sh puts a system-wide install. */
+private const val SYSTEM_INSTALL_DIR = "/opt/latch"
+
+/**
+ * The directory the running Linux build is installed in: `<dir>/bin/Latch`.
+ *
+ * install.sh installs to /opt/latch only when it has root, and to the user's
+ * home otherwise, so the update has to follow the running copy. Symlinks are
+ * resolved first: /usr/local/bin/latch must not make /usr/local the answer.
+ */
+internal fun linuxInstallDir(executable: String?): String {
+    val launcher = executable?.let { File(it).canonicalFile }
+    val bin = launcher?.takeIf { it.name == "Latch" }?.parentFile
+    return bin?.takeIf { it.name == "bin" }?.parent ?: SYSTEM_INSTALL_DIR
+}
+
 /** A release carries a macOS build when it has an asset with this suffix. */
 internal const val MAC_DISK_IMAGE_SUFFIX = ".dmg"
 private const val PIPE = 32 * 1024
@@ -153,21 +176,15 @@ class GithubUpdater internal constructor(
                 checkManually(release, today)
                 return@withContext
             }
-            val packageAsset = release.assets.find { asset ->
-                if (isWindows) {
-                    asset.name == WINDOWS_PACKAGE_ASSET
-                } else {
-                    asset.name.contains("Latch", ignoreCase = true) &&
-                        (asset.name.endsWith(".deb") || asset.name.endsWith(".AppImage") || asset.name.endsWith(".tar.gz"))
-                }
-            }
+            val latestTag = release.tag_name.removePrefix("v")
+            val packageName = if (isWindows) WINDOWS_PACKAGE_ASSET else linuxPackageAsset(latestTag)
+            val packageAsset = release.assets.find { it.name == packageName }
             if (packageAsset == null) {
                 logger.d(TAG, "No compatible release asset in latest release")
                 _state.value = UpdateState.UpToDate
                 SettingsManager.lastUpdateCheckEpochDay = today
                 return@withContext
             }
-            val latestTag = release.tag_name.removePrefix("v")
             val cmp = compareVersions(latestTag, buildInfo.versionName)
             if (cmp == null) {
                 logger.e(
@@ -438,39 +455,39 @@ class GithubUpdater internal constructor(
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()
         } else {
-            val script = writeLinuxUpdateScript(packageFile.absolutePath)
-            ProcessBuilder("sh", script.absolutePath)
+            val script = File.createTempFile("latch-update-", ".sh")
+            script.setExecutable(true)
+            script.writeText(linuxUpdateScript())
+            ProcessBuilder("sh", script.absolutePath, packageFile.absolutePath, linuxInstallDir(InstalledBuild.path))
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()
         }
     }
 
-    private fun writeLinuxUpdateScript(tarPath: String): File {
-        val script = File.createTempFile("latch-update-", ".sh")
-        script.setExecutable(true)
+    /**
+     * Takes the tarball as `$1` and the install directory as `$2`. Home
+     * directories can hold any character, so neither is ever part of the
+     * script's own text.
+     */
+    internal fun linuxUpdateScript(): String {
         val s = "$"
-        script.writeText(
-            """
+        return """
             #!/usr/bin/env sh
             sleep 1
-            TMP_TAR="$tarPath"
-            if [ -w /opt/latch ] || [ ${s}(id -u) -eq 0 ]; then
-                mkdir -p /opt/latch
-                tar -xzf "${s}TMP_TAR" -C /opt/latch --strip-components=1 2>/dev/null || tar -xzf "${s}TMP_TAR" -C /opt/latch
-                /opt/latch/bin/Latch &
+            TMP_TAR="${s}1"
+            INSTALL_DIR="${s}2"
+            EXTRACT='mkdir -p "${s}2" && { tar -xzf "${s}1" -C "${s}2" --strip-components=1 2>/dev/null || tar -xzf "${s}1" -C "${s}2"; }'
+            if [ -w "${s}INSTALL_DIR" ] || [ "${s}(id -u)" -eq 0 ]; then
+                sh -c "${s}EXTRACT" sh "${s}TMP_TAR" "${s}INSTALL_DIR"
             elif command -v pkexec >/dev/null 2>&1; then
-                pkexec sh -c "mkdir -p /opt/latch && (tar -xzf \"${s}TMP_TAR\" -C /opt/latch --strip-components=1 2>/dev/null || tar -xzf \"${s}TMP_TAR\" -C /opt/latch)"
-                /opt/latch/bin/Latch &
+                pkexec sh -c "${s}EXTRACT" sh "${s}TMP_TAR" "${s}INSTALL_DIR"
             else
-                LOCAL_OPT="${s}HOME/.local/share/latch"
-                mkdir -p "${s}LOCAL_OPT"
-                tar -xzf "${s}TMP_TAR" -C "${s}LOCAL_OPT" --strip-components=1 2>/dev/null || tar -xzf "${s}TMP_TAR" -C "${s}LOCAL_OPT"
-                "${s}LOCAL_OPT/bin/Latch" &
+                INSTALL_DIR="${s}HOME/.local/share/latch"
+                sh -c "${s}EXTRACT" sh "${s}TMP_TAR" "${s}INSTALL_DIR"
             fi
-            """.trimIndent()
-        )
-        return script
+            "${s}INSTALL_DIR/bin/Latch" &
+        """.trimIndent() + "\n"
     }
 
     /**

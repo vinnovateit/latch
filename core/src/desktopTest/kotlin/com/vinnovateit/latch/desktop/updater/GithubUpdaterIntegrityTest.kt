@@ -6,6 +6,7 @@ import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.desktop.platform.DesktopOs
+import com.vinnovateit.latch.desktop.platform.currentDesktopOs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -59,6 +60,8 @@ class GithubUpdaterIntegrityTest {
     private var releaseVersion = "1.4.2"
     private var installedVersion = "1.4.1"
     private var assetResponse: () -> UpdateHttpResponse = { ok(payload) }
+    private var desktopOs = DesktopOs.WINDOWS
+    private var otherAssets: List<String> = emptyList()
 
     private val logger = object : Logger {
         override fun d(tag: String, message: String) { logs += "D $message" }
@@ -86,7 +89,7 @@ class GithubUpdaterIntegrityTest {
             logger = logger,
             http = http,
             updatesDir = { updatesDir() },
-            os = DesktopOs.WINDOWS,
+            os = desktopOs,
             installerLauncher = { launched += it },
         )
     }
@@ -502,6 +505,84 @@ class GithubUpdaterIntegrityTest {
         assertTrue(env.getValue("LATCH_MSI_LOG").endsWith(".log"))
     }
 
+    // --- Linux ---------------------------------------------------------------------
+
+    private val linuxDesktopTarball = "latch-1.4.2-linux-x64.tar.gz"
+    private val linuxOtherAssets = listOf(
+        "latch-cli-1.4.2-linux-x64.tar.gz",
+        "latch-cli-1.4.2-linux-arm64.tar.gz",
+        "Latch-1.4.2-x86_64.AppImage",
+        "Latch_1.4.2_amd64.deb",
+    )
+
+    @Test
+    fun linuxTakesTheDesktopTarballOverEveryOtherAsset() = runBlocking<Unit> {
+        desktopOs = DesktopOs.LINUX
+        msiName = linuxDesktopTarball
+        assetUrl = "https://github.com/vinnovateit/latch/releases/download/v1.4.2/$linuxDesktopTarball"
+        otherAssets = linuxOtherAssets
+
+        val downloaded = checkAndDownload()
+
+        assertIs<UpdateState.Downloaded>(downloaded)
+        assertContentEquals(payload, File(downloaded.filePath).readBytes())
+        assertEquals(1, requests.get())
+    }
+
+    @Test
+    fun linuxIsNotOfferedAReleaseWithoutItsDesktopTarball() = runBlocking<Unit> {
+        desktopOs = DesktopOs.LINUX
+        otherAssets = linuxOtherAssets
+
+        updater.check(force = true)
+
+        assertIs<UpdateState.UpToDate>(updater.state.value)
+    }
+
+    @Test
+    fun linuxInstallDirFollowsTheRunningBuild() {
+        val installed = File(dir, "home dir/.local/share/latch")
+        val launcher = File(installed, "bin/Latch").apply { parentFile.mkdirs(); writeText("x") }
+        assertEquals(installed.canonicalPath, linuxInstallDir(launcher.path))
+    }
+
+    @Test
+    fun linuxInstallDirFallsBackToTheSystemLocation() {
+        assertEquals("/opt/latch", linuxInstallDir(null))
+        val notTheLauncher = File(dir, "bin/latch-helper").apply { parentFile.mkdirs(); writeText("x") }
+        assertEquals("/opt/latch", linuxInstallDir(notTheLauncher.path))
+        val notInBin = File(dir, "Latch").apply { writeText("x") }
+        assertEquals("/opt/latch", linuxInstallDir(notInBin.path))
+    }
+
+    @Test
+    fun linuxUpdateReplacesAnInstallInADirectoryWithSpaces() {
+        if (DesktopOs.LINUX != currentDesktopOs()) return
+        val release = File(dir, "release/latch").apply { mkdirs() }
+        val marker = File(dir, "relaunched")
+        File(release, "bin").mkdirs()
+        File(release, "bin/Latch").apply {
+            writeText("#!/bin/sh\ntouch '${marker.absolutePath}'\n")
+            setExecutable(true)
+        }
+        val tar = File(dir, "update.tar.gz")
+        run("tar", "-czf", tar.path, "-C", release.parent, "latch")
+        val installed = File(dir, "my \$HOME's dir/latch").apply { mkdirs() }
+        val script = File(dir, "update.sh").apply { writeText(updater.linuxUpdateScript()) }
+
+        run("sh", script.path, tar.path, installed.path)
+
+        assertTrue(File(installed, "bin/Latch").isFile)
+        repeat(50) { if (!marker.exists()) Thread.sleep(100) }
+        assertTrue(marker.exists(), "the updated build should be relaunched")
+    }
+
+    private fun run(vararg command: String) {
+        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        assertEquals(0, process.waitFor(), output)
+    }
+
     @Test
     fun startupCleanupRemovesPackagesButKeepsInstallerLogs() {
         File(dir, "Latch-1.4.2.msi").writeText("x")
@@ -550,6 +631,15 @@ class GithubUpdaterIntegrityTest {
                   "size": 1,
                   "digest": "sha256:${"0".repeat(64)}"
                 },"""
+        val others = otherAssets.joinToString("") { name ->
+            """
+                {
+                  "name": "$name",
+                  "browser_download_url": "https://github.com/vinnovateit/latch/releases/download/v$releaseVersion/$name",
+                  "size": 1,
+                  "digest": "sha256:${"2".repeat(64)}"
+                },"""
+        }
         return """
             {
               "tag_name": "v$releaseVersion",
@@ -557,6 +647,7 @@ class GithubUpdaterIntegrityTest {
               "assets": [
                 $cliAsset
                 $noticeAsset
+                $others
                 {
                   "name": "$msiName",
                   "browser_download_url": "$assetUrl",
