@@ -342,12 +342,52 @@ class LinuxCredentialStoreTest {
     @Test
     fun `a blob that fails authentication with its own salt is still cleared`() {
         val secretService = FakeSecretService(reachable = false)
-        LinuxCredentialStore(file, NoOpLogger, secretService).save("22BCE0001", "secret")
+        // A fixed id, so the result does not depend on whether this host has a readable machine id.
+        val machineId = { "test-machine-id" }
+        LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = machineId).save("22BCE0001", "secret")
         val tampered = file.readBytes().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
         file.writeBytes(tampered)
 
-        assertNull(LinuxCredentialStore(file, NoOpLogger, secretService).password())
+        assertNull(LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = machineId).password())
         assertFalse(file.exists(), "a blob that is conclusively invalid for this machine and salt is removed")
+    }
+
+    @Test
+    fun `a machine id that cannot be read keeps the blob, which reads again once the id is back`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = { "machine-a" }).save("22BCE0001", "secret")
+
+        assertNull(LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = { null }).password())
+        assertTrue(file.exists(), "a blob must not be destroyed while the machine id is unavailable")
+
+        val recovered = LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = { "machine-a" })
+        assertEquals("secret", recovered.password())
+    }
+
+    @Test
+    fun `a machine id that recovers during a read does not get the blob deleted`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = { "machine-a" }).save("22BCE0001", "secret")
+
+        // The first lookup fails and every later one succeeds, as when /etc/machine-id is briefly unreadable.
+        var lookups = 0
+        val flakyId = { if (lookups++ == 0) null else "machine-a" }
+        val store = LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = flakyId)
+
+        assertNull(store.password(), "the attempt made without the machine id cannot decrypt")
+        assertTrue(file.exists(), "a key derived without the machine id says nothing about the blob")
+        assertEquals("secret", store.password(), "the next attempt, with the machine id, reads the blob")
+    }
+
+    @Test
+    fun `a blob saved while the machine id was unreadable still reads once it is readable`() {
+        val secretService = FakeSecretService(reachable = false)
+        LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = { null }).save("22BCE0001", "secret")
+
+        val store = LinuxCredentialStore(file, NoOpLogger, secretService, machineIdSource = { "machine-a" })
+
+        assertEquals("secret", store.password())
+        assertTrue(file.exists())
     }
 
     private fun leftoverTempFiles(): List<String> =

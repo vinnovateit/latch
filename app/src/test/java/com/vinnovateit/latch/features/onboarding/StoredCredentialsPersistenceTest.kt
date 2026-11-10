@@ -108,7 +108,6 @@ class StoredCredentialsPersistenceTest {
     @Test
     fun onlyProvenCorruptionCountsAsAPermanentStoreFailure() {
         assertTrue(StoredCredentials.isPermanentStoreFailure(AEADBadTagException("bad tag")))
-        assertTrue(StoredCredentials.isPermanentStoreFailure(UnrecoverableKeyException("key gone")))
         assertTrue(
             "the proof is usually wrapped by the crypto library",
             StoredCredentials.isPermanentStoreFailure(GeneralSecurityException("keyset", AEADBadTagException("bad tag"))),
@@ -116,6 +115,25 @@ class StoredCredentialsPersistenceTest {
 
         assertFalse(StoredCredentials.isPermanentStoreFailure(IOException("disk busy")))
         assertFalse(StoredCredentials.isPermanentStoreFailure(GeneralSecurityException("keystore busy")))
+    }
+
+    @Test
+    fun anUnrecoverableKeyFromATemporaryKeystoreFailureIsNotPermanent() {
+        // The Android Keystore reports a failed lookup (e.g. while keystore2 is busy or restarting) as
+        // UnrecoverableKeyException wrapping the provider failure; the key itself is still there.
+        val busyKeystore = UnrecoverableKeyException("Failed to obtain information about key")
+            .apply { initCause(java.security.ProviderException("Keystore operation failed")) }
+
+        assertFalse(StoredCredentials.isPermanentStoreFailure(busyKeystore))
+        assertFalse(StoredCredentials.isPermanentStoreFailure(GeneralSecurityException("open prefs", busyKeystore)))
+        assertFalse(StoredCredentials.isPermanentStoreFailure(UnrecoverableKeyException("no cause given")))
+    }
+
+    @Test
+    fun anUnrecoverableKeyStillCountsWhenItsCauseProvesCorruption() {
+        val corruptKeyset = UnrecoverableKeyException("keyset").apply { initCause(AEADBadTagException("bad tag")) }
+
+        assertTrue(StoredCredentials.isPermanentStoreFailure(corruptKeyset))
     }
 }
 

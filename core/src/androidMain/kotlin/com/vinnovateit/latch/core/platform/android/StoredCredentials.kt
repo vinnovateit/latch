@@ -8,7 +8,6 @@ import androidx.security.crypto.MasterKey
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.KeyStore
-import java.security.UnrecoverableKeyException
 import javax.crypto.AEADBadTagException
 
 object StoredCredentials {
@@ -24,13 +23,15 @@ object StoredCredentials {
      * Whether [failure] proves the stored credentials can never be read again.
      *
      * Everything else (a busy Keystore, a failed disk read) may pass by the
-     * next attempt, so it must not cost the user their saved login.
+     * next attempt, so it must not cost the user their saved login. That
+     * includes [java.security.UnrecoverableKeyException] on its own: the
+     * Android Keystore also raises it for temporary failures, so it counts
+     * only when its cause chain shows the key is permanently invalid.
      */
     fun isPermanentStoreFailure(failure: Exception): Boolean =
         generateSequence<Throwable>(failure) { it.cause }.take(MAX_CAUSE_DEPTH).any {
             it is AEADBadTagException ||
                 it is KeyPermanentlyInvalidatedException ||
-                it is UnrecoverableKeyException ||
                 // Tink's unreadable keyset; protobuf is not a direct dependency here.
                 it.javaClass.simpleName == "InvalidProtocolBufferException"
         }
