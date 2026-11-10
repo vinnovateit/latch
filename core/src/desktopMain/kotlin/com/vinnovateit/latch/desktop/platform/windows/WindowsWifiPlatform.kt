@@ -12,6 +12,85 @@ import java.util.concurrent.TimeUnit
 
 internal data class SimpleWindowsNetworkHandle(override val id: String) : NetworkHandle
 
+internal data class WindowsWifiFields(
+    val adapterName: String?,
+    val adapterUp: Boolean,
+    val radioOn: Boolean?,
+    val ssid: String?,
+    val gateway: String?,
+    val ssidSource: String?,
+)
+
+/**
+ * Parses the script's `RESULT|name|up|radio|ssid|gateway|source` line. The name
+ * and SSID arrive Base64-encoded so that a `|` in either cannot shift the
+ * fields after it.
+ */
+internal fun parseWifiResult(line: String): WindowsWifiFields {
+    val parts = line.removePrefix("RESULT|").split('|')
+    fun text(index: Int) = parts.getOrNull(index)?.trim()?.takeIf { it.isNotEmpty() }
+    fun decoded(index: Int) = text(index)?.let { encoded ->
+        runCatching { String(java.util.Base64.getDecoder().decode(encoded), Charsets.UTF_8) }.getOrNull()
+    }?.trim()?.takeIf { it.isNotEmpty() }
+    return WindowsWifiFields(
+        adapterName = decoded(0),
+        adapterUp = text(1) == "1",
+        radioOn = when (text(2)) {
+            "1" -> true
+            "0" -> false
+            else -> null
+        },
+        ssid = decoded(3),
+        gateway = text(4),
+        ssidSource = text(5),
+    )
+}
+
+/**
+ * The end of the Wi-Fi query: prints the `RESULT|...` line that [parseWifiResult]
+ * reads, from the `$name`, `$up`, `$radio`, `$ssid`, `$gw` and `$src` the query
+ * set. Kept apart so a test can run this exact PowerShell on made-up values.
+ */
+internal val PS_WIFI_RESULT_LINE = """
+    # Names can hold any character, including this line's separator.
+    function Latch-Field(${'$'}value) { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]${'$'}value)) }
+    Write-Output ("RESULT|" + (Latch-Field ${'$'}name) + "|" + ${'$'}up + "|" + ${'$'}radio + "|" + (Latch-Field ${'$'}ssid) + "|" + ${'$'}gw + "|" + ${'$'}src)
+""".trimIndent()
+
+private const val PS_TAG = "WindowsWifiPlatform"
+private const val PS_TIMEOUT_SEC = 10L
+
+/** Runs [script] in Windows PowerShell and returns its first `RESULT|` line, or null. */
+internal fun runPowerShellForResult(script: String, logger: Logger): String? {
+    return try {
+        val encoded = java.util.Base64.getEncoder()
+            .encodeToString(script.toByteArray(Charsets.UTF_16LE))
+
+        val process = ProcessBuilder(
+            "powershell.exe", "-NoProfile", "-NonInteractive",
+            "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded,
+        ).redirectErrorStream(true).start()
+
+        process.outputStream.close()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        if (!process.waitFor(PS_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            logger.w(PS_TAG, "PowerShell query timed out")
+            return null
+        }
+        val line = output.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("RESULT|") }
+        if (line == null) {
+            logger.w(PS_TAG, "PowerShell returned no RESULT line. Raw output: ${output.take(400)}")
+        }
+        line
+    } catch (e: Throwable) {
+        logger.e(PS_TAG, "PowerShell query failed", e)
+        null
+    }
+}
+
 /**
  * Windows Wi-Fi state via PowerShell.
  */
@@ -21,7 +100,6 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
         const val TAG = "WindowsWifiPlatform"
         const val POLL_INTERVAL_MS = 5_000L
         const val CACHE_TTL_MS = 3_000L
-        const val PS_TIMEOUT_SEC = 10L
         const val ENABLE_SETTLE_ATTEMPTS = 6
         const val ENABLE_SETTLE_INTERVAL_MS = 1_000L
 
@@ -132,27 +210,20 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
               ${'$'}r = Get-NetRoute -InterfaceAlias ${'$'}name -DestinationPrefix '0.0.0.0/0' | Select-Object -First 1
               if (${'$'}r) { ${'$'}gw = ${'$'}r.NextHop }
             }
-            Write-Output ("RESULT|" + ${'$'}name + "|" + ${'$'}up + "|" + ${'$'}radio + "|" + ${'$'}ssid + "|" + ${'$'}gw + "|" + ${'$'}src)
+            $PS_WIFI_RESULT_LINE
         """.trimIndent()
 
         val result = runPowerShell(script)
         val snap = if (result == null) {
             WifiSnapshot(null, false, null, null, null)
         } else {
-            val parts = result.removePrefix("RESULT|").split('|')
+            val fields = parseWifiResult(result)
             WifiSnapshot(
-                adapterName = parts.getOrNull(0)?.trim()?.takeIf { it.isNotEmpty() },
-                adapterUp = parts.getOrNull(1)?.trim() == "1",
-                radioOn = when (parts.getOrNull(2)?.trim()) {
-                    "1" -> true
-                    "0" -> false
-                    else -> null
-                },
-                ssid = resolveSsid(
-                    raw = parts.getOrNull(3)?.trim(),
-                    source = parts.getOrNull(5)?.trim(),
-                ),
-                gateway = parts.getOrNull(4)?.trim()?.takeIf { it.isNotEmpty() },
+                adapterName = fields.adapterName,
+                adapterUp = fields.adapterUp,
+                radioOn = fields.radioOn,
+                ssid = resolveSsid(raw = fields.ssid, source = fields.ssidSource),
+                gateway = fields.gateway,
             )
         }
         cached = snap
@@ -160,35 +231,7 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
         return snap
     }
 
-    private fun runPowerShell(script: String): String? {
-        return try {
-            val encoded = java.util.Base64.getEncoder()
-                .encodeToString(script.toByteArray(Charsets.UTF_16LE))
-
-            val process = ProcessBuilder(
-                "powershell.exe", "-NoProfile", "-NonInteractive",
-                "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded,
-            ).redirectErrorStream(true).start()
-
-            process.outputStream.close()
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            if (!process.waitFor(PS_TIMEOUT_SEC, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-                logger.w(TAG, "PowerShell query timed out")
-                return null
-            }
-            val line = output.lineSequence()
-                .map { it.trim() }
-                .firstOrNull { it.startsWith("RESULT|") }
-            if (line == null) {
-                logger.w(TAG, "PowerShell returned no RESULT line. Raw output: ${output.take(400)}")
-            }
-            line
-        } catch (e: Throwable) {
-            logger.e(TAG, "PowerShell query failed", e)
-            null
-        }
-    }
+    private fun runPowerShell(script: String): String? = runPowerShellForResult(script, logger)
 
     override fun isWifiEnabled(): Boolean {
         val snap = snapshot()

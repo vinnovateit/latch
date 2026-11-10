@@ -13,6 +13,39 @@ import java.util.concurrent.TimeUnit
 internal data class SimpleLinuxNetworkHandle(override val id: String) : NetworkHandle
 
 /**
+ * The value in `nmcli -t -f GENERAL.CONNECTION dev show` output. `dev show`
+ * stays in multiline mode under `-t`, where nmcli does not escape values, so the
+ * value is everything after the first `:`, taken as is.
+ */
+internal fun nmcliDeviceShowValue(output: String): String =
+    output.substringAfter(":").trim().removeSurrounding("\"")
+
+/**
+ * Splits one line of terse tabular `nmcli -t` output into its fields. nmcli
+ * separates fields with `:` and escapes a literal `:` or `\` inside a value with
+ * a backslash, so a Wi-Fi name may contain either.
+ */
+internal fun parseNmcliTerseLine(line: String): List<String> {
+    val fields = mutableListOf<String>()
+    val field = StringBuilder()
+    var i = 0
+    while (i < line.length) {
+        val c = line[i]
+        when {
+            c == '\\' && i + 1 < line.length -> field.append(line[++i])
+            c == ':' -> {
+                fields += field.toString()
+                field.clear()
+            }
+            else -> field.append(c)
+        }
+        i++
+    }
+    fields += field.toString()
+    return fields
+}
+
+/**
  * Linux Wi-Fi platform implementation leveraging standard Linux CLI toolchains
  * (`nmcli`, `iwgetid`, `ip route`, `rfkill`).
  */
@@ -163,9 +196,9 @@ class LinuxWifiPlatform(private val logger: Logger) : WifiPlatform {
         val nmcliOut = runCommand("nmcli", "-t", "-f", "ACTIVE,SSID,DEVICE,TYPE", "dev", "wifi")
         if (nmcliOut != null) {
             for (line in nmcliOut.lines()) {
-                val parts = line.split(":")
+                val parts = parseNmcliTerseLine(line)
                 if (parts.firstOrNull() == "yes" && parts.size >= 3) {
-                    val ssid = parts[1].replace("\\:", ":").trim().removeSurrounding("\"")
+                    val ssid = parts[1].trim().removeSurrounding("\"")
                     val dev = parts[2]
                     if (ssid.isNotEmpty()) {
                         return Pair(dev, ssid)
@@ -178,9 +211,9 @@ class LinuxWifiPlatform(private val logger: Logger) : WifiPlatform {
         val connOut = runCommand("nmcli", "-t", "-f", "NAME,DEVICE,TYPE", "connection", "show", "--active")
         if (connOut != null) {
             for (line in connOut.lines()) {
-                val parts = line.split(":")
+                val parts = parseNmcliTerseLine(line)
                 if (parts.size >= 3 && (parts[2].contains("wireless", ignoreCase = true) || parts[2].contains("wifi", ignoreCase = true))) {
-                    val name = parts[0].replace("\\:", ":").trim().removeSurrounding("\"")
+                    val name = parts[0].trim().removeSurrounding("\"")
                     val dev = parts[1]
                     if (name.isNotEmpty()) {
                         return Pair(dev, name)
@@ -201,7 +234,7 @@ class LinuxWifiPlatform(private val logger: Logger) : WifiPlatform {
         if (iface != null) {
             val devShow = runCommand("nmcli", "-t", "-f", "GENERAL.CONNECTION", "dev", "show", iface)
             if (!devShow.isNullOrEmpty() && devShow != "--") {
-                val connName = devShow.substringAfter(":").trim().removeSurrounding("\"")
+                val connName = nmcliDeviceShowValue(devShow)
                 if (connName.isNotEmpty() && connName != "--") {
                     return Pair(iface, connName)
                 }
