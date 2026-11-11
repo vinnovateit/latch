@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -133,6 +134,14 @@ class LatchApp private constructor(
                     engine.isLatched.first { it }
                 }
                 updater.check()
+            }
+        }
+
+        // Periodic native and JVM memory trimming while in background
+        scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                kotlinx.coroutines.delay(60_000L)
+                com.vinnovateit.latch.desktop.platform.NativeMemoryTrimmer.trim()
             }
         }
     }

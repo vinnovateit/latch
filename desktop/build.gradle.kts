@@ -137,10 +137,16 @@ compose.desktop {
         mainClass = "com.vinnovateit.latch.desktop.MainKt"
 
         jvmArgs += listOf(
-            "-Xms32m",
-            "-Xmx256m",
-            "-XX:MetaspaceSize=96m",
-            "-XX:MaxMetaspaceSize=256m",
+            "-XX:+UseSerialGC",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-XX:TrimNativeHeapInterval=20000",
+            "-Xms16m",
+            "-Xmx96m",
+            "-Xss256k",
+            "-XX:MetaspaceSize=32m",
+            "-XX:MaxMetaspaceSize=96m",
+            "-XX:ReservedCodeCacheSize=48m",
+            "-XX:InitialCodeCacheSize=8m",
             "-Dfile.encoding=UTF-8",
         )
 

@@ -38,6 +38,7 @@ private fun configureWindowsAppUserModelId() {
 }
 
 fun main(args: Array<String>) {
+    com.vinnovateit.latch.desktop.platform.NativeMemoryTrimmer.init()
     com.vinnovateit.latch.core.data.SystemSqliteInitializer.init()
     var onActivateWindow: (() -> Unit)? = null
 
@@ -163,32 +164,42 @@ fun main(args: Array<String>) {
             // the chrome renders above LatchRoot, so the menu contract has to be
             // handed to both from their common parent.
             val appMenu = remember { AppMenuHost() }
+            val windowState = androidx.compose.ui.window.rememberWindowState(
+                position = androidx.compose.ui.window.WindowPosition(androidx.compose.ui.Alignment.Center),
+                size = remember { preferredWindowSize() },
+            )
 
-            LatchWindow(
-                visible = windowVisible,
-                restoreTrigger = restoreTrigger,
-                onCloseRequest = { windowVisible = false },
-                appMenu = appMenu,
-            ) {
-                val scope = rememberCoroutineScope()
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    LatchRoot(
-                        controller = app.engine,
-                        sessions = app.sessions,
-                        platform = app.platform,
-                        updateState = updateState,
-                        onCheckForUpdates = { scope.launch { app.updater.check(force = true) } },
-                        onDownloadUpdate = { app.downloadUpdate() },
-                        onCancelDownload = { app.cancelUpdateDownload() },
-                        // Leave only if the installer really started; on a failure
-                        // installAndExit has an error for the user to read, which
-                        // exiting unconditionally would take down with the process.
-                        onInstallUpdate = { path ->
-                            if (app.updater.installAndExit(path)) exitApplication()
-                        },
-                        onDismissUpdate = { app.updater.dismissUpdate() },
-                        appMenu = appMenu,
-                    )
+            if (windowVisible) {
+                LatchWindow(
+                    visible = true,
+                    restoreTrigger = restoreTrigger,
+                    onCloseRequest = {
+                        windowVisible = false
+                        com.vinnovateit.latch.desktop.platform.NativeMemoryTrimmer.trim()
+                    },
+                    appMenu = appMenu,
+                    state = windowState,
+                ) {
+                    val scope = rememberCoroutineScope()
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        LatchRoot(
+                            controller = app.engine,
+                            sessions = app.sessions,
+                            platform = app.platform,
+                            updateState = updateState,
+                            onCheckForUpdates = { scope.launch { app.updater.check(force = true) } },
+                            onDownloadUpdate = { app.downloadUpdate() },
+                            onCancelDownload = { app.cancelUpdateDownload() },
+                            // Leave only if the installer really started; on a failure
+                            // installAndExit has an error for the user to read, which
+                            // exiting unconditionally would take down with the process.
+                            onInstallUpdate = { path ->
+                                if (app.updater.installAndExit(path)) exitApplication()
+                            },
+                            onDismissUpdate = { app.updater.dismissUpdate() },
+                            appMenu = appMenu,
+                        )
+                    }
                 }
             }
         }

@@ -83,7 +83,7 @@ private const val MAX_SCREEN_FRACTION = 0.92f
 private const val MIN_W = WindowResizePolicy.MIN_W
 private const val MIN_H = WindowResizePolicy.MIN_H
 
-private fun preferredWindowSize(): DpSize {
+internal fun preferredWindowSize(): DpSize {
     return try {
         val gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
             .defaultScreenDevice.defaultConfiguration
@@ -147,13 +147,12 @@ internal fun LatchWindow(
     restoreTrigger: Int = 0,
     onCloseRequest: () -> Unit,
     appMenu: AppMenuHost,
+    state: androidx.compose.ui.window.WindowState = rememberWindowState(
+        position = WindowPosition(Alignment.Center),
+        size = remember { preferredWindowSize() },
+    ),
     content: @Composable () -> Unit,
 ) {
-    val initialSize = remember { preferredWindowSize() }
-    val state = rememberWindowState(
-        position = WindowPosition(Alignment.Center),
-        size = initialSize,
-    )
     val minimizeToTray by SettingsManager.minimizeToTray.collectAsState()
 
     LaunchedEffect(visible, restoreTrigger) {
