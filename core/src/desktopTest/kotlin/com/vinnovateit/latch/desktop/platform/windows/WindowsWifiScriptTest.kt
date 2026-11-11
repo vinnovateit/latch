@@ -20,7 +20,13 @@ class WindowsWifiScriptTest {
     private fun literal(value: String) =
         "'" + value.replace(Regex("['‘’‚‛]")) { it.value + it.value } + "'"
 
-    private fun query(name: String, ssid: String, gateway: String = "192.168.1.1"): WindowsWifiFields {
+    private fun query(
+        name: String,
+        ssid: String,
+        gateway: String = "192.168.1.1",
+        level: String = "InternetAccess",
+        wlan: String = "1",
+    ): WindowsWifiFields {
         val script = listOf(
             "\$name = ${literal(name)}",
             "\$up = '1'",
@@ -28,6 +34,8 @@ class WindowsWifiScriptTest {
             "\$ssid = ${literal(ssid)}",
             "\$gw = ${literal(gateway)}",
             "\$src = 'wlan'",
+            "\$level = ${literal(level)}",
+            "\$wlan = ${literal(wlan)}",
             PS_WIFI_RESULT_LINE,
         ).joinToString("\n")
         val line = assertNotNull(runPowerShellForResult(script, NoOpLogger), "PowerShell printed no RESULT line")
@@ -63,5 +71,14 @@ class WindowsWifiScriptTest {
         assertEquals("Wi-Fi", fields.adapterName)
         assertNull(fields.ssid)
         assertNull(fields.gateway)
+    }
+
+    @Test
+    fun `the connectivity level survives the script`() {
+        if (!isWindows) return
+        val fields = query(name = "Wi-Fi", ssid = "VIT", level = "ConstrainedInternetAccess")
+
+        assertEquals(WindowsConnectivityLevel.ConstrainedInternetAccess, fields.connectivityLevel)
+        assertEquals(true, fields.internetProfileIsWlan)
     }
 }

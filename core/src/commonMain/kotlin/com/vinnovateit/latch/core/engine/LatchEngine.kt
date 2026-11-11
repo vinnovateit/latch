@@ -154,6 +154,20 @@ class LatchEngine(
                 )
             }
 
+            is WifiEvent.Changed -> {
+                currentHandle = event.handle
+                if (!platform.wifi.isWifiEnabled()) return
+                logger.d(TAG, "Wi-Fi changed under us: ${event.handle.id}")
+                // The network is the same one, so this is the check the engine
+                // already runs -- it probes, and only logs in through the same
+                // gate as any other check.
+                checkAndActExclusive(
+                    handle = event.handle,
+                    revalidating = false,
+                    silent = !SettingsManager.autoLogin.value,
+                )
+            }
+
             is WifiEvent.Lost -> {
                 val lostHandle = event.handle
                 logger.d(TAG, "Wi-Fi lost: ${lostHandle?.id} (current=${currentHandle?.id})")
