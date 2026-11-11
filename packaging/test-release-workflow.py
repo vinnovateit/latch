@@ -15,6 +15,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)
 JOBS = WORKFLOW["jobs"]
+WINGET_WORKFLOW = yaml.load((ROOT / ".github/workflows/winget.yml").read_text(), Loader=yaml.BaseLoader)
 
 
 def evaluate(expression, needs, cancelled=False, inputs=None):
@@ -79,11 +80,10 @@ class ReleaseWorkflowTest(unittest.TestCase):
             only_prepare = {"prepare": needs["prepare"]}
             self.assertEqual(mode == "full", enabled(JOBS["build-linux"], only_prepare))
             self.assertTrue(enabled(JOBS["build-windows"], only_prepare))
-            for job_id in ("publish-repos", "submit-winget"):
-                downstream = {key: dict(needs[key]) for key in ("prepare", "release")}
-                self.assertEqual(mode == "full", enabled(JOBS[job_id], downstream))
-                downstream["release"]["result"] = "failure"
-                self.assertFalse(enabled(JOBS[job_id], downstream))
+            downstream = {key: dict(needs[key]) for key in ("prepare", "release")}
+            self.assertEqual(mode == "full", enabled(JOBS["publish-repos"], downstream))
+            downstream["release"]["result"] = "failure"
+            self.assertFalse(enabled(JOBS["publish-repos"], downstream))
             for step in JOBS["build-windows"]["steps"]:
                 if "CLI" in step["name"]:
                     self.assertEqual(mode == "full", enabled(step, only_prepare), step["name"])
@@ -134,6 +134,48 @@ class ReleaseWorkflowTest(unittest.TestCase):
                     self.assertEqual(expected, result.returncode == 0, result.stderr.decode())
                     if expected:
                         self.assertEqual(f"version=1.5.1\ntag=v1.5.1\nmode={mode}\n", output.read_text())
+
+
+class WinGetWorkflowTest(unittest.TestCase):
+    def test_submission_requires_manual_dispatch(self):
+        self.assertEqual({"workflow_dispatch"}, set(WINGET_WORKFLOW["on"]))
+        version = WINGET_WORKFLOW["on"]["workflow_dispatch"]["inputs"]["version"]
+        self.assertEqual("string", version["type"])
+        self.assertEqual("true", version["required"])
+        self.assertNotIn("submit-winget", JOBS)
+        self.assertNotIn("WINGET_TOKEN", yaml.dump(WORKFLOW))
+        self.assertEqual("winget-submission", WINGET_WORKFLOW["concurrency"]["group"])
+        self.assertEqual("false", WINGET_WORKFLOW["concurrency"]["cancel-in-progress"])
+
+    def test_selected_release_is_validated_before_download(self):
+        steps = WINGET_WORKFLOW["jobs"]["submit-winget"]["steps"]
+        fetch = next(step for step in steps if step["name"] == "Fetch the published manifests")
+        self.assertEqual("${{ inputs.version }}", fetch["env"]["VERSION"])
+        self.assertEqual("${{ secrets.GITHUB_TOKEN }}", fetch["env"]["GH_TOKEN"])
+        for version, expected in (("1.5.0", True), ("v1.5.0", False), ("1.5", False),
+                                  ("01.5.0", False), ("1.5.0-beta", False), ("", False),
+                                  ("1.5.0; touch unexpected", False)):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                work = Path(directory)
+                calls = work / "calls"
+                for name in ("gh", "unzip"):
+                    stub = work / name
+                    stub.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$0" "$@" >> "$FAKE_CALLS"\n')
+                    stub.chmod(0o755)
+                env = dict(os.environ, VERSION=version, GH_TOKEN="test",
+                           FAKE_CALLS=str(calls), PATH=f"{work}:{os.environ['PATH']}")
+                result = subprocess.run(["bash", "-ec", fetch["run"]], cwd=ROOT,
+                                        env=env, capture_output=True)
+                self.assertEqual(expected, result.returncode == 0, result.stderr.decode())
+                if expected:
+                    self.assertEqual([
+                        str(work / "gh"), "release", "download", "v1.5.0", "--pattern",
+                        "latch-cli-1.5.0-package-metadata.zip", "--dir", ".",
+                        str(work / "unzip"), "-q", "latch-cli-1.5.0-package-metadata.zip",
+                        "-d", "package-metadata",
+                    ], calls.read_text().splitlines())
+                else:
+                    self.assertFalse(calls.exists())
 
 
 if __name__ == "__main__":
