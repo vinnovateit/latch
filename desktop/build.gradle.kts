@@ -105,7 +105,7 @@ val generateComposePropertiesBin by tasks.registering {
         val clazz = Class.forName("org.jetbrains.compose.desktop.application.internal.JvmRuntimeProperties")
         val ctor = clazz.getDeclaredConstructor(Int::class.javaPrimitiveType, Class.forName("java.util.List"))
         ctor.isAccessible = true
-        val modules = listOf("java.base", "java.desktop", "java.logging", "jdk.crypto.ec", "java.management", "java.naming", "jdk.unsupported", "java.instrument")
+        val modules = listOf("java.base", "java.desktop", "java.logging", "jdk.crypto.ec", "java.management", "jdk.unsupported", "java.instrument")
         val instance = ctor.newInstance(21, modules)
         val fos = FileOutputStream(file)
         val oos = ObjectOutputStream(fos)
@@ -125,7 +125,16 @@ tasks.matching { it.name == "checkRuntime" }.configureEach {
 tasks.matching { it.name == "createRuntimeImage" }.configureEach {
     dependsOn(generateComposePropertiesBin)
     (this as org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask).apply {
-        freeArgs.addAll("--strip-debug", "--no-header-files", "--no-man-pages", "--compress", "2")
+        freeArgs.addAll(
+            "--strip-debug",
+            "--strip-native-commands",
+            "--no-header-files",
+            "--no-man-pages",
+            "--dedup-legal-notices",
+            "error-if-not-same-content",
+            "--compress",
+            "zip-9"
+        )
     }
 }
 
@@ -211,6 +220,19 @@ tasks.register<Tar>("packageReleaseTarGz") {
     group = "compose desktop"
     description = "Packages release distributable directory into a .tar.gz archive"
     dependsOn("createReleaseDistributable")
+
+    doFirst {
+        val appDir = layout.buildDirectory.dir("compose/binaries/main-release/app/Latch").get().asFile
+        if (appDir.exists() && org.gradle.internal.os.OperatingSystem.current().isLinux) {
+            ProcessBuilder("bash", "-c", "find '${appDir.absolutePath}' -type f -name '*.so' -exec strip --strip-unneeded {} + 2>/dev/null || true")
+                .inheritIO()
+                .start()
+                .waitFor()
+            // Strip unused JetBrains Runtime bundled IDE fonts (FiraCode, JetBrainsMono, Inter, etc.)
+            // Latch bundles and renders its own Satoshi / Moderniz fonts.
+            File(appDir, "lib/runtime/lib/fonts").deleteRecursively()
+        }
+    }
 
     archiveFileName.set("latch-$latchVersion-linux-x64.tar.gz")
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))

@@ -115,6 +115,6 @@ room-runtime-desktop = { module = "androidx.room:room-runtime", version.ref = "r
 room-compiler-desktop = { module = "androidx.room:room-compiler", version.ref = "roomKmp" }
 sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqliteBundled" }
 oshi-core = { module = "com.github.oshi:oshi-core", version.ref = "oshi" }
-jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
-jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
+jna = { module = "net.java.dev.jna:jna-jpms", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform-jpms", version.ref = "jna" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4jSimple" }
