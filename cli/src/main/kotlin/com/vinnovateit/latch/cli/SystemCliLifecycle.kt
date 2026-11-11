@@ -46,7 +46,25 @@ internal fun resolveDaemonCommand(
     val name = File(executable).nameWithoutExtension
     val command = if (name.equals("java", ignoreCase = true) || name.equals("javaw", ignoreCase = true)) {
         if (classPath.isBlank()) return OperationResult(error = "Unable to determine the Latch CLI classpath.")
-        listOf(executable, "-cp", classPath, "com.vinnovateit.latch.cli.MainKt", "--daemon-process")
+        listOf(
+            executable,
+            "-XX:+UseSerialGC",
+            "-XX:TieredStopAtLevel=1",
+            "-XX:CICompilerCount=1",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-XX:TrimNativeHeapInterval=10000",
+            "-Xms4m",
+            "-Xmx16m",
+            "-Xss256k",
+            "-XX:MetaspaceSize=12m",
+            "-XX:MaxMetaspaceSize=28m",
+            "-XX:ReservedCodeCacheSize=12m",
+            "-XX:InitialCodeCacheSize=2m",
+            "-Dfile.encoding=UTF-8",
+            "-cp", classPath,
+            "com.vinnovateit.latch.cli.MainKt",
+            "--daemon-process",
+        )
     } else {
         listOf(executable, "--daemon-process")
     }

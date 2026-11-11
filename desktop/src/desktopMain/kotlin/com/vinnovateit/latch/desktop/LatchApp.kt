@@ -141,7 +141,7 @@ class LatchApp private constructor(
         scope.launch(Dispatchers.IO) {
             while (isActive) {
                 kotlinx.coroutines.delay(60_000L)
-                com.vinnovateit.latch.desktop.platform.NativeMemoryTrimmer.trim()
+                com.vinnovateit.latch.core.platform.NativeMemoryTrimmer.trim()
             }
         }
     }

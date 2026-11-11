@@ -38,7 +38,12 @@ private fun configureWindowsAppUserModelId() {
 }
 
 fun main(args: Array<String>) {
-    com.vinnovateit.latch.desktop.platform.NativeMemoryTrimmer.init()
+    // Disable negative DNS caching so pre-login lookup failures don't stick.
+    // Set positive TTL to 5s so portal transitions are detected immediately.
+    java.security.Security.setProperty("networkaddress.cache.negative.ttl", "0")
+    java.security.Security.setProperty("networkaddress.cache.ttl", "5")
+
+    com.vinnovateit.latch.core.platform.NativeMemoryTrimmer.init()
     com.vinnovateit.latch.core.data.SystemSqliteInitializer.init()
     var onActivateWindow: (() -> Unit)? = null
 
@@ -174,8 +179,17 @@ fun main(args: Array<String>) {
                     visible = true,
                     restoreTrigger = restoreTrigger,
                     onCloseRequest = {
-                        windowVisible = false
-                        com.vinnovateit.latch.desktop.platform.NativeMemoryTrimmer.trim()
+                        val stateFile = java.io.File(System.getProperty("java.io.tmpdir", "/tmp"), "latch_live_state.json")
+                        val isDaemonActive = stateFile.exists() && (System.currentTimeMillis() - stateFile.lastModified() < 15_000)
+                        val forceExit = isDaemonActive || "--gui-only" in args || System.getenv("LATCH_GUI_ONLY") != null
+                        if (forceExit) {
+                            app.shutdown()
+                            coordinator.close()
+                            exitApplication()
+                        } else {
+                            windowVisible = false
+                            com.vinnovateit.latch.core.platform.NativeMemoryTrimmer.trim()
+                        }
                     },
                     appMenu = appMenu,
                     state = windowState,

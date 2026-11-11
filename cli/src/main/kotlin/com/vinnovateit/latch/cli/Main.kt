@@ -4,6 +4,10 @@ import kotlinx.coroutines.runBlocking
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
+    com.vinnovateit.latch.core.platform.NativeMemoryTrimmer.init()
+    java.security.Security.setProperty("networkaddress.cache.negative.ttl", "0")
+    java.security.Security.setProperty("networkaddress.cache.ttl", "5")
+
     val terminal = SystemTerminal
     val lifecycle = createSystemCliLifecycle()
     val exitCode = runBlocking {

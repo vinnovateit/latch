@@ -31,45 +31,65 @@ class CaptivePortalDetector(
     private val logger: Logger,
 ) {
     private companion object {
-        private const val PROBE_URL = "http://clients3.google.com/generate_204"
+        private val PROBE_URLS = listOf(
+            "http://clients3.google.com/generate_204",
+            "http://connectivitycheck.gstatic.com/generate_204",
+            "http://detectportal.firefox.com/canonical.html",
+        )
         private const val TAG = "CaptivePortalDetector"
     }
 
     fun probe(handle: NetworkHandle? = null): PortalProbeResult {
-        val start = System.currentTimeMillis()
-        logger.d(TAG, "Probing portal endpoint: $PROBE_URL (handle=${handle?.id ?: "default"})")
-        var connection: java.net.HttpURLConnection? = null
-        return try {
-            val conn = transport.open(URL(PROBE_URL), handle)
-            connection = conn
-            conn.instanceFollowRedirects = false
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
-            conn.useCaches = false
-            conn.connect()
+        var lastException: Throwable? = null
+        var allDnsBlocked = true
 
-            val responseCode = conn.responseCode
-            val elapsed = System.currentTimeMillis() - start
-            val location = conn.getHeaderField("Location")
-
-            logger.d(TAG, "Portal probe completed in ${elapsed}ms: HTTP $responseCode ${if (location != null) "(Location: $location)" else ""}")
-            if (responseCode == 204) {
-                PortalProbeResult.Online
-            } else {
-                PortalProbeResult.Portal(responseCode, location)
-            }
-        } catch (e: UnknownHostException) {
-            val elapsed = System.currentTimeMillis() - start
-            logger.e(TAG, "Portal check failed after ${elapsed}ms: DNS resolution failed for $PROBE_URL (${e.message})")
-            PortalProbeResult.DnsBlocked
-        } catch (e: Exception) {
-            val elapsed = System.currentTimeMillis() - start
-            logger.e(TAG, "Portal check failed after ${elapsed}ms with exception: ${e::class.simpleName}: ${e.message}")
-            PortalProbeResult.Error(e.message)
-        } finally {
+        for (urlStr in PROBE_URLS) {
+            val start = System.currentTimeMillis()
+            var connection: java.net.HttpURLConnection? = null
             try {
-                connection?.disconnect()
-            } catch (_: Throwable) {}
+                logger.d(TAG, "Probing portal endpoint: $urlStr (handle=${handle?.id ?: "default"})")
+                val conn = transport.open(URL(urlStr), handle)
+                connection = conn
+                conn.instanceFollowRedirects = false
+                conn.connectTimeout = 2500
+                conn.readTimeout = 2500
+                conn.useCaches = false
+                conn.connect()
+
+                val responseCode = conn.responseCode
+                val elapsed = System.currentTimeMillis() - start
+                val location = conn.getHeaderField("Location")
+
+                logger.d(TAG, "Portal probe completed in ${elapsed}ms: HTTP $responseCode ${if (location != null) "(Location: $location)" else ""}")
+
+                val isSuccess = responseCode == 204 ||
+                    (responseCode == 200 && urlStr.contains("detectportal.firefox.com") && conn.contentLength in 0..100)
+
+                return if (isSuccess) {
+                    PortalProbeResult.Online
+                } else {
+                    PortalProbeResult.Portal(responseCode, location)
+                }
+            } catch (e: UnknownHostException) {
+                lastException = e
+                val elapsed = System.currentTimeMillis() - start
+                logger.w(TAG, "Probe DNS failed for $urlStr in ${elapsed}ms: ${e.message}")
+            } catch (e: Exception) {
+                allDnsBlocked = false
+                lastException = e
+                val elapsed = System.currentTimeMillis() - start
+                logger.w(TAG, "Probe error for $urlStr in ${elapsed}ms: ${e::class.simpleName}: ${e.message}")
+            } finally {
+                try {
+                    connection?.disconnect()
+                } catch (_: Throwable) {}
+            }
+        }
+
+        return if (allDnsBlocked && lastException is UnknownHostException) {
+            PortalProbeResult.DnsBlocked
+        } else {
+            PortalProbeResult.Error(lastException?.message)
         }
     }
 }

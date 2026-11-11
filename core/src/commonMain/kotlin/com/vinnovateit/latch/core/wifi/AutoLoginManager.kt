@@ -61,9 +61,15 @@ class AutoLoginManager(
         handle: NetworkHandle? = null,
         useAlternate: Boolean = false,
         fallbackIp: String? = null,
+        targetHost: String? = null,
     ): LoginResult {
-        logDebug("Initiating login attempt for user: $userId (useAlternate=$useAlternate)")
-        val targetUrlStr = if (useAlternate) SECURE_LOGIN_URL else LOGIN_URL
+        logDebug("Initiating login attempt for user: $userId (useAlternate=$useAlternate, targetHost=$targetHost)")
+        val baseUrl = if (useAlternate) SECURE_LOGIN_URL else LOGIN_URL
+        val targetUrlStr = if (!targetHost.isNullOrEmpty()) {
+            baseUrl.replace(PORTAL_HOST, targetHost)
+        } else {
+            baseUrl
+        }
 
         fun doAttempt(urlStr: String): LoginResult {
             val start = System.currentTimeMillis()
@@ -140,9 +146,9 @@ class AutoLoginManager(
 
         return try {
             doAttempt(targetUrlStr)
-        } catch (e: java.net.UnknownHostException) {
-            logError("Login failed with UnknownHostException.", e)
-            if (fallbackIp != null) {
+        } catch (e: java.io.IOException) {
+            logWarning("Login to $targetUrlStr failed (${e::class.simpleName}: ${e.message}).")
+            if (fallbackIp != null && !targetUrlStr.contains(fallbackIp)) {
                 val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
                 logDebug("Retrying login with fallback IP: $fallbackTargetUrlStr")
                 try {
@@ -177,15 +183,22 @@ class AutoLoginManager(
         handle: NetworkHandle? = null,
         useAlternate: Boolean = false,
         fallbackIp: String? = null,
-    ): Boolean = attemptLogoutWithResponse(handle, useAlternate, fallbackIp).success
+        targetHost: String? = null,
+    ): Boolean = attemptLogoutWithResponse(handle, useAlternate, fallbackIp, targetHost).success
 
     fun attemptLogoutWithResponse(
         handle: NetworkHandle? = null,
         useAlternate: Boolean = false,
         fallbackIp: String? = null,
+        targetHost: String? = null,
     ): LogoutResult {
-        logDebug("Initiating logout attempt (useAlternate=$useAlternate)")
-        val targetUrlStr = if (useAlternate) SECURE_LOGOUT_URL else LOGOUT_URL
+        logDebug("Initiating logout attempt (useAlternate=$useAlternate, targetHost=$targetHost)")
+        val baseUrl = if (useAlternate) SECURE_LOGOUT_URL else LOGOUT_URL
+        val targetUrlStr = if (!targetHost.isNullOrEmpty()) {
+            baseUrl.replace(PORTAL_HOST, targetHost)
+        } else {
+            baseUrl
+        }
 
         fun doAttempt(urlStr: String): LogoutResult {
             val url = URL(urlStr)
@@ -219,9 +232,9 @@ class AutoLoginManager(
 
         return try {
             doAttempt(targetUrlStr)
-        } catch (e: java.net.UnknownHostException) {
-            logError("Logout failed with UnknownHostException.", e)
-            if (fallbackIp != null) {
+        } catch (e: java.io.IOException) {
+            logWarning("Logout from $targetUrlStr failed (${e::class.simpleName}: ${e.message}).")
+            if (fallbackIp != null && !targetUrlStr.contains(fallbackIp)) {
                 val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
                 try {
                     doAttempt(fallbackTargetUrlStr)

@@ -16,7 +16,13 @@ import com.vinnovateit.latch.desktop.AppPaths
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import com.vinnovateit.latch.core.platform.NativeMemoryTrimmer
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 internal suspend fun createCoordinatedCliBackend(
@@ -127,7 +133,17 @@ private class OwnedCliBackend(
 
     override suspend fun runDaemon(): OperationResult<Unit> {
         check(ownerKind == OwnerKind.CLI_DAEMON)
-        stopSignal.await()
+        val trimJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive) {
+                delay(60_000L)
+                NativeMemoryTrimmer.trim()
+            }
+        }
+        try {
+            stopSignal.await()
+        } finally {
+            trimJob.cancel()
+        }
         return OperationResult(Unit)
     }
 

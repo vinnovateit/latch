@@ -124,6 +124,9 @@ tasks.matching { it.name == "checkRuntime" }.configureEach {
 
 tasks.matching { it.name == "createRuntimeImage" }.configureEach {
     dependsOn(generateComposePropertiesBin)
+    (this as org.jetbrains.compose.desktop.application.tasks.AbstractJLinkTask).apply {
+        freeArgs.addAll("--strip-debug", "--no-header-files", "--no-man-pages", "--compress", "2")
+    }
 }
 
 compose.resources {
@@ -142,7 +145,7 @@ compose.desktop {
             "-XX:TrimNativeHeapInterval=20000",
             "-Xms16m",
             "-Xmx96m",
-            "-Xss256k",
+            "-Xss1m",
             "-XX:MetaspaceSize=32m",
             "-XX:MaxMetaspaceSize=96m",
             "-XX:ReservedCodeCacheSize=48m",

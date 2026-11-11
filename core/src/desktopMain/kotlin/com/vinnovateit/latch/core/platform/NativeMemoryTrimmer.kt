@@ -1,4 +1,4 @@
-package com.vinnovateit.latch.desktop.platform
+package com.vinnovateit.latch.core.platform
 
 import com.sun.jna.Library
 import com.sun.jna.Native

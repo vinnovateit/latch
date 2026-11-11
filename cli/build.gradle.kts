@@ -53,10 +53,20 @@ application {
     mainClass.set("com.vinnovateit.latch.cli.MainKt")
     applicationName = "latch-cli"
     applicationDefaultJvmArgs = listOf(
-        "-Xms8m",
-        "-Xmx64m",
         "-XX:+UseSerialGC",
+        "-XX:TieredStopAtLevel=1",
+        "-XX:CICompilerCount=1",
+        "-XX:+UnlockExperimentalVMOptions",
+        "-XX:TrimNativeHeapInterval=10000",
+        "-Xms4m",
+        "-Xmx16m",
+        "-Xss256k",
+        "-XX:MetaspaceSize=12m",
+        "-XX:MaxMetaspaceSize=28m",
+        "-XX:ReservedCodeCacheSize=12m",
+        "-XX:InitialCodeCacheSize=2m",
         "-Dfile.encoding=UTF-8",
+        "--enable-native-access=ALL-UNNAMED",
     )
 }
 
@@ -89,6 +99,7 @@ val packageCliAppImage by tasks.registering(Exec::class) {
         "--vendor", "VinnovateIT",
         "--description", "Automatic VIT Wi-Fi login from the terminal",
         "--add-modules", "java.base,java.desktop,java.logging,java.management,java.naming,jdk.unsupported,java.instrument",
+        "--jlink-options", "--strip-debug --no-header-files --no-man-pages --strip-native-commands --compress 2",
         "--java-options", "-Xms8m",
         "--java-options", "-Xmx64m",
         "--java-options", "-XX:+UseSerialGC",
