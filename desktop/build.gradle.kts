@@ -133,7 +133,7 @@ tasks.matching { it.name == "createRuntimeImage" }.configureEach {
             "--dedup-legal-notices",
             "error-if-not-same-content",
             "--compress",
-            "zip-9"
+            "zip-0"
         )
     }
 }
