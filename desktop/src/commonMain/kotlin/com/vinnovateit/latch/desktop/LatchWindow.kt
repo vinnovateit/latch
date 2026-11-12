@@ -59,6 +59,7 @@ import com.vinnovateit.latch.ui.components.LatchIcons
 import com.vinnovateit.latch.ui.theme.LatchTheme
 import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import java.awt.Cursor
+import java.awt.Desktop
 import java.awt.Dimension
 import java.awt.Frame
 import java.awt.GraphicsConfiguration
@@ -161,6 +162,7 @@ internal fun LatchWindow(
     )
     val minimizeToTray by SettingsManager.minimizeToTray.collectAsState()
     val isWindows = remember { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
+    val isMac = remember { System.getProperty("os.name").startsWith("Mac", ignoreCase = true) }
 
     LaunchedEffect(visible, restoreTrigger) {
         if (visible) {
@@ -223,6 +225,7 @@ internal fun LatchWindow(
                 (window as? Frame)?.state = Frame.NORMAL
                 (window as? Frame)?.extendedState = Frame.NORMAL
                 layoutListener?.refreshContent(window)
+                if (isMac) requestAppForeground()
                 window.toFront()
                 window.requestFocus()
             }
@@ -301,6 +304,21 @@ internal fun LatchWindow(
                 }
             }
         }
+    }
+}
+
+/**
+ * Makes Latch the active app on macOS.
+ *
+ * macOS only brings a window forward, and gives it focus, when its app is the
+ * active one. Opening Latch from the menu bar leaves the app that was in front
+ * active, so toFront() alone left the window behind it.
+ */
+private fun requestAppForeground() {
+    runCatching {
+        if (!Desktop.isDesktopSupported()) return
+        val desktop = Desktop.getDesktop()
+        if (desktop.isSupported(Desktop.Action.APP_REQUEST_FOREGROUND)) desktop.requestForeground(true)
     }
 }
 
