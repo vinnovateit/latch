@@ -11,12 +11,19 @@ import com.vinnovateit.latch.core.stats.ThroughputMonitor
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -75,9 +82,11 @@ class PortalSessionRepositoryTest {
 
     private class SlowPortalTransport : HttpTransport {
         val logins = AtomicInteger(0)
+        val threads: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
         override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
             val urlStr = url.toString()
+            threads += Thread.currentThread().name
             if ("chooseAuth" in urlStr) logins.incrementAndGet()
             return object : HttpURLConnection(url) {
                 override fun connect() {}
@@ -234,6 +243,49 @@ class PortalSessionRepositoryTest {
             "the portal answers a second simultaneous login with a timeout",
         )
         repo.close()
+    }
+
+    @Test
+    fun `a sync leaves the thread that started it free`() {
+        val transport = SlowPortalTransport()
+        val lookupThreads: MutableSet<String> = ConcurrentHashMap.newKeySet()
+        val repo = SessionRepository(
+            statsDao = db.statsDao(),
+            throughput = ThroughputMonitor(StubCounters()),
+            portalClient = PortalHistoryClient(transport),
+            activeHandle = {
+                lookupThreads += Thread.currentThread().name
+                Thread.sleep(150)
+                TestWifiHandle
+            },
+        )
+        // Stands in for the UI thread the Stats screen starts its sync on.
+        val uiThread = Executors.newSingleThreadExecutor { Thread(it, "ui") }
+        val ui = uiThread.asCoroutineDispatcher()
+        try {
+            runBlocking {
+                repo.initialize()
+                var frames = 0
+                val frameLoop = launch(ui) {
+                    while (true) {
+                        frames++
+                        delay(10)
+                    }
+                }
+                withContext(ui) { repo.syncPortalHistory("24BDS0155", "zero", force = true) }
+                frameLoop.cancelAndJoin()
+
+                assertTrue(transport.logins.get() > 0, "the sync reached the portal")
+                assertFalse("ui" in lookupThreads, "the network lookup ran on the calling thread")
+                assertFalse("ui" in transport.threads, "the portal requests ran on the calling thread")
+                // The lookup and requests take over half a second; a blocked thread
+                // would have run the loop once or twice.
+                assertTrue(frames > 10, "the calling thread only ran $frames times during the sync")
+            }
+        } finally {
+            repo.close()
+            uiThread.shutdown()
+        }
     }
 
     @Test

@@ -58,7 +58,9 @@ import com.vinnovateit.latch.ui.screens.stats.components.UsageInsightsCards
 import com.vinnovateit.latch.ui.screens.stats.components.groupedItemShape
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 import com.vinnovateit.latch.ui.theme.StatsColorPalettes
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import java.io.File
 
@@ -85,12 +87,21 @@ fun StatsScreen(
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
     val (dlColor, ulColor) = StatsColorPalettes.resolveColors(chartPalette)
 
-    LaunchedEffect(Unit) {
-        val userId = platform.credentials.userId()
-        val password = platform.credentials.password()
-        if (!userId.isNullOrBlank() && !password.isNullOrBlank()) {
-            sessions.syncPortalHistory(userId, password)
+    // Reading the saved login can wait on the system keyring, so it stays off
+    // the UI thread; syncPortalHistory moves its own network work off it.
+    suspend fun syncHistory(force: Boolean) {
+        val (userId, password) = withContext(Dispatchers.IO) {
+            platform.credentials.userId() to platform.credentials.password()
         }
+        if (!userId.isNullOrBlank() && !password.isNullOrBlank()) {
+            sessions.syncPortalHistory(userId, password, force = force)
+        } else if (force) {
+            platform.logger.w("StatsScreen", "Cannot resync portal history: missing credentials")
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        syncHistory(force = false)
     }
 
     val allDayRecords by sessions.aggregatedDayRecords.collectAsStateWithLifecycle()
@@ -191,15 +202,7 @@ fun StatsScreen(
                                 text = { Text("Resync History") },
                                 onClick = {
                                     menuExpanded = false
-                                    val userId = platform.credentials.userId()
-                                    val password = platform.credentials.password()
-                                    if (!userId.isNullOrBlank() && !password.isNullOrBlank()) {
-                                        coroutineScope.launch {
-                                            sessions.syncPortalHistory(userId, password, force = true)
-                                        }
-                                    } else {
-                                        platform.logger.w("StatsScreen", "Cannot resync portal history: missing credentials")
-                                    }
+                                    coroutineScope.launch { syncHistory(force = true) }
                                 },
                                 leadingIcon = {
                                     Icon(
