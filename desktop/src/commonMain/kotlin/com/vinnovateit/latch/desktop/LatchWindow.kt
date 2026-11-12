@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import com.vinnovateit.latch.core.settings.SettingsManager
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -65,12 +66,22 @@ import java.awt.GraphicsConfiguration
 import java.awt.GraphicsEnvironment
 import java.awt.Insets
 import java.awt.Toolkit
+import javax.swing.JRootPane
 
 /** Windows/GNOME close-button hover colour -- kept consistent for native feel. */
 private val CloseHoverRed = Color(0xFFE81123)
 
 /** Height of the custom title bar replacing the OS chrome. */
 private val TitleBarHeight = 36.dp
+
+/**
+ * Height of the title bar on macOS, where it draws under the native one: the
+ * height of a standard macOS title bar, so the traffic lights sit centred in it.
+ */
+private val MacTitleBarHeight = 28.dp
+
+/** Room left of the title for the macOS traffic lights. */
+private val MacTrafficLightsWidth = 72.dp
 
 /** Corner radius of the window frame. */
 private val WindowCornerRadius = 12.dp
@@ -161,6 +172,9 @@ internal fun LatchWindow(
     )
     val minimizeToTray by SettingsManager.minimizeToTray.collectAsState()
     val isWindows = remember { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
+    // macOS keeps its own title bar buttons (the traffic lights), drawn over the
+    // top of Latch's title bar; see [useNativeMacTitleBar].
+    val nativeMacChrome = remember { System.getProperty("os.name").startsWith("Mac", ignoreCase = true) }
 
     LaunchedEffect(visible, restoreTrigger) {
         if (visible) {
@@ -180,14 +194,22 @@ internal fun LatchWindow(
         onCloseRequest = onCloseRequest,
         state = state,
         resizable = true,
-        undecorated = true,
-        transparent = true,
+        undecorated = !nativeMacChrome,
+        // Only an undecorated window can be transparent.
+        transparent = !nativeMacChrome,
         title = "Latch",
         icon = remember { LatchIcon.brand() },
     ) {
         val layoutListener = remember(window) {
             if (isWindows) WindowContentLayoutListener() else null
         }
+        if (nativeMacChrome) {
+            DisposableEffect(window) {
+                useNativeMacTitleBar(window.rootPane)
+                onDispose {}
+            }
+        }
+
         DisposableEffect(window, layoutListener) {
             layoutListener?.let(window::addComponentListener)
             onDispose { layoutListener?.let(window::removeComponentListener) }
@@ -229,15 +251,23 @@ internal fun LatchWindow(
         }
 
         LatchTheme {
+            // On macOS the system draws the window's rounded corners, frame and shadow.
+            val frameShape = if (nativeMacChrome) RectangleShape else RoundedCornerShape(WindowCornerRadius)
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                        shape = RoundedCornerShape(WindowCornerRadius),
+                    .then(
+                        if (nativeMacChrome) {
+                            Modifier
+                        } else {
+                            Modifier.border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                shape = frameShape,
+                            )
+                        },
                     ),
-                shape = RoundedCornerShape(WindowCornerRadius),
+                shape = frameShape,
                 color = MaterialTheme.colorScheme.background,
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -246,9 +276,10 @@ internal fun LatchWindow(
                         WindowDraggableArea(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(TitleBarHeight),
+                                .height(if (nativeMacChrome) MacTitleBarHeight else TitleBarHeight),
                         ) {
                             LatchTitleBar(
+                                nativeMacChrome = nativeMacChrome,
                                 onMinimize = {
                                     if (minimizeToTray) {
                                         onCloseRequest()
@@ -272,32 +303,34 @@ internal fun LatchWindow(
                         }
                     }
 
-                    // The window is undecorated, so these stand in for the OS resize
-                    // border. They fire only from a pointer drag, and they are the only
-                    // place Latch sets its own size.
-                    val currentBounds = {
-                        WindowBounds(window.x, window.y, window.width, window.height)
+                    // An undecorated window has no OS resize border, so these stand in
+                    // for it. They fire only from a pointer drag, and they are the only
+                    // place Latch sets its own size. macOS keeps its own border.
+                    if (!nativeMacChrome) {
+                        val currentBounds = {
+                            WindowBounds(window.x, window.y, window.width, window.height)
+                        }
+                        val apply = { b: WindowBounds ->
+                            window.setBounds(b.x, b.y, b.width, b.height)
+                        }
+                        WindowResizeHandles(
+                            onResizeRight = { dx ->
+                                apply(WindowResizePolicy.resizeRight(currentBounds(), dx))
+                            },
+                            onResizeBottom = { dy ->
+                                apply(WindowResizePolicy.resizeBottom(currentBounds(), dy))
+                            },
+                            onResizeBottomRight = { dx, dy ->
+                                apply(WindowResizePolicy.resizeBottomRight(currentBounds(), dx, dy))
+                            },
+                            onResizeLeft = { dx ->
+                                apply(WindowResizePolicy.resizeLeft(currentBounds(), dx))
+                            },
+                            onResizeBottomLeft = { dx, dy ->
+                                apply(WindowResizePolicy.resizeBottomLeft(currentBounds(), dx, dy))
+                            },
+                        )
                     }
-                    val apply = { b: WindowBounds ->
-                        window.setBounds(b.x, b.y, b.width, b.height)
-                    }
-                    WindowResizeHandles(
-                        onResizeRight = { dx ->
-                            apply(WindowResizePolicy.resizeRight(currentBounds(), dx))
-                        },
-                        onResizeBottom = { dy ->
-                            apply(WindowResizePolicy.resizeBottom(currentBounds(), dy))
-                        },
-                        onResizeBottomRight = { dx, dy ->
-                            apply(WindowResizePolicy.resizeBottomRight(currentBounds(), dx, dy))
-                        },
-                        onResizeLeft = { dx ->
-                            apply(WindowResizePolicy.resizeLeft(currentBounds(), dx))
-                        },
-                        onResizeBottomLeft = { dx, dy ->
-                            apply(WindowResizePolicy.resizeBottomLeft(currentBounds(), dx, dy))
-                        },
-                    )
                 }
             }
         }
@@ -309,12 +342,15 @@ internal fun LatchWindow(
  * - Brand icon and title on the left (draggable via WindowDraggableArea)
  * - Application menu, then Minimize and Close on the right with native hover states
  * - Maximize button is omitted intentionally because fullscreen/maximize is not allowed.
+ * - On macOS the native traffic lights replace Minimize and Close, so the bar
+ *   starts after them and shows only the menu on the right.
  *
  * The buttons are interactive children of the draggable area, exactly as Minimize
  * and Close already were, so the title bar stays the only draggable region.
  */
 @Composable
 private fun LatchTitleBar(
+    nativeMacChrome: Boolean,
     onMinimize: () -> Unit,
     onClose: () -> Unit,
     menuActions: AppMenuActions?,
@@ -322,7 +358,7 @@ private fun LatchTitleBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(TitleBarHeight)
+            .height(if (nativeMacChrome) MacTitleBarHeight else TitleBarHeight)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -330,7 +366,7 @@ private fun LatchTitleBar(
             imageVector = LatchMark,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 12.dp).size(16.dp),
+            modifier = Modifier.padding(start = if (nativeMacChrome) MacTrafficLightsWidth else 12.dp).size(16.dp),
         )
         Text(
             text = "Latch",
@@ -342,22 +378,40 @@ private fun LatchTitleBar(
         if (menuActions != null) {
             TitleBarMenuButton(menuActions)
         }
-        TitleBarButton(
-            icon = LatchIcons.Minimize,
-            contentDescription = "Minimize",
-            onClick = onMinimize,
-            hoverColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        TitleBarButton(
-            icon = LatchIcons.Close,
-            contentDescription = "Close",
-            onClick = onClose,
-            hoverColor = CloseHoverRed,
-            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-            hoverIconTint = Color.White,
-        )
+        // On macOS the traffic lights minimise and close the window.
+        if (!nativeMacChrome) {
+            TitleBarButton(
+                icon = LatchIcons.Minimize,
+                contentDescription = "Minimize",
+                onClick = onMinimize,
+                hoverColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TitleBarButton(
+                icon = LatchIcons.Close,
+                contentDescription = "Close",
+                onClick = onClose,
+                hoverColor = CloseHoverRed,
+                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                hoverIconTint = Color.White,
+            )
+        }
     }
+}
+
+/**
+ * Keeps the native macOS title bar, with its traffic lights, but lets Latch's
+ * content run under it, so Latch's own title bar sits behind the buttons.
+ *
+ * The title is hidden because Latch's title bar shows it, and full screen is
+ * off because Latch does not allow it; the green button still zooms, which the
+ * window state listener turns straight back.
+ */
+private fun useNativeMacTitleBar(rootPane: JRootPane) {
+    rootPane.putClientProperty("apple.awt.fullWindowContent", true)
+    rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
+    rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+    rootPane.putClientProperty("apple.awt.fullscreenable", false)
 }
 
 /**
