@@ -20,6 +20,7 @@ import com.vinnovateit.latch.core.runtime.DesktopOwnership
 import com.vinnovateit.latch.core.runtime.OwnerKind
 import com.vinnovateit.latch.core.runtime.RuntimeCommandService
 import com.vinnovateit.latch.core.runtime.claimDesktopOwnership
+import com.vinnovateit.latch.desktop.platform.mac.MacDockIcon
 import com.vinnovateit.latch.ui.LatchRoot
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
 import java.awt.EventQueue
@@ -58,6 +59,10 @@ fun main(args: Array<String>) {
     }
 
     val startHidden = "--hidden" in args
+    // Started at login with no window: begin as a menu bar app, so the Dock icon
+    // does not appear before the window state below hides it. Must be set before
+    // AWT starts.
+    if (AppPaths.isMac && startHidden) System.setProperty("apple.awt.UIElement", "true")
     val app = try {
         LatchApp.create(echoLogsToStdout = System.console() != null || !startHidden)
     } catch (error: Exception) {
@@ -90,6 +95,10 @@ fun main(args: Array<String>) {
             }
             onActivateWindow = openLatch
             if (pendingActivation.getAndSet(false)) openLatch()
+
+            if (AppPaths.isMac) {
+                LaunchedEffect(windowVisible) { MacDockIcon.setVisible(windowVisible, app.platform.logger) }
+            }
 
             val trayState = rememberTrayState()
             val isLatched by app.engine.isLatched.collectAsState()

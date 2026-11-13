@@ -187,6 +187,13 @@ if grep -rqs 'AppIndicator\|libgtk\|secret-tool' "$data/app/logs"; then
     fail "the app touched a Linux-only integration on macOS"
 fi
 echo "  no Linux tray/keyring integration touched"
+# The app records itself as the runtime owner before it loads its data, and
+# registers to start at login only after that, so give it time to get there.
+for _ in $(seq 1 30); do
+    [ -f "$launch_agent" ] && break
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 1
+done
 [ -f "$launch_agent" ] || fail "the installed app did not register itself to start at login"
 grep -qF "<string>$app/Contents/MacOS/Latch</string>" "$launch_agent" \
     || fail "the LaunchAgent does not start this Latch.app: $(cat "$launch_agent")"
