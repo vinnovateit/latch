@@ -84,4 +84,7 @@
     <string name="notification_channel_name">Latch Service</string>
     <string name="notification_title">Latch Running</string>
     <string name="notification_text">Monitoring Wi-Fi connection…</string>
+    <string name="auto_login_stopped_channel_name">Auto-login alerts</string>
+    <string name="auto_login_stopped_title">Auto-login stopped</string>
+    <string name="auto_login_stopped_text">Android limits how long Latch can run in the background. Tap to resume.</string>
 </resources>
