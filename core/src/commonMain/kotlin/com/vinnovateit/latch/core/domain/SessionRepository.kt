@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "SessionRepository"
 
@@ -236,7 +237,10 @@ class SessionRepository(
             // credentials in cleartext over whatever that happens to be, which on
             // Android stays cellular while a captive portal is unvalidated. See the
             // "No Cellular Leaks" invariant in AGENTS.md.
-            val handle = activeHandle()
+            // The network lookup and the portal requests block their thread, for up
+            // to the request timeouts on each step, so neither may run on the
+            // caller's: the Stats screen calls this from the UI thread.
+            val handle = withContext(Dispatchers.IO) { activeHandle() }
             if (handle == null) {
                 logger.w(TAG, "No active Wi-Fi network; skipping portal sync rather than leaving the network.")
                 return Result.failure(IllegalStateException("Not connected to Wi-Fi"))
@@ -249,7 +253,9 @@ class SessionRepository(
             }
             lastSyncTimeMillis = now
             logger.d(TAG, "syncPortalHistory starting...")
-            val result = client.fetchHistory(userId, password, handle = handle, host = host)
+            val result = withContext(Dispatchers.IO) {
+                client.fetchHistory(userId, password, handle = handle, host = host)
+            }
             if (result.isSuccess) {
                 val incoming = result.getOrThrow().filter {
                     it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L)
