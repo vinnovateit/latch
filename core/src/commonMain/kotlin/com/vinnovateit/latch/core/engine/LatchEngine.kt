@@ -371,9 +371,8 @@ class LatchEngine(
      *
      * Both checks must pass. The SSID must name a campus network, judged the
      * way this platform requires. The portal must point at Pronto. Without the
-     * second check an SSID that merely contains "VIT" behind some other
-     * captive portal would get the credentials in plain HTTP. On Android,
-     * which cannot read the SSID, any captive portal would.
+     * second check an SSID that merely names VIT behind some other captive
+     * portal would get the credentials in plain HTTP.
      */
     private fun targetNetworkRefusal(portalSeen: PortalProbeResult.Portal?): ConnectionStatus.Reason? {
         val ssid = platform.wifi.currentSsid()
@@ -415,7 +414,7 @@ class LatchEngine(
                 password = pass,
                 handle = handle,
                 useAlternate = false,
-                fallbackIp = platform.wifi.gatewayIp(),
+                fallbackIp = { confirmedProntoGateway(handle) },
             )
 
             if (result != LoginResult.Success) {
@@ -441,6 +440,15 @@ class LatchEngine(
         } finally {
             platform.wifi.bindProcess(null)
         }
+    }
+
+    /**
+     * The gateway's address, if the gateway itself says it fronts Pronto right
+     * now. A login is only ever re-sent to an address that did.
+     */
+    private fun confirmedProntoGateway(handle: NetworkHandle): String? {
+        val gateway = platform.wifi.gatewayIp() ?: return null
+        return gateway.takeIf { portal.probeGateway(it, handle)?.isPronto == true }
     }
 
     private suspend fun logoutNow() {

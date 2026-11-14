@@ -3,7 +3,6 @@ package com.vinnovateit.latch.core.wifi
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.NetworkHandle
-import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.UnknownHostException
@@ -129,17 +128,5 @@ class CaptivePortalDetector(
             ?.use { String(it.readUpTo(BODY_SNIPPET_BYTES), Charsets.ISO_8859_1) }
     } catch (_: Exception) {
         null
-    }
-
-    // InputStream.readNBytes is Java 11 API, which Android only has from API 33.
-    private fun InputStream.readUpTo(limit: Int): ByteArray {
-        val buffer = ByteArray(limit)
-        var total = 0
-        while (total < limit) {
-            val read = read(buffer, total, limit - total)
-            if (read < 0) break
-            total += read
-        }
-        return buffer.copyOf(total)
     }
 }
