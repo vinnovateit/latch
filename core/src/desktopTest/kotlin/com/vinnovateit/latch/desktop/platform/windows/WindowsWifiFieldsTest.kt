@@ -3,7 +3,9 @@ package com.vinnovateit.latch.desktop.platform.windows
 import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class WindowsWifiFieldsTest {
 
@@ -44,5 +46,92 @@ class WindowsWifiFieldsTest {
         assertNull(fields.ssid)
         assertNull(fields.gateway)
         assertNull(fields.ssidSource)
+    }
+
+    @Test
+    fun `the connectivity level and the profile kind are read from their own positions`() {
+        val fields = parseWifiResult(
+            "RESULT|${b64("Wi-Fi")}|1|1|${b64("G-VIT 5")}|10.0.0.1|wlan|ConstrainedInternetAccess|1"
+        )
+
+        assertEquals(WindowsConnectivityLevel.ConstrainedInternetAccess, fields.connectivityLevel)
+        assertEquals(true, fields.internetProfileIsWlan)
+    }
+
+    @Test
+    fun `a missing connectivity level is unknown`() {
+        val fields = parseWifiResult("RESULT|${b64("Wi-Fi")}|1|1|${b64("G-VIT 5")}|10.0.0.1|wlan")
+
+        assertEquals(WindowsConnectivityLevel.Unknown, fields.connectivityLevel)
+        assertEquals(false, fields.internetProfileIsWlan)
+    }
+
+    @Test
+    fun `the level of another link is not the Wi-Fi's own`() {
+        assertEquals(
+            WindowsConnectivityLevel.ConstrainedInternetAccess,
+            connectivityLevelOf(WindowsConnectivityLevel.ConstrainedInternetAccess, internetProfileIsWlan = true),
+        )
+        assertEquals(
+            WindowsConnectivityLevel.Unknown,
+            connectivityLevelOf(WindowsConnectivityLevel.ConstrainedInternetAccess, internetProfileIsWlan = false),
+            "a docked machine's Ethernet level says nothing about the Wi-Fi",
+        )
+    }
+
+    @Test
+    fun `only the move into a captive portal is worth reporting`() {
+        val now = 1_000_000L
+
+        assertTrue(
+            shouldReportConnectivityChange(
+                previous = WindowsConnectivityLevel.InternetAccess,
+                current = WindowsConnectivityLevel.ConstrainedInternetAccess,
+                lastReportedAt = 0L,
+                now = now,
+            ),
+            "Windows seeing a captive portal is worth a check",
+        )
+        assertFalse(
+            shouldReportConnectivityChange(
+                previous = WindowsConnectivityLevel.ConstrainedInternetAccess,
+                current = WindowsConnectivityLevel.ConstrainedInternetAccess,
+                lastReportedAt = 0L,
+                now = now,
+            ),
+            "a level that stays put is not news",
+        )
+        assertFalse(
+            shouldReportConnectivityChange(
+                previous = WindowsConnectivityLevel.InternetAccess,
+                current = WindowsConnectivityLevel.LocalAccess,
+                lastReportedAt = 0L,
+                now = now,
+            ),
+            "only a captive portal is reported",
+        )
+    }
+
+    @Test
+    fun `a captive portal is not reported again inside the cooldown`() {
+        val now = 1_000_000L
+
+        assertFalse(
+            shouldReportConnectivityChange(
+                previous = WindowsConnectivityLevel.InternetAccess,
+                current = WindowsConnectivityLevel.ConstrainedInternetAccess,
+                lastReportedAt = now - CHANGED_EVENT_COOLDOWN_MS + 1,
+                now = now,
+            ),
+            "a flapping level must not turn into a burst of checks",
+        )
+        assertTrue(
+            shouldReportConnectivityChange(
+                previous = WindowsConnectivityLevel.InternetAccess,
+                current = WindowsConnectivityLevel.ConstrainedInternetAccess,
+                lastReportedAt = now - CHANGED_EVENT_COOLDOWN_MS,
+                now = now,
+            ),
+        )
     }
 }

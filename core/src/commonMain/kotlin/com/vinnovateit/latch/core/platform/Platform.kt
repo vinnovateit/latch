@@ -63,6 +63,16 @@ interface HttpTransport {
 sealed interface WifiEvent {
     data class Available(val handle: NetworkHandle) : WifiEvent
     data class Lost(val handle: NetworkHandle?) : WifiEvent
+
+    /**
+     * The same network, but it changed underneath us: the OS saw a captive
+     * portal appear, a route moved, a lease was renewed.
+     *
+     * A platform that can see such a change says so, and the engine re-checks
+     * the network the way it does for [Available]. A platform that cannot
+     * simply never says it, and the engine keeps to its own schedule.
+     */
+    data class Changed(val handle: NetworkHandle) : WifiEvent
 }
 
 interface WifiPlatform {

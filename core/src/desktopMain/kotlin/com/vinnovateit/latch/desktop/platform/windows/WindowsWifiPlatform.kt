@@ -4,13 +4,40 @@ import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.NetworkHandle
 import com.vinnovateit.latch.core.platform.WifiEvent
 import com.vinnovateit.latch.core.platform.WifiPlatform
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.NetworkInterface
 import java.util.concurrent.TimeUnit
 
 internal data class SimpleWindowsNetworkHandle(override val id: String) : NetworkHandle
+
+/**
+ * What Windows says about the network it considers the internet connection.
+ *
+ * NCSI's own answer, so it is only as good as NCSI: a portal it does not
+ * recognise reads as [LocalAccess] or even [InternetAccess].
+ */
+internal enum class WindowsConnectivityLevel {
+    None,
+    LocalAccess,
+    ConstrainedInternetAccess,
+    InternetAccess,
+    Unknown;
+
+    companion object {
+        fun fromString(value: String?): WindowsConnectivityLevel = when (value?.trim()) {
+            "None" -> None
+            "LocalAccess" -> LocalAccess
+            "ConstrainedInternetAccess" -> ConstrainedInternetAccess
+            "InternetAccess" -> InternetAccess
+            else -> Unknown
+        }
+    }
+}
 
 internal data class WindowsWifiFields(
     val adapterName: String?,
@@ -19,12 +46,50 @@ internal data class WindowsWifiFields(
     val ssid: String?,
     val gateway: String?,
     val ssidSource: String?,
+    val connectivityLevel: WindowsConnectivityLevel = WindowsConnectivityLevel.Unknown,
+    val internetProfileIsWlan: Boolean = false,
 )
 
 /**
- * Parses the script's `RESULT|name|up|radio|ssid|gateway|source` line. The name
- * and SSID arrive Base64-encoded so that a `|` in either cannot shift the
- * fields after it.
+ * The level that counts for the Wi-Fi we are on.
+ *
+ * The query asks Windows for the *internet* profile, which on a docked laptop
+ * is the Ethernet one -- its level says nothing about the Wi-Fi link, so it is
+ * dropped rather than read as the Wi-Fi's own.
+ */
+internal fun connectivityLevelOf(
+    level: WindowsConnectivityLevel,
+    internetProfileIsWlan: Boolean,
+): WindowsConnectivityLevel =
+    if (internetProfileIsWlan) level else WindowsConnectivityLevel.Unknown
+
+/** How long the engine is left alone after it was told about a captive portal. */
+internal const val CHANGED_EVENT_COOLDOWN_MS = 30_000L
+
+/**
+ * Whether a change in Windows' own view of the network is worth telling the
+ * engine about.
+ *
+ * Only the move into [WindowsConnectivityLevel.ConstrainedInternetAccess]
+ * counts: Windows has just seen a captive portal in front of the connection,
+ * which is the one thing the engine cannot work out for itself before its next
+ * probe. A repeat within [CHANGED_EVENT_COOLDOWN_MS] is ignored, so a level
+ * that flaps does not turn into a burst of checks.
+ */
+internal fun shouldReportConnectivityChange(
+    previous: WindowsConnectivityLevel,
+    current: WindowsConnectivityLevel,
+    lastReportedAt: Long,
+    now: Long,
+): Boolean =
+    current == WindowsConnectivityLevel.ConstrainedInternetAccess &&
+        previous != WindowsConnectivityLevel.ConstrainedInternetAccess &&
+        now - lastReportedAt >= CHANGED_EVENT_COOLDOWN_MS
+
+/**
+ * Parses the script's `RESULT|name|up|radio|ssid|gateway|source|level|wlan` line.
+ * The name and SSID arrive Base64-encoded so that a `|` in either cannot shift
+ * the fields after it.
  */
 internal fun parseWifiResult(line: String): WindowsWifiFields {
     val parts = line.removePrefix("RESULT|").split('|')
@@ -43,18 +108,21 @@ internal fun parseWifiResult(line: String): WindowsWifiFields {
         ssid = decoded(3),
         gateway = text(4),
         ssidSource = text(5),
+        connectivityLevel = WindowsConnectivityLevel.fromString(text(6)),
+        internetProfileIsWlan = text(7) == "1",
     )
 }
 
 /**
  * The end of the Wi-Fi query: prints the `RESULT|...` line that [parseWifiResult]
- * reads, from the `$name`, `$up`, `$radio`, `$ssid`, `$gw` and `$src` the query
- * set. Kept apart so a test can run this exact PowerShell on made-up values.
+ * reads, from the `$name`, `$up`, `$radio`, `$ssid`, `$gw`, `$src`, `$level` and
+ * `$wlan` the query set. Kept apart so a test can run this exact PowerShell on
+ * made-up values.
  */
 internal val PS_WIFI_RESULT_LINE = """
     # Names can hold any character, including this line's separator.
     function Latch-Field(${'$'}value) { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]${'$'}value)) }
-    Write-Output ("RESULT|" + (Latch-Field ${'$'}name) + "|" + ${'$'}up + "|" + ${'$'}radio + "|" + (Latch-Field ${'$'}ssid) + "|" + ${'$'}gw + "|" + ${'$'}src)
+    Write-Output ("RESULT|" + (Latch-Field ${'$'}name) + "|" + ${'$'}up + "|" + ${'$'}radio + "|" + (Latch-Field ${'$'}ssid) + "|" + ${'$'}gw + "|" + ${'$'}src + "|" + ${'$'}level + "|" + ${'$'}wlan)
 """.trimIndent()
 
 private const val PS_TAG = "WindowsWifiPlatform"
@@ -129,6 +197,7 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
         val radioOn: Boolean?,
         val ssid: String?,
         val gateway: String?,
+        val connectivityLevel: WindowsConnectivityLevel = WindowsConnectivityLevel.Unknown,
     )
 
     private var cached: WifiSnapshot? = null
@@ -210,6 +279,21 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
               ${'$'}r = Get-NetRoute -InterfaceAlias ${'$'}name -DestinationPrefix '0.0.0.0/0' | Select-Object -First 1
               if (${'$'}r) { ${'$'}gw = ${'$'}r.NextHop }
             }
+            # NCSI's own answer about the network it considers the internet
+            # connection. It is the one signal that says "a portal is sitting in
+            # front of you" without anyone having to ask the portal. Only the
+            # profile's kind is taken from it -- the level belongs to whichever
+            # link Windows picked, which on a docked machine is not the Wi-Fi.
+            ${'$'}level = 'Unknown'
+            ${'$'}wlan = '0'
+            try {
+              [void][Windows.Networking.Connectivity.NetworkInformation, Windows.Networking.Connectivity, ContentType = WindowsRuntime]
+              ${'$'}cp = [Windows.Networking.Connectivity.NetworkInformation]::GetInternetConnectionProfile()
+              if (${'$'}cp) {
+                ${'$'}level = ${'$'}cp.GetNetworkConnectivityLevel().ToString()
+                ${'$'}wlan = if (${'$'}cp.IsWlanConnectionProfile) { '1' } else { '0' }
+              }
+            } catch { ${'$'}level = 'Unknown'; ${'$'}wlan = '0' }
             $PS_WIFI_RESULT_LINE
         """.trimIndent()
 
@@ -224,6 +308,10 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
                 radioOn = fields.radioOn,
                 ssid = resolveSsid(raw = fields.ssid, source = fields.ssidSource),
                 gateway = fields.gateway,
+                connectivityLevel = connectivityLevelOf(
+                    fields.connectivityLevel,
+                    fields.internetProfileIsWlan,
+                ),
             )
         }
         cached = snap
@@ -301,31 +389,67 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
     }
 
     override val events: Flow<WifiEvent> = flow {
-        val seed = snapshot()
-        var lastKey = if (seed.adapterUp && seed.adapterName != null) {
-            "${seed.adapterName}::${seed.ssid ?: "unknown"}"
+        val notifier = WindowsIpChangeNotifier(logger)
+        val wakeups = notifier.start()
+        try {
+            val seed = snapshot()
+            var lastKey = identityKey(seed)
+            var lastLevel = seed.connectivityLevel
+            var lastChangedAt = 0L
+
+            while (true) {
+                val snap = snapshot()
+                val key = identityKey(snap)
+
+                if (key != lastKey) {
+                    if (lastKey != null) {
+                        emit(WifiEvent.Lost(SimpleWindowsNetworkHandle(lastKey.substringBefore("::"))))
+                    }
+                    if (key != null) {
+                        emit(WifiEvent.Available(SimpleWindowsNetworkHandle(snap.adapterName!!)))
+                    }
+                    lastKey = key
+                    lastLevel = snap.connectivityLevel
+                } else if (snap.connectivityLevel != lastLevel) {
+                    val previous = lastLevel
+                    lastLevel = snap.connectivityLevel
+                    val now = System.currentTimeMillis()
+                    if (shouldReportConnectivityChange(previous, snap.connectivityLevel, lastChangedAt, now)) {
+                        val handle = snap.adapterName
+                            ?.takeIf { snap.adapterUp }
+                            ?.let { SimpleWindowsNetworkHandle(it) }
+                        if (handle != null) {
+                            lastChangedAt = now
+                            logger.d(TAG, "Windows reports a captive portal on ${snap.ssid ?: snap.adapterName}.")
+                            emit(WifiEvent.Changed(handle))
+                        }
+                    }
+                }
+                awaitWakeup(wakeups, POLL_INTERVAL_MS)
+            }
+        } finally {
+            notifier.stop()
+        }
+    }
+
+    /** The network we are on, as the loop compares it from poll to poll. */
+    private fun identityKey(snap: WifiSnapshot): String? =
+        if (snap.adapterUp && snap.adapterName != null) {
+            "${snap.adapterName}::${snap.ssid ?: "unknown"}"
         } else {
             null
         }
 
-        while (true) {
-            val snap = snapshot()
-            val key = if (snap.adapterUp && snap.adapterName != null) {
-                "${snap.adapterName}::${snap.ssid ?: "unknown"}"
-            } else {
-                null
-            }
-
-            if (key != lastKey) {
-                if (lastKey != null) {
-                    emit(WifiEvent.Lost(SimpleWindowsNetworkHandle(lastKey.substringBefore("::"))))
-                }
-                if (key != null) {
-                    emit(WifiEvent.Available(SimpleWindowsNetworkHandle(snap.adapterName!!)))
-                }
-                lastKey = key
-            }
-            delay(POLL_INTERVAL_MS)
+    /**
+     * Sleeps until the OS reports an address change, or the poll interval is
+     * up -- whichever comes first.
+     */
+    private suspend fun awaitWakeup(wakeups: Channel<Unit>, timeoutMs: Long) {
+        try {
+            withTimeoutOrNull(timeoutMs) { wakeups.receive() }
+        } catch (_: ClosedReceiveChannelException) {
+            // The notifier is gone; fall back to plain polling.
+            delay(timeoutMs)
         }
     }
 }
