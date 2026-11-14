@@ -31,9 +31,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+
+private const val REFUSAL_PAGE = "<html>Invalid password</html>"
 
 /**
  * Regression test: failed login must not enter revalidation.
@@ -77,9 +80,77 @@ class LatchEngineLoginFailureTest {
         assertTrue(engine.isLatched.value, "session should be latched after successful login")
     }
 
+    @Test
+    fun `a refused login is reported distinctly and shown to the user`() = withEngine(
+        portalResponse = 302,
+        loginResponse = 200,
+        loginBody = REFUSAL_PAGE,
+    ) { engine, transport ->
+        engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+
+        assertEquals(1, transport.loginAttempts)
+        assertEquals(ConnectionStatus.Failed(ConnectionStatus.Reason.CredentialsRejected), engine.status.value)
+        assertEquals(listOf("Login refused"), notifications)
+    }
+
+    @Test
+    fun `a reconnect does not send a login the portal already refused`() = withEngine(
+        portalResponse = 302,
+        loginResponse = 200,
+        loginBody = REFUSAL_PAGE,
+    ) { engine, transport ->
+        engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+
+        reconnect(transport, engine)
+
+        assertEquals(1, transport.loginAttempts, "a refused login must not be re-sent on reconnect")
+        assertEquals(ConnectionStatus.Failed(ConnectionStatus.Reason.CredentialsRejected), engine.status.value)
+        assertEquals(1, notifications.size, "the user is told once, not on every reconnect")
+    }
+
+    @Test
+    fun `asking to connect tries a refused login again`() = withEngine(
+        portalResponse = 302,
+        loginResponse = 200,
+        loginBody = REFUSAL_PAGE,
+    ) { engine, transport ->
+        engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+        engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+
+        assertEquals(2, transport.loginAttempts)
+    }
+
+    @Test
+    fun `a changed password is sent on the next reconnect`() = withEngine(
+        portalResponse = 302,
+        loginResponse = 200,
+        loginBody = REFUSAL_PAGE,
+    ) { engine, transport ->
+        engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+
+        savedPassword = "corrected-pass"
+        reconnect(transport, engine)
+
+        assertEquals(2, transport.loginAttempts)
+    }
+
+    private suspend fun reconnect(transport: LoginFailTransport, engine: LatchEngine) {
+        val probesBefore = transport.probes
+        wifi.events.subscriptionCount.first { it > 0 }
+        wifi.events.emit(WifiEvent.Available(LoginFailStaticHandle))
+        withTimeout(10_000) {
+            while (transport.probes == probesBefore || engine.status.value !is ConnectionStatus.Failed) delay(10)
+        }
+    }
+
+    private val notifications = java.util.Collections.synchronizedList(mutableListOf<String>())
+    private val wifi = LoginFailWifi()
+    @Volatile private var savedPassword = "testpass"
+
     private fun withEngine(
         portalResponse: Int,
         loginResponse: Int,
+        loginBody: String = "<html>access granted</html>",
         block: suspend (LatchEngine, LoginFailTransport) -> Unit,
     ) = runBlocking {
         val directory = createTempDirectory("latch-loginfail-").toFile()
@@ -88,9 +159,9 @@ class LatchEngineLoginFailureTest {
         val database = buildDatabase()
         SettingsManager.initialize(InMemoryKeyValueStore())
         SettingsManager.setAutoLogin(true)
-        val transport = LoginFailTransport(portalResponse, loginResponse)
+        val transport = LoginFailTransport(portalResponse, loginResponse, loginBody)
         val engine = LatchEngine(
-            platform = LoginFailPlatform(LoginFailStaticWifi, transport),
+            platform = LoginFailPlatform(wifi, transport, { savedPassword }, { notifications += it }),
             sessions = SessionRepository(database.statsDao(), ThroughputMonitor(LoginFailNoCounters)),
         )
         try {
@@ -108,8 +179,10 @@ class LatchEngineLoginFailureTest {
 private class LoginFailTransport(
     private val portalResponse: Int,
     private val loginResponse: Int,
+    private val loginBody: String,
 ) : HttpTransport {
     @Volatile var probed = false
+    @Volatile var probes = 0
     @Volatile var loginAttempts = 0
     private val loggedIn = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -129,12 +202,13 @@ private class LoginFailTransport(
             override fun getResponseCode(): Int {
                 if (urlStr.contains("generate_204")) {
                     probed = true
+                    probes++
                     if (loggedIn.get()) return 204
                     return portalResponse
                 }
                 if (urlStr.contains("authlogin")) {
                     loginAttempts++
-                    if (loginResponse == 200) loggedIn.set(true)
+                    if (loginResponse == 200 && loginBody != REFUSAL_PAGE) loggedIn.set(true)
                     return loginResponse
                 }
                 return 200
@@ -142,9 +216,7 @@ private class LoginFailTransport(
             override fun getOutputStream(): OutputStream = object : ByteArrayOutputStream() {
                 override fun close() { flush() }
             }
-            override fun getInputStream() = ByteArrayInputStream(
-                "<html>access granted</html>".toByteArray()
-            )
+            override fun getInputStream() = ByteArrayInputStream(loginBody.toByteArray())
             override fun getErrorStream() = ByteArrayInputStream(
                 "error".toByteArray()
             )
@@ -156,13 +228,13 @@ private object LoginFailStaticHandle : NetworkHandle {
     override val id: String = "wlan0"
 }
 
-private object LoginFailStaticWifi : WifiPlatform {
+private class LoginFailWifi : WifiPlatform {
     override fun isWifiEnabled(): Boolean = true
     override fun isConnectedToWifi(): Boolean = true
     override fun currentSsid(): String = "G-VIT 5"
     override fun gatewayIp(): String? = null
     override fun activeHandle(): NetworkHandle = LoginFailStaticHandle
-    override val events: Flow<WifiEvent> = emptyFlow()
+    override val events = MutableSharedFlow<WifiEvent>(extraBufferCapacity = 8)
 }
 
 private object LoginFailNoCounters : ByteCounterSource {
@@ -172,6 +244,8 @@ private object LoginFailNoCounters : ByteCounterSource {
 private class LoginFailPlatform(
     override val wifi: WifiPlatform,
     override val httpTransport: HttpTransport,
+    private val savedPassword: () -> String,
+    private val onNotify: (String) -> Unit,
 ) : PlatformServices {
     override val logger: Logger = NoOpLogger
     override val buildInfo: BuildInfo = object : BuildInfo {
@@ -186,14 +260,14 @@ private class LoginFailPlatform(
     override val credentials: CredentialStore = object : CredentialStore {
         override fun save(userId: String, password: String) = Result.success(Unit)
         override fun userId(): String? = "testuser"
-        override fun password(): String? = "testpass"
+        override fun password(): String? = savedPassword()
         override fun exists(): Boolean = true
         override fun clear() = Result.success(Unit)
     }
     override val counters: ByteCounterSource = LoginFailNoCounters
     override val notifier: UserNotifier = object : UserNotifier {
         override fun showOngoing(title: String, text: String) = Unit
-        override fun notifyTransient(title: String, text: String, isError: Boolean) = Unit
+        override fun notifyTransient(title: String, text: String, isError: Boolean) = onNotify(title)
         override fun hideOngoing() = Unit
     }
     override val systemActions: SystemActions = object : SystemActions {

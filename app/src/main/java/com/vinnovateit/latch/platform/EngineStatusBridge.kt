@@ -34,6 +34,7 @@ private fun SharedStatus.Reason.toMessage(context: Context): String = when (this
     SharedStatus.Reason.NotOnWifi -> context.getString(R.string.status_not_on_wifi)
     SharedStatus.Reason.NoCredentials -> context.getString(R.string.status_login_failed)
     SharedStatus.Reason.LoginFailed -> context.getString(R.string.status_login_failed)
+    SharedStatus.Reason.CredentialsRejected -> "Login refused (check your password)"
     SharedStatus.Reason.LogoutFailed -> context.getString(R.string.status_logout_failed)
     SharedStatus.Reason.Disconnected -> context.getString(R.string.status_disconnected_message)
     SharedStatus.Reason.NetworkTimeoutAfterLogin -> "Network timeout after login"

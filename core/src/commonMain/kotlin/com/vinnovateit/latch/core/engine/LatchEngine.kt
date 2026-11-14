@@ -76,6 +76,14 @@ class LatchEngine(
      */
     private val loginGate = Mutex()
 
+    /**
+     * Hash of the login the portal last refused. Sending it again gets the same
+     * answer and counts towards the portal's lockout, so automatic logins skip
+     * it until the saved login changes or the user asks to connect. A hash, so
+     * the engine does not have to hold on to a password.
+     */
+    @Volatile private var refusedLogin: Int? = null
+
     private val _isLatched = MutableStateFlow(false)
     val isLatched: StateFlow<Boolean> = _isLatched.asStateFlow()
 
@@ -174,6 +182,7 @@ class LatchEngine(
     private suspend fun handle(command: LatchCommand) {
         when (command) {
             LatchCommand.CheckAndLogin -> {
+                refusedLogin = null
                 postStatus(
                     ConnectionStatus.Connecting(ConnectionStatus.Step.Initializing)
                 )
@@ -407,6 +416,15 @@ class LatchEngine(
                 )
                 return
             }
+            val attemptedLogin = (user to pass).hashCode()
+            if (attemptedLogin == refusedLogin) {
+                logger.w(TAG, "[ConnectAnalysis] The portal already refused this login; not sending it again.")
+                unlatch()
+                postStatus(
+                    ConnectionStatus.Failed(ConnectionStatus.Reason.CredentialsRejected)
+                )
+                return
+            }
             logger.d(TAG, "[ConnectAnalysis] Attempting Portal Login (HTTP)...")
             // A failed request is retried through the gateway inside
             // attemptLogin. A refusal is not, so a wrong password is sent once.
@@ -418,10 +436,22 @@ class LatchEngine(
                 fallbackIp = platform.wifi.gatewayIp(),
             )
 
+            if (result == LoginResult.Rejected) {
+                logger.w(TAG, "[ConnectAnalysis] Portal refused the credentials; not retrying.")
+                refusedLogin = attemptedLogin
+                unlatch()
+                postStatus(
+                    ConnectionStatus.Failed(ConnectionStatus.Reason.CredentialsRejected)
+                )
+                platform.notifier.notifyTransient(
+                    "Login refused",
+                    "The portal refused your saved login. Check your ID and password, then connect again.",
+                    isError = true,
+                )
+                return
+            }
+
             if (result != LoginResult.Success) {
-                if (result == LoginResult.Rejected) {
-                    logger.w(TAG, "[ConnectAnalysis] Portal refused the credentials; not retrying.")
-                }
                 logger.w(TAG, "[ConnectAnalysis] Login failed; not entering revalidation.")
                 unlatch()
                 postStatus(
