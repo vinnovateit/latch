@@ -62,13 +62,13 @@ object SettingsManager {
     private const val DEFAULT_MINIMIZE_TO_TRAY = false
 
     /**
-     * SSID fragments Latch is allowed to authenticate against, matched as
-     * case-insensitive substrings (see LatchEngine.isTargetNetwork).
+     * SSID names Latch is allowed to authenticate against, matched case-insensitively
+     * as whole names within the SSID (see isVitCampusSsid).
      *
-     * Substring rather than exact match, because exact matching proved fragile in
+     * Not an exact match of the whole SSID, because that proved fragile in
      * testing: the saved WLAN profile was "G-VIT" while the live network name
      * reported by Windows was "G-VIT 5". Observed campus names include G-VIT,
-     * G-VIT 5, E-VIT, VIT5 and VIT2.4 -- the single fragment "VIT" covers all of
+     * G-VIT 5, E-VIT, VIT5 and VIT2.4 -- the single name "VIT" covers all of
      * them, and the portal-host DNS check is the real discriminator anyway.
      */
     val DEFAULT_ALLOWED_SSIDS: Set<String> = setOf("VIT")
