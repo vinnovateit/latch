@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -29,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,14 +38,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vinnovateit.latch.R
 import com.vinnovateit.latch.core.portal.PortalHistoryClient
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.core.wifi.isKnownCampusNetwork
 import com.vinnovateit.latch.platform.LatchAppGraph
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
+import org.json.JSONObject
 
 private const val PORTAL_HOST = PortalHistoryClient.DEFAULT_PORTAL_HOST
 
@@ -51,10 +57,28 @@ private const val PORTAL_HOST = PortalHistoryClient.DEFAULT_PORTAL_HOST
  * Whether [url] is the captive portal itself.
  *
  * The portal is plain HTTP on a bare IP, so anything that redirects or spoofs
- * it would otherwise be handed the user's credentials by [onPageFinished].
+ * it would otherwise be handed the user's credentials.
  */
 private fun isPortalUrl(url: String?): Boolean =
     url != null && runCatching { Uri.parse(url).host }.getOrNull() == PORTAL_HOST
+
+/**
+ * Runs [action] with the page's login form as `f`, `u` and `p`, and evaluates to
+ * true, only if the page is the portal and the form posts back to the portal.
+ * Checked in the page itself because the page can change after it loads.
+ */
+private fun portalFormScript(action: String): String = """
+    (function() {
+        var f = document.querySelector('form[name="chooseAuthForm"]');
+        var u = document.querySelector('input[name="loginUserId"]');
+        var p = document.querySelector('input[name="loginPassword"]');
+        if (!f || !u || !p || location.protocol !== 'http:' || location.hostname !== '$PORTAL_HOST') return false;
+        var target = new URL(f.getAttribute('action') || location.href, location.href);
+        if (target.protocol !== 'http:' || target.hostname !== '$PORTAL_HOST') return false;
+        $action
+        return true;
+    })();
+""".trimIndent()
 
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,10 +90,24 @@ fun PortalAccountScreen(
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
     val backgroundColor = if (isAmoled) Color.Black else MaterialTheme.colorScheme.background
 
-    var isWifiConnected by remember { mutableStateOf(LatchAppGraph.platform.wifi.isConnectedToWifi()) }
+    val wifi = remember { LatchAppGraph.platform.wifi }
+    var isOnCampusWifi by remember { mutableStateOf(isKnownCampusNetwork(wifi)) }
     var isLoading by remember { mutableStateOf(true) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var hasAutoSubmitted by remember { mutableStateOf(false) }
+    var loginFormReady by remember { mutableStateOf(false) }
+
+    // Runs before the WebView below is created, so its first request is on Wi-Fi.
+    // Without this it follows the default network, which stays on mobile data
+    // while a captive portal is unvalidated.
+    val releaseWifiPin = remember(isOnCampusWifi) {
+        if (isOnCampusWifi) wifi.activeHandle()?.let(wifi::pinProcess) else null
+    }
+    DisposableEffect(releaseWifiPin) {
+        onDispose {
+            releaseWifiPin?.invoke()
+            CookieManager.getInstance().removeAllCookies(null)
+        }
+    }
 
     val credentials = remember { LatchAppGraph.platform.credentials }
     val userId = if (credentials.exists()) credentials.userId() ?: "" else ""
@@ -97,12 +135,9 @@ fun PortalAccountScreen(
                     }
                 },
                 actions = {
-                    if (isWifiConnected) {
+                    if (isOnCampusWifi) {
                         IconButton(
-                            onClick = {
-                                hasAutoSubmitted = false
-                                webViewRef?.reload()
-                            }
+                            onClick = { webViewRef?.reload() }
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Refresh,
@@ -123,7 +158,7 @@ fun PortalAccountScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (!isWifiConnected) {
+            if (!isOnCampusWifi) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -139,14 +174,14 @@ fun PortalAccountScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "The captive portal is a local intranet service and can only be accessed when connected to campus Wi-Fi.",
+                        text = "The captive portal is a local intranet service and can only be accessed when connected to campus Wi-Fi. Latch also needs Location access to confirm the network's name.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            isWifiConnected = LatchAppGraph.platform.wifi.isConnectedToWifi()
+                            isOnCampusWifi = isKnownCampusNetwork(wifi)
                         }
                     ) {
                         Text("Retry Connection")
@@ -168,11 +203,12 @@ fun PortalAccountScreen(
                             settings.useWideViewPort = true
                             settings.builtInZoomControls = true
                             settings.displayZoomControls = false
-                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
                             webViewClient = object : WebViewClient() {
                                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                     isLoading = true
+                                    loginFormReady = false
                                 }
 
                                 override fun shouldOverrideUrlLoading(
@@ -180,40 +216,23 @@ fun PortalAccountScreen(
                                     request: WebResourceRequest?,
                                 ): Boolean {
                                     // The WebView holds the user's credentials, so
-                                    // it never leaves the portal. Anything else is
-                                    // handed to the browser rather than silently
-                                    // dropped, which would look like a dead link.
-                                    val target = request?.url?.toString() ?: return true
-                                    if (isPortalUrl(target)) return false
-                                    LatchAppGraph.platform.systemActions.openUrl(target)
+                                    // it never leaves the portal. A link the user
+                                    // tapped goes to the browser rather than looking
+                                    // dead; a page can't open anything by itself.
+                                    val target = request?.url ?: return true
+                                    if (isPortalUrl(target.toString())) return false
+                                    if (request.hasGesture() && target.scheme in setOf("http", "https")) {
+                                        LatchAppGraph.platform.systemActions.openUrl(target.toString())
+                                    }
                                     return true
                                 }
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     isLoading = false
                                     if (!isPortalUrl(url)) return
-                                    if (!hasAutoSubmitted && userId.isNotBlank() && password.isNotBlank()) {
-                                        val escapedUser = userId.replace("\\", "\\\\").replace("'", "\\'")
-                                        val escapedPass = password.replace("\\", "\\\\").replace("'", "\\'")
-                                        val js = """
-                                            (function() {
-                                                var u = document.querySelector('input[name="loginUserId"]');
-                                                var p = document.querySelector('input[name="loginPassword"]');
-                                                var f = document.querySelector('form[name="chooseAuthForm"]');
-                                                if (u && p && f) {
-                                                    u.value = '$escapedUser';
-                                                    p.value = '$escapedPass';
-                                                    f.submit();
-                                                    return true;
-                                                }
-                                                return false;
-                                            })();
-                                        """.trimIndent()
-                                        view?.evaluateJavascript(js) { result ->
-                                            if (result == "true") {
-                                                hasAutoSubmitted = true
-                                            }
-                                        }
+                                    if (userId.isBlank() || password.isBlank()) return
+                                    view?.evaluateJavascript(portalFormScript("")) { result ->
+                                        loginFormReady = result == "true"
                                     }
                                 }
                             }
@@ -223,6 +242,31 @@ fun PortalAccountScreen(
                         }
                     }
                 )
+
+                if (loginFormReady) {
+                    Button(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(24.dp),
+                        onClick = {
+                            val page = webViewRef ?: return@Button
+                            if (!isPortalUrl(page.url)) return@Button
+                            loginFormReady = false
+                            page.evaluateJavascript(
+                                portalFormScript(
+                                    """
+                                    u.value = ${JSONObject.quote(userId)};
+                                    p.value = ${JSONObject.quote(password)};
+                                    HTMLFormElement.prototype.submit.call(f);
+                                    """.trimIndent()
+                                ),
+                                null,
+                            )
+                        }
+                    ) {
+                        Text(stringResource(R.string.portal_sign_in_saved))
+                    }
+                }
 
                 if (isLoading) {
                     LinearProgressIndicator(

@@ -12,6 +12,7 @@ import com.vinnovateit.latch.core.engine.LatchCommand
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.features.wifi.widget.LatchWidgetUpdater
 import com.vinnovateit.latch.core.platform.android.AndroidNetworkHandle
+import com.vinnovateit.latch.core.platform.android.hasWifiNamePermission
 import com.vinnovateit.latch.platform.AndroidUserNotifier
 import com.vinnovateit.latch.platform.ForegroundController
 import com.vinnovateit.latch.platform.LatchAppGraph
@@ -37,6 +38,7 @@ class ForegroundService : Service(), ForegroundController {
     private val channelId = AndroidUserNotifier.ONGOING_CHANNEL_ID
 
     private var isNotificationHidden = false
+    private var runningAsLocationService = false
     private var notificationUpdateJob: Job? = null
 
     companion object {
@@ -68,17 +70,7 @@ class ForegroundService : Service(), ForegroundController {
         manager.createNotificationChannel(chan)
 
         try {
-            val notification = createNotificationBuilder("Latch is Running", getString(R.string.notification_text)).build()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    notificationId,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
-            } else {
-                startForeground(notificationId, notification)
-            }
+            enterForeground()
         } catch (e: Exception) {
             Log.e("ForegroundService", "Foreground service start not allowed. System time limit exhausted.", e)
             stopSelf()
@@ -96,8 +88,42 @@ class ForegroundService : Service(), ForegroundController {
         bridgeEngineStateToLegacyObservers()
     }
 
+    /**
+     * Android lets a service read the Wi-Fi name in the background only while
+     * it runs as a location service, which the system allows only after the
+     * permission is granted and only from a foreground start. When it refuses,
+     * the service still runs and the engine reports the name as hidden.
+     */
+    private fun enterForeground() {
+        val notification = createNotificationBuilder("Latch is Running", getString(R.string.notification_text)).build()
+        val mayUseLocation = hasWifiNamePermission(this)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(notificationId, notification)
+            runningAsLocationService = mayUseLocation
+            return
+        }
+        val dataSync = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        if (mayUseLocation) {
+            try {
+                startForeground(notificationId, notification, dataSync or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+                runningAsLocationService = true
+                return
+            } catch (e: SecurityException) {
+                Log.w("ForegroundService", "Location service type refused; the Wi-Fi name stays hidden in the background.", e)
+            }
+        }
+        startForeground(notificationId, notification, dataSync)
+        runningAsLocationService = false
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent == null) return START_STICKY
+
+        // Picks up a permission granted after the service started.
+        if (!runningAsLocationService && !isNotificationHidden && hasWifiNamePermission(this)) {
+            runCatching { enterForeground() }
+                .onFailure { Log.w("ForegroundService", "Could not add the location service type.", it) }
+        }
 
         when (intent.action) {
             ACTION_TRIGGER_LOGIN_CHECK -> {

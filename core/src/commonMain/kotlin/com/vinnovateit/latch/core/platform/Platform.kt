@@ -91,18 +91,17 @@ interface WifiPlatform {
     /**
      * Whether a null [currentSsid] must be read as "not a campus network".
      *
-     * False keeps the long-standing reading of null as "unknown, don't block",
-     * which Android relies on: it never reads the SSID at all and gates on the
-     * portal probe alone. A platform whose SSID can be hidden from Latch for
-     * reasons that say nothing about the network -- macOS without Location
-     * permission, a failed or timed-out read -- sets this, so that being
-     * unable to tell is never taken as permission to send credentials.
+     * False keeps the long-standing reading of null as "unknown, don't block".
+     * A platform whose SSID can be hidden from Latch for reasons that say
+     * nothing about the network -- macOS or Android without Location access,
+     * a failed or timed-out read -- sets this, so that being unable to tell
+     * is never taken as permission to send credentials.
      */
     val requiresKnownSsid: Boolean get() = false
 
     /**
      * Whether the OS is withholding the connected network's name from Latch,
-     * as macOS does without Location access. Lets the UI say how to fix it
+     * as macOS and Android do without Location access. Lets the UI say how to fix it
      * instead of calling the network unknown.
      */
     fun isNetworkNameHidden(): Boolean = false
@@ -122,6 +121,13 @@ interface WifiPlatform {
      * wrong behaviour.
      */
     fun bindProcess(handle: NetworkHandle?) {}
+
+    /**
+     * Keeps the whole process on [handle] until the returned function is
+     * called, through any [bindProcess] calls in between. For a screen whose
+     * WebView must stay on Wi-Fi. No-op on desktop, as with [bindProcess].
+     */
+    fun pinProcess(handle: NetworkHandle): () -> Unit = {}
 
     /**
      * Android: reportNetworkConnectivity(handle, ok). ok=true (on login
