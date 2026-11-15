@@ -1,6 +1,7 @@
 package com.vinnovateit.latch.core.portal
 
 import com.vinnovateit.latch.core.model.PortalSessionRecord
+import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.regex.Pattern
@@ -91,12 +92,14 @@ object PortalHistoryParser {
             "dd-MM-yyyy HH:mm:ss",
             "yyyy-MM-dd HH:mm:ss"
         )
+        // Strict, and only a match that reads the whole string. Lenient parsing
+        // rolled an impossible date over into a real one, and let the dd-MM-yyyy
+        // pattern take a yyyy-MM-dd date as day 2024 of the year 15.
         for (pattern in formats) {
-            try {
-                val sdf = SimpleDateFormat(pattern, Locale.US)
-                val date = sdf.parse(trimmed)
-                if (date != null) return date.time
-            } catch (_: Exception) {}
+            val sdf = SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }
+            val position = ParsePosition(0)
+            val date = sdf.parse(trimmed, position)
+            if (date != null && position.index == trimmed.length) return date.time
         }
         return 0L
     }

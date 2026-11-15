@@ -52,6 +52,21 @@ class PortalHistoryParserTest {
     }
 
     @Test
+    fun `each fallback format parses its own dates`() {
+        val expected = java.time.LocalDateTime.of(2024, 1, 15, 10, 0)
+            .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(expected, PortalHistoryParser.parseDate("01/15/24 10:00:00 AM"))
+        assertEquals(expected, PortalHistoryParser.parseDate("01/15/2024 10:00:00 AM"))
+        assertEquals(expected, PortalHistoryParser.parseDate("15-01-2024 10:00:00"))
+        assertEquals(expected, PortalHistoryParser.parseDate("2024-01-15 10:00:00"))
+    }
+
+    @Test
+    fun `an impossible date is not rolled over into another one`() {
+        assertEquals(0L, PortalHistoryParser.parseDate("13/45/24 10:00:00 AM"))
+    }
+
+    @Test
     fun testParseHtml() {
         val records = PortalHistoryParser.parse(sampleHtml)
         assertEquals(2, records.size)
