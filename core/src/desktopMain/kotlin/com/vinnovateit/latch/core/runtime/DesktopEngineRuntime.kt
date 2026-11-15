@@ -19,9 +19,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val ENGINE_SHUTDOWN_TIMEOUT_MS = 5_000L
+
+/**
+ * How long closing waits for database work to stop. A portal sync blocks on its
+ * request timeouts, so this is a bound, not a promise.
+ */
+private const val DATABASE_DRAIN_TIMEOUT_MS = 3_000L
 
 class DesktopEngineRuntime private constructor(
     val platform: DesktopPlatformServices,
@@ -48,6 +56,12 @@ class DesktopEngineRuntime private constructor(
         // have to stop before it closes underneath them.
         backgroundScope.cancel()
         sessions.close()
+        // Cancelling does not stop a query already running inside SQLite, and
+        // closing the database under one crashes the process, so wait for them.
+        withTimeoutOrNull(DATABASE_DRAIN_TIMEOUT_MS) {
+            backgroundScope.coroutineContext.job.join()
+            sessions.awaitClosed()
+        } ?: platform.logger.w(TAG, "Database work still running after ${DATABASE_DRAIN_TIMEOUT_MS} ms; closing the database anyway.")
         // No-op for stores that already write synchronously; the contract
         // exists for any store that defers, since a one-shot CLI exits
         // milliseconds after writing a setting.

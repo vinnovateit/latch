@@ -128,7 +128,7 @@ class PortalSessionRepositoryTest {
         val history = repo.portalHistory.first { it.isNotEmpty() }
         assertEquals(1, history.size)
         assertEquals("VIT-Vellore", history[0].location)
-        repo.close()
+        repo.closeAndAwait()
     }
 
     @Test
@@ -206,7 +206,7 @@ class PortalSessionRepositoryTest {
         assertEquals(1, history2.size)
         // Must preserve the validated past date
         assertEquals("VIT-Initial", history2[0].location)
-        repo.close()
+        repo.closeAndAwait()
     }
 
     @Test
@@ -233,7 +233,7 @@ class PortalSessionRepositoryTest {
             transport.logins.get(),
             "the portal answers a second simultaneous login with a timeout",
         )
-        repo.close()
+        repo.closeAndAwait()
     }
 
     @Test
@@ -255,7 +255,7 @@ class PortalSessionRepositoryTest {
         assertEquals(118_804L, summaries[0].totalData.rxBytes)
         assertEquals(15_513L, summaries[0].totalData.txBytes)
         assertEquals(summaries[0], repo.lastSession.first { it != null })
-        repo.close()
+        repo.closeAndAwait()
     }
 
     @Test
@@ -276,7 +276,7 @@ class PortalSessionRepositoryTest {
             assertNotNull(handle, "credentials must never be sent on the default network")
             assertEquals(TestWifiHandle.id, handle.id)
         }
-        repo.close()
+        repo.closeAndAwait()
     }
 
     @Test
@@ -294,7 +294,7 @@ class PortalSessionRepositoryTest {
 
         assertFalse(result.isSuccess, "sync must fail rather than leave the Wi-Fi network")
         assertTrue(transport.handles.isEmpty(), "no request should have been made at all")
-        repo.close()
+        repo.closeAndAwait()
     }
 
     @Test
@@ -307,6 +307,6 @@ class PortalSessionRepositoryTest {
         repo.initialize()
         val loaded = repo.isHistoryLoaded.first { it }
         assertTrue(loaded)
-        repo.close()
+        repo.closeAndAwait()
     }
 }
