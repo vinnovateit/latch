@@ -60,7 +60,7 @@ fun main() = runBlocking {
     val monitor = ThroughputMonitor(platform.counters, intervalMs = 1000L)
     monitor.start()
     delay(3500)
-    val usage = monitor.dataUsageFlow.value
+    val usage = monitor.dataUsageFlow.replayCache.last()
     monitor.stop()
     val (dv, du) = formatBitsPerSecond(usage.rxBps, "bps")
     println("observed download: $dv $du  (raw rxBps=${usage.rxBps} bytes/s)")

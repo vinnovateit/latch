@@ -468,12 +468,14 @@ class GithubUpdater internal constructor(
     /**
      * Takes the tarball as `$1` and the install directory as `$2`. Home
      * directories can hold any character, so neither is ever part of the
-     * script's own text.
+     * script's own text. The script deletes itself first, as the Windows
+     * relaunch script does; sh has already opened it.
      */
     internal fun linuxUpdateScript(): String {
         val s = "$"
         return """
             #!/usr/bin/env sh
+            rm -f -- "${s}0"
             sleep 1
             TMP_TAR="${s}1"
             INSTALL_DIR="${s}2"
