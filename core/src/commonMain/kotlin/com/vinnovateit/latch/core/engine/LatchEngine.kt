@@ -519,6 +519,14 @@ class LatchEngine(
                 } ?: PortalProbeResult.Error("Timeout")
                 if (probeResult is PortalProbeResult.Online) {
                     failCount = 0
+                    // A recovery login that found the network still down left
+                    // the session dropped, and nothing else re-checks a network
+                    // the app is still on. Bring it back the way any check
+                    // would; on an online network that sends no login.
+                    if (!_isLatched.value && ssidRefusal(platform.wifi.currentSsid()) == null) {
+                        logger.d(TAG, "Network answers again after a failed recovery; restoring the session.")
+                        checkAndActExclusive(handle, revalidating = false, silent = true)
+                    }
                 } else {
                     // One timed-out probe on congested campus Wi-Fi is normal.
                     // Re-logging in on it would re-POST the credentials and flap
