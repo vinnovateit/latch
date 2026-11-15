@@ -121,9 +121,19 @@ class LatchEnginePortalGateTest {
      * re-login itself.
      */
     private fun assertProbesBeforeRelogin(sleep: Boolean, expected: Int) {
+        val intervalMs = 150L
+        // The engine reads the wall clock once per health check to spot a
+        // sleep. On a busy CI machine a real clock can run one interval late
+        // and look like one, which skips the three-strike wait. This clock moves
+        // exactly one interval per read; only the simulated sleep jumps it.
+        val ticks = AtomicLong(0)
         val clockOffset = AtomicLong(0)
         val script = PortalScript()
-        withEngine(script, healthCheckIntervalMs = 150, wallClock = { System.currentTimeMillis() + clockOffset.get() }) { engine, portal ->
+        withEngine(
+            script,
+            healthCheckIntervalMs = intervalMs,
+            wallClock = { ticks.addAndGet(intervalMs) + clockOffset.get() },
+        ) { engine, portal ->
             engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
             assertTrue(engine.isLatched.value)
 
