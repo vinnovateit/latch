@@ -54,7 +54,9 @@ class ForegroundService : Service(), ForegroundController {
         Log.d("ForegroundService", "Service created")
 
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancelAll()
+        // Only this service's own notification: cancelAll() also cleared alerts
+        // such as a refused login whenever the service was recreated.
+        manager.cancel(notificationId)
 
         val chan = NotificationChannel(
             channelId,
@@ -181,7 +183,9 @@ class ForegroundService : Service(), ForegroundController {
             var wasLatched = false
             LatchAppGraph.engine.isLatched.collect { latched ->
                 if (latched && !wasLatched) {
-                    val timeString = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+                    // A service recreated mid-session still shows when it began.
+                    val since = LatchAppGraph.sessions.liveStatus.value?.startTimeMillis ?: System.currentTimeMillis()
+                    val timeString = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(since))
                     updateNotification("Latched", "Connected at $timeString")
                     startNotificationUpdates()
                 } else if (!latched && wasLatched) {

@@ -7,8 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -38,8 +39,13 @@ class ThroughputMonitor(
     private var lastSmoothedTxBps: Long = 0
     private var lastPollTimeMs: Long = 0
 
-    private val _dataUsageFlow = MutableStateFlow(DataUsage(0, 0))
-    val dataUsageFlow = _dataUsageFlow.asStateFlow()
+    // Each value is one interval's byte count, which the session adds to its
+    // totals. A StateFlow drops a value equal to the one before it, as steady
+    // traffic produces, and skips values a slow collector has not read yet.
+    // This keeps every interval and replays the latest to a new collector.
+    private val _dataUsageFlow = MutableSharedFlow<DataUsage>(replay = 1, extraBufferCapacity = 64)
+        .apply { tryEmit(DataUsage(0, 0)) }
+    val dataUsageFlow: SharedFlow<DataUsage> = _dataUsageFlow.asSharedFlow()
 
     fun start() {
         if (loggingJob?.isActive == true) return
@@ -100,11 +106,13 @@ class ThroughputMonitor(
                 val finalRxBps = if (smoothedRxBps < 500L && intervalRx == 0L) 0L else smoothedRxBps
                 val finalTxBps = if (smoothedTxBps < 500L && intervalTx == 0L) 0L else smoothedTxBps
 
-                _dataUsageFlow.value = DataUsage(
-                    rxBytes = intervalRx,
-                    txBytes = intervalTx,
-                    rxBps = finalRxBps,
-                    txBps = finalTxBps,
+                _dataUsageFlow.emit(
+                    DataUsage(
+                        rxBytes = intervalRx,
+                        txBytes = intervalTx,
+                        rxBps = finalRxBps,
+                        txBps = finalTxBps,
+                    )
                 )
 
                 lastRxBytes = current.rxBytes
@@ -119,6 +127,6 @@ class ThroughputMonitor(
     fun stop() {
         loggingJob?.cancel()
         loggingJob = null
-        _dataUsageFlow.value = DataUsage(0, 0)
+        _dataUsageFlow.tryEmit(DataUsage(0, 0))
     }
 }
