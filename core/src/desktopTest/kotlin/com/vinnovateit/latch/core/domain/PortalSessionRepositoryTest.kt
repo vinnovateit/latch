@@ -210,6 +210,74 @@ class PortalSessionRepositoryTest {
     }
 
     @Test
+    fun `a later sync adds a past day's sessions that were not stored yet`() = runBlocking {
+        val morning = """
+            <tr bgcolor="#DDDDDD">
+                <td>VIT-Morning</td>
+                <td>9e:85:16:b5:22:eb</td>
+                <td>01/01/24 10:00:00 AM</td>
+                <td>01/01/24 11:00:00 AM</td>
+                <td>1 hr</td>
+                <td>10.00 MB</td>
+                <td>50.00 MB</td>
+                <td>60.00 MB</td>
+            </tr>
+        """.trimIndent()
+        val afternoon = """
+            <tr bgcolor="#DDDDDD">
+                <td>VIT-Afternoon</td>
+                <td>9e:85:16:b5:22:eb</td>
+                <td>01/01/24 03:00:00 PM</td>
+                <td>01/01/24 04:00:00 PM</td>
+                <td>1 hr</td>
+                <td>20.00 MB</td>
+                <td>80.00 MB</td>
+                <td>100.00 MB</td>
+            </tr>
+        """.trimIndent()
+        // The first sync ran in the morning; the afternoon session came later.
+        var returnHtml = "<table>$morning</table>"
+
+        val dynamicTransport = object : HttpTransport {
+            override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+                return object : HttpURLConnection(url) {
+                    override fun connect() {}
+                    override fun disconnect() {}
+                    override fun usingProxy(): Boolean = false
+                    override fun getInputStream(): InputStream {
+                        val html = when {
+                            "Main.jsp" in url.toString() -> """<form name="chooseAuthForm" action="/registration/chooseAuth.do"></form>"""
+                            "CustomerSessionHistory.jsp" in url.toString() -> returnHtml
+                            else -> "OK"
+                        }
+                        return ByteArrayInputStream(html.toByteArray())
+                    }
+                    override fun getOutputStream() = java.io.ByteArrayOutputStream()
+                    override fun getResponseCode() = 200
+                }
+            }
+        }
+
+        val repo = SessionRepository(
+            statsDao = db.statsDao(),
+            throughput = ThroughputMonitor(StubCounters()),
+            portalClient = PortalHistoryClient(dynamicTransport),
+            activeHandle = { TestWifiHandle },
+        )
+        repo.initialize()
+
+        assertTrue(repo.syncPortalHistory("24BDS0155", "zero", force = true).isSuccess)
+        assertEquals(1, repo.portalHistory.first { it.isNotEmpty() }.size)
+
+        returnHtml = "<table>$morning$afternoon</table>"
+        assertTrue(repo.syncPortalHistory("24BDS0155", "zero", force = true).isSuccess)
+
+        val locations = repo.portalHistory.first().map { it.location }
+        assertEquals(listOf("VIT-Afternoon", "VIT-Morning"), locations)
+        repo.close()
+    }
+
+    @Test
     fun `two concurrent syncs perform only one portal login`() = runBlocking {
         val transport = SlowPortalTransport()
         val repo = SessionRepository(
