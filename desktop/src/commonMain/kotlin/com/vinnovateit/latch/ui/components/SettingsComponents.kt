@@ -297,39 +297,38 @@ internal fun SettingsActionDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    LatchBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+    // Confirmations are dialogs on desktop, not bottom sheets (bottom sheets
+    // stay for settings pickers/toggles). AlertDialog appears centered and
+    // inherits the app theme through LatchTheme.
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 fontFamily = satoshiFontFamily(FontWeight.Bold),
-                modifier = Modifier.padding(bottom = 8.dp),
             )
+        },
+        text = {
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = satoshiFontFamily(),
-                modifier = Modifier.padding(bottom = 16.dp),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = { dismiss() }) {
-                    Text(cancelText, fontFamily = satoshiFontFamily(FontWeight.Medium))
-                }
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = {
-                    onConfirm()
-                    dismiss()
-                }) {
-                    Text(confirmText, color = MaterialTheme.colorScheme.error, fontFamily = satoshiFontFamily(FontWeight.Medium))
-                }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(); onDismiss() }) {
+                Text(confirmText, color = MaterialTheme.colorScheme.error, fontFamily = satoshiFontFamily(FontWeight.Medium))
             }
-        }
-    }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(cancelText, fontFamily = satoshiFontFamily(FontWeight.Medium))
+            }
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------

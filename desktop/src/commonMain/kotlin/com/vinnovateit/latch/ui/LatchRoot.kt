@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,7 +22,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.NavigationItemIconPosition
 import androidx.compose.material3.WideNavigationRail
 import androidx.compose.material3.WideNavigationRailItem
@@ -47,6 +48,7 @@ import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.desktop.LatchMark
+import com.vinnovateit.latch.ui.components.LatchIcons
 import com.vinnovateit.latch.ui.theme.modernizFontFamily
 import com.vinnovateit.latch.ui.chrome.AppMenuActions
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
@@ -294,6 +296,8 @@ fun LatchRoot(
                                         LatchNavigationRail(
                                             selected = destination,
                                             onSelect = { destination = it },
+                                            onHowItWorks = { showHowItWorks = true },
+                                            onAbout = { showAbout = true },
                                             expanded = railExpanded,
                                         )
                                     }
@@ -384,6 +388,8 @@ fun LatchRoot(
 private fun LatchNavigationRail(
     selected: LatchDestination,
     onSelect: (LatchDestination) -> Unit,
+    onHowItWorks: () -> Unit,
+    onAbout: () -> Unit,
     expanded: Boolean = true,
 ) {
     val railState = rememberWideNavigationRailState(
@@ -396,32 +402,32 @@ private fun LatchNavigationRail(
     WideNavigationRail(
         state = railState,
         header = {
-            // FAB-like primary header: the Latch mark plus the LATCH wordmark
-            // in the display font, mirroring the M3 expressive wide rail spec.
-            Box(modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)) {
-                FloatingActionButton(
-                    onClick = { onSelect(LatchDestination.Home) },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = LatchMark,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        if (railState.currentValue == WideNavigationRailValue.Expanded) {
-                            Spacer(Modifier.size(8.dp))
-                            Text(
-                                text = "LATCH",
-                                fontFamily = modernizFontFamily(),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                        }
-                    }
+            // Branded header: the Latch mark + LATCH wordmark in the display
+            // font. Not a FAB — the rail's Home item handles navigation.
+            Row(
+                modifier = Modifier
+                    .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onSelect(LatchDestination.Home) },
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = LatchMark,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp),
+                )
+                if (railState.currentValue == WideNavigationRailValue.Expanded) {
+                    Spacer(Modifier.size(10.dp))
+                    Text(
+                        text = "LATCH",
+                        fontFamily = modernizFontFamily(),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
                 }
             }
         },
@@ -436,5 +442,21 @@ private fun LatchNavigationRail(
                 iconPosition = NavigationItemIconPosition.Start,
             )
         }
+        WideNavigationRailItem(
+            selected = false,
+            onClick = onHowItWorks,
+            icon = { Icon(LatchIcons.Help, contentDescription = null) },
+            label = { Text("How it works") },
+            railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
+            iconPosition = NavigationItemIconPosition.Start,
+        )
+        WideNavigationRailItem(
+            selected = false,
+            onClick = onAbout,
+            icon = { Icon(LatchIcons.Info, contentDescription = null) },
+            label = { Text("About") },
+            railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
+            iconPosition = NavigationItemIconPosition.Start,
+        )
     }
 }

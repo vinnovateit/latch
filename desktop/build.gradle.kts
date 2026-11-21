@@ -62,6 +62,14 @@ compose.desktop {
         icon {
             light.from("icons/latch-32.png", "icons/latch-128.png")
         }
+        // The app sets Satoshi/MODERNIZ explicitly on every Text style. Skip the
+        // port's ~6MB bundled Noto fonts; any unspecified family falls back to
+        // the OS sans-serif via Skia's system font manager.
+        fonts {
+            bundleNotoSans.set(false)
+            bundleNotoSansItalic.set(false)
+            bundleNotoSansMono.set(false)
+        }
     }
 }
 

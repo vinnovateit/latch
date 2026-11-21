@@ -51,7 +51,7 @@ internal fun LatchBottomSheet(
             targetValue = 0f,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
+                stiffness = Spring.StiffnessHigh,
             ),
         )
     }
@@ -62,7 +62,7 @@ internal fun LatchBottomSheet(
                 targetValue = 1f,
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
+                    stiffness = Spring.StiffnessHigh,
                 ),
             )
             onDismissRequest()
