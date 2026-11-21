@@ -119,12 +119,14 @@ class PortalHistoryClient(
     }
 
     /**
-     * Account-service requests go out on Wi-Fi when a handle is available,
-     * otherwise on the default route. The endpoint is a public IP reachable
-     * from any connection (the original PR #146 behaviour).
+     * The account service (136.233.9.110) is a PUBLIC endpoint, reachable over
+     * any internet connection — NOT through the captive Wi-Fi interface (which
+     * cannot route to it at all: verified connection-refused when bound to the
+     * Wi-Fi NIC). Always use the default/public route for account requests.
+     * Only the captive-portal LOGIN binds to Wi-Fi, never account history.
      */
     private fun openFor(url: JUrl, handle: NetworkHandle?): JHttpConnection =
-        if (handle != null) transport.open(url, handle) else transport.openPublic(url)
+        transport.openPublic(url)
 
     fun fetchHistory(
         userId: String,
@@ -210,8 +212,9 @@ class PortalHistoryClient(
 
             conn3.outputStream.bufferedWriter().useWriter { it.write(filterPostData) }
             var historyHtml = conn3.inputStream!!.bufferedReader().useReader { it.readText() }
-            logger.d(TAG, "Response code: ${conn3.responseCode}")
+            logger.d(TAG, "Response code: ${conn3.responseCode} historyHtmlLen=${historyHtml.length} dateFilter=${dateFilter}")
             var records = PortalHistoryParser.parse(historyHtml)
+            logger.d(TAG, "Parsed ${records.size} records from ${historyHtml.length} chars")
             logger.d(TAG, "Parsed ${records.size} records")
 
             // Fallback to default GET if filtered request returns no records

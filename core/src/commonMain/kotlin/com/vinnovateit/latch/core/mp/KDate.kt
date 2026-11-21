@@ -45,13 +45,13 @@ class KCalendar private constructor(private val timeZone: KTimeZone) {
         const val MILLISECOND = 14
         const val JANUARY = 0
 
-        fun getInstance(): KCalendar = KCalendar(KTimeZone.getDefault())
-        fun getInstance(zone: KTimeZone): KCalendar = KCalendar(zone)
+        fun getInstance(): KCalendar = KCalendar(nowMillis(), KTimeZone.getDefault())
+        fun getInstance(zone: KTimeZone): KCalendar = KCalendar(nowMillis(), zone)
     }
 
     var timeInMillis: Long = 0L
 
-    constructor(millis: Long = nowMillis()) : this(KTimeZone.getDefault()) { timeInMillis = millis }
+    constructor(millis: Long = nowMillis(), zone: KTimeZone = KTimeZone.getDefault()) : this(zone) { timeInMillis = millis }
 
     private val zone: TimeZone get() = timeZone.kotlinZone
 
