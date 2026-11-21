@@ -154,9 +154,10 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
     )
 
     init {
-        // Seed the handle at startup so WifiEvent.Lost can tear down a session
-        // even when the app started already connected (no Available emitted).
-        wifiInterface()?.let { currentHandle = NativeHandle(it) }
+        // Do NOT shell out to nmcli here: the first call can block ~800ms on
+        // D-Bus/Wi-Fi scan, delaying app startup. The poller below resolves the
+        // handle on a background dispatcher immediately and emits Available;
+        // activeHandle() also falls back to a live lookup when needed.
         scope.launch {
             var lastKey: String? = null
             var lastSignalLog = 0L
