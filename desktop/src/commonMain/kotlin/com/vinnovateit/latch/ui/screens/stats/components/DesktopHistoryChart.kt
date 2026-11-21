@@ -75,6 +75,7 @@ import com.vinnovateit.latch.core.stats.formatDate
 import com.vinnovateit.latch.core.stats.formatDisplayDate
 import com.vinnovateit.latch.core.stats.formatDurationDynamic
 import com.vinnovateit.latch.ui.components.LatchIcons
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import com.vinnovateit.latch.core.mp.KCalendar as Calendar
@@ -428,6 +429,7 @@ fun HistoryBarChart(
                     text = headerTitle,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Icon(
@@ -543,6 +545,7 @@ fun HistoryBarChart(
                                         text = item.monthName,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
+                                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         modifier = Modifier.rotate(-90f),
                                     )
@@ -557,6 +560,7 @@ fun HistoryBarChart(
                                         text = item.monthName,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
+                                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         modifier = Modifier.rotate(-90f),
                                     )
@@ -721,6 +725,7 @@ private fun DesktopStatDetailRow(
             "${totalFmt.first} ${totalFmt.second}",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
+            fontFamily = satoshiFontFamily(FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(

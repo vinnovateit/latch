@@ -41,6 +41,10 @@ actual class JHttpConnection internal constructor(val delegate: java.net.HttpURL
 
     actual fun setRequestProperty(key: String, value: String) = delegate.setRequestProperty(key, value)
     actual fun getHeaderField(name: String): String? = delegate.getHeaderField(name)
+    // Binding is handled by Network.openConnection() on Android and by
+    // BoundHttpTransport on desktop JVM; nothing to do here.
+    actual fun bindToInterface(interfaceName: String) = Unit
+    actual fun allowDefaultRoute() = Unit
     actual fun connect() = delegate.connect()
     actual fun disconnect() = delegate.disconnect()
 }

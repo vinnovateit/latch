@@ -1,5 +1,7 @@
 package com.vinnovateit.latch.ui
 
+import kotlinx.coroutines.launch
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -27,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -89,6 +92,9 @@ fun LatchRoot(
             val hasSeenOnboarding by SettingsManager.hasSeenOnboarding.collectAsStateWithLifecycle()
             val onboardingPagerState = rememberPagerState(initialPage = 0, pageCount = { 6 })
             var editingCredentials by remember { mutableStateOf(false) }
+            var validatingCredentials by remember { mutableStateOf(false) }
+            var credentialValidationError by remember { mutableStateOf<String?>(null) }
+            val scope = rememberCoroutineScope()
             var showAbout by remember { mutableStateOf(false) }
             var showHowItWorks by remember { mutableStateOf(false) }
             var destination by remember { mutableStateOf(LatchDestination.Home) }
@@ -177,20 +183,45 @@ fun LatchRoot(
                             CredentialsScreen(
                                 initialRegNo = platform.credentials.userId().orEmpty(),
                                 initialPassword = platform.credentials.password().orEmpty(),
+                                isBusy = validatingCredentials,
+                                validationError = credentialValidationError,
                                 onSave = { userId, password ->
-                                    platform.credentials.save(userId, password).fold(
-                                        onSuccess = {
-                                            hasCredentials = true
-                                            editingCredentials = false
-                                        },
-                                        onFailure = {
-                                            platform.notifier.notifyTransient(
-                                                "Latch",
-                                                "Unable to save credentials securely.",
-                                                isError = true,
+                                    // Validate against the publicly reachable account
+                                    // service before storing. This never uses the
+                                    // captive-portal login path.
+                                    credentialValidationError = null
+                                    validatingCredentials = true
+                                    scope.launch {
+                                        val result = kotlinx.coroutines.withContext(com.vinnovateit.latch.core.mp.ioDispatcher) {
+                                            com.vinnovateit.latch.core.portal.PortalHistoryClient(platform.httpTransport)
+                                                .validateCredentials(userId, password)
+                                        }
+                                        validatingCredentials = false
+                                        when {
+                                            result.isFailure -> credentialValidationError =
+                                                "Could not verify credentials: ${result.exceptionOrNull()?.message ?: "network error"}"
+                                            result.getOrNull() == false -> credentialValidationError =
+                                                "Incorrect registration number or password"
+                                            else -> platform.credentials.save(userId, password).fold(
+                                                onSuccess = {
+                                                    hasCredentials = true
+                                                    editingCredentials = false
+                                                    // Populate stats immediately after credentials are
+                                                    // accepted (original PR #148 behaviour).
+                                                    scope.launch {
+                                                        sessions.syncPortalHistory(userId, password, force = true)
+                                                    }
+                                                },
+                                                onFailure = {
+                                                    platform.notifier.notifyTransient(
+                                                        "Latch",
+                                                        "Unable to save credentials securely.",
+                                                        isError = true,
+                                                    )
+                                                },
                                             )
-                                        },
-                                    )
+                                        }
+                                    }
                                 },
                                 onCancel = if (hasCredentials || !hasSeenOnboarding) {
                                     { editingCredentials = false }
@@ -240,6 +271,7 @@ fun LatchRoot(
                                         AppMenuActions(
                                             showSettings = !railVisible &&
                                                 destination != LatchDestination.Settings,
+                                            showMenu = !railVisible,
                                             onOpenSettings = { destination = LatchDestination.Settings },
                                             onHowItWorks = { showHowItWorks = true },
                                             onOpenAbout = { showAbout = true },

@@ -243,7 +243,7 @@ fun DesktopOnboardingBottomBar(
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontFamily = satoshiFontFamily(),
+                                fontFamily = satoshiFontFamily(FontWeight.Medium),
                             )
                         }
                     }

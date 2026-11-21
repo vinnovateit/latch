@@ -206,7 +206,7 @@ fun DesktopOnboardingScreen(
                         text = "Let's get everything set up for you.",
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = 16.sp,
-                            fontFamily = satoshiFontFamily(),
+                            fontFamily = satoshiFontFamily(FontWeight.Medium),
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
@@ -226,7 +226,7 @@ fun DesktopOnboardingScreen(
                         text = slide.title,
                         style = MaterialTheme.typography.headlineMedium.copy(
                             fontSize = 26.sp,
-                            fontFamily = satoshiFontFamily(),
+                            fontFamily = satoshiFontFamily(FontWeight.SemiBold),
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,
                         ),
@@ -297,7 +297,7 @@ fun DesktopOnboardingScreen(
                         text = slide.title,
                         style = MaterialTheme.typography.headlineMedium.copy(
                             fontSize = 26.sp,
-                            fontFamily = satoshiFontFamily(),
+                            fontFamily = satoshiFontFamily(FontWeight.SemiBold),
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,
                         ),

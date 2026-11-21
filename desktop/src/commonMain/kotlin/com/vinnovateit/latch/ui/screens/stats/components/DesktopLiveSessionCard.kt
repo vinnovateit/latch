@@ -37,6 +37,7 @@ import com.vinnovateit.latch.core.stats.formatDurationDynamic
 import com.vinnovateit.latch.ui.components.DataUsageDonut
 import com.vinnovateit.latch.ui.components.LatchIcons
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import kotlinx.coroutines.delay
 
 @Composable
@@ -81,6 +82,7 @@ fun LiveSessionCard(
                     text = "Active Session",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
@@ -113,6 +115,7 @@ private fun RateChip(icon: ImageVector, text: String, accent: Color) {
             text = text,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
+            fontFamily = satoshiFontFamily(FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface,
         )
     }

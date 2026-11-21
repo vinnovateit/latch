@@ -9,7 +9,8 @@ import curl.CURLOPT_FOLLOWLOCATION
 import curl.CURLOPT_HEADERDATA
 import curl.CURLOPT_HEADERFUNCTION
 import curl.CURLOPT_HTTPHEADER
-import curl.CURLOPT_POSTFIELDS
+import curl.CURLOPT_INTERFACE
+import curl.CURLOPT_COPYPOSTFIELDS
 import curl.CURLOPT_TIMEOUT_MS
 import curl.CURLOPT_URL
 import curl.CURLOPT_WRITEDATA
@@ -20,6 +21,7 @@ import curl.curl_easy_getinfo
 import curl.curl_easy_init
 import curl.curl_easy_perform
 import curl.curl_easy_setopt
+import curl.curl_easy_strerror
 import curl.curl_slist
 import curl.curl_slist_append
 import curl.curl_slist_free_all
@@ -156,14 +158,20 @@ actual class JHttpConnection actual constructor(url: JUrl) {
     private val properties = mutableMapOf<String, String>()
     private val requestBody = NativeOutputStream()
     private var cached: CurlResult? = null
+    private var boundInterface: String? = null
+    private var publicEndpoint = false
 
     actual val outputStream: JOutputStream get() = JOutputStream(requestBody)
 
     actual fun setRequestProperty(key: String, value: String) { properties[key] = value }
+    actual fun bindToInterface(interfaceName: String) { boundInterface = interfaceName }
+    actual fun allowDefaultRoute() { publicEndpoint = true }
     actual fun connect() { result() }
 
     actual val responseCode: Int get() = result().status
-    actual fun getHeaderField(name: String): String? = result().headers[name]
+    // Header names are stored lowercased; callers use Java's canonical casing
+    // ("Set-Cookie", "Location"). Match case-insensitively like HttpURLConnection.
+    actual fun getHeaderField(name: String): String? = result().headers[name.lowercase()]
     actual val inputStream: JInputStream?
         get() = result().let { if (it.status in 200..399) JInputStream(NativeInputStream(it.body)) else null }
     actual val errorStream: JInputStream?
@@ -192,19 +200,36 @@ actual class JHttpConnection actual constructor(url: JUrl) {
                 var slist: CPointer<curl_slist>? = null
                 try {
                     curl_easy_setopt(handle, CURLOPT_URL, spec)
+                    // Pin to Wi-Fi. Never silently fall back to the default route:
+                    // with Ethernet plugged in that would send portal credentials
+                    // off-network in plaintext (the captive portal only answers on
+                    // the Wi-Fi interface).
+                    val iface = boundInterface
+                    if (iface == null && !publicEndpoint) {
+                        throw MPIOException("No Wi-Fi handle: refusing to send portal traffic on the default route")
+                    }
+                    if (iface != null) curl_easy_setopt(handle, CURLOPT_INTERFACE, iface)
                     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, if (instanceFollowRedirects) 1L else 0L)
                     if (connectTimeout > 0) curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT_MS, connectTimeout.toLong())
                     if (readTimeout > 0) curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, readTimeout.toLong())
                     if (requestMethod != "GET") curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, requestMethod)
                     val bytes = requestBody.data.toByteArray()
-                    if (doOutput || bytes.isNotEmpty()) curl_easy_setopt(handle, CURLOPT_POSTFIELDS, bytes.toKString())
+                    // COPYPOSTFIELDS makes libcurl copy the bytes immediately.
+                    // Plain POSTFIELDS keeps only the pointer, and the temporary
+                    // Kotlin string buffer can be collected before curl_easy_perform
+                    // — silently corrupting the credential POST body.
+                    if (doOutput || bytes.isNotEmpty()) curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, bytes.toKString())
                     for ((k, v) in properties) slist = curl_slist_append(slist, "$k: $v")
                     if (slist != null) curl_easy_setopt(handle, CURLOPT_HTTPHEADER, slist)
                     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, writeCb)
                     curl_easy_setopt(handle, CURLOPT_WRITEDATA, bodyRef.asCPointer())
                     curl_easy_setopt(handle, CURLOPT_HEADERFUNCTION, headerCb)
                     curl_easy_setopt(handle, CURLOPT_HEADERDATA, headerRef.asCPointer())
-                    if (curl_easy_perform(handle) != CURLE_OK) throw MPIOException("curl request failed")
+                    val curlCode = curl_easy_perform(handle)
+                    if (curlCode != CURLE_OK) {
+                        val detail = curl_easy_strerror(curlCode)?.toKString().orEmpty()
+                        throw MPIOException("curl request failed: code=$curlCode $detail iface=${boundInterface ?: "default"}")
+                    }
                     val status = alloc<LongVar>()
                     curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, status.ptr)
                     val parsed = mutableMapOf<String, String>()

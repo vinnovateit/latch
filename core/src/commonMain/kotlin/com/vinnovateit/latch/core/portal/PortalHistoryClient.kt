@@ -23,8 +23,11 @@ class PortalHistoryClient(
     companion object {
         private const val TAG = "PortalHistoryClient"
         const val DEFAULT_PORTAL_HOST = "136.233.9.110"
-        private const val CONNECT_TIMEOUT_MS = 6000
-        private const val READ_TIMEOUT_MS = 8000
+        // The account history page is a ~2.4 MB server-rendered table and the
+        // portal can take 30+ seconds to stream it. The old 6s/8s values made
+        // every fetch time out and parse an empty body.
+        private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val READ_TIMEOUT_MS = 60_000
     }
 
     internal data class DateFilter(
@@ -35,6 +38,58 @@ class PortalHistoryClient(
         val endMonth: String,
         val endDay: String,
     )
+
+    /**
+     * Validates a registration number / password against the account service.
+     *
+     * This host is reachable from the public internet, so unlike portal sync it
+     * uses [HttpTransport.openPublic] (default route) — no Wi-Fi required. A
+     * successful login returns HTTP 200 with the signed-in account page; bad
+     * credentials redirect to GenericError.jsp (302).
+     */
+    fun validateCredentials(userId: String, password: String): Result<Boolean> {
+        return try {
+            // Step 1: obtain a JSESSIONID. The portal rejects a direct POST to
+            // chooseAuth.do with a 302 to GenericError.jsp when no session exists.
+            val main = transport.openPublic(JUrl("http://$DEFAULT_PORTAL_HOST/registration/Main.jsp?wispId=1"))
+            main.instanceFollowRedirects = false
+            main.connectTimeout = CONNECT_TIMEOUT_MS
+            main.readTimeout = READ_TIMEOUT_MS
+            main.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
+            main.inputStream?.bufferedReader()?.useReader { it.readText() }
+            val cookie = main.getHeaderField("Set-Cookie")?.substringBefore(";").orEmpty()
+            main.disconnect()
+
+            // Step 2: POST the credentials with that session cookie.
+            val conn = transport.openPublic(JUrl("http://$DEFAULT_PORTAL_HOST/registration/chooseAuth.do"))
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = CONNECT_TIMEOUT_MS
+            conn.readTimeout = READ_TIMEOUT_MS
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
+            if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
+            val body = buildString {
+                append("loginUserId=").append(urlEncode(userId))
+                append("&authType=").append(urlEncode("Pronto"))
+                append("&loginPassword=").append(urlEncode(password))
+                append("&submit=").append(urlEncode("Login"))
+            }
+            conn.outputStream.bufferedWriter().useWriter { it.write(body) }
+            val code = conn.responseCode
+            val html = (if (code in 200..399) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.useReader { it.readText() }.orEmpty()
+            conn.disconnect()
+            val lower = html.lowercase()
+            val valid = code == 200 && ("logout" in lower || "welcome" in lower)
+            logger.d(TAG, "Credential validation result: valid=$valid (HTTP $code)")
+            Result.success(valid)
+        } catch (e: Exception) {
+            logger.e(TAG, "Credential validation failed: ${e::class.simpleName}: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 
     internal fun computeDateFilter(userId: String): DateFilter {
         val regYearMatch = Regex("^(\\d{2})").find(userId.trim())
@@ -63,6 +118,14 @@ class PortalHistoryClient(
         )
     }
 
+    /**
+     * Account-service requests go out on Wi-Fi when a handle is available,
+     * otherwise on the default route. The endpoint is a public IP reachable
+     * from any connection (the original PR #146 behaviour).
+     */
+    private fun openFor(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        if (handle != null) transport.open(url, handle) else transport.openPublic(url)
+
     fun fetchHistory(
         userId: String,
         password: String,
@@ -72,7 +135,7 @@ class PortalHistoryClient(
         return try {
             val mainUrl = JUrl("http://$host/registration/Main.jsp?wispId=1")
             logger.d(TAG, "Requesting portal history URL: $mainUrl")
-            val conn1 = transport.open(mainUrl, handle)
+            val conn1 = openFor(mainUrl, handle)
             conn1.connectTimeout = CONNECT_TIMEOUT_MS
             conn1.readTimeout = READ_TIMEOUT_MS
             conn1.instanceFollowRedirects = false
@@ -96,7 +159,7 @@ class PortalHistoryClient(
                 append("&submit=").append(urlEncode("Login", ))
             }
 
-            val conn2 = transport.open(loginUrl, handle)
+            val conn2 = openFor(loginUrl, handle)
             conn2.requestMethod = "POST"
             conn2.doOutput = true
             conn2.instanceFollowRedirects = false
@@ -133,7 +196,7 @@ class PortalHistoryClient(
 
             val filterUrl = JUrl("http://$host/registration/customerSessionHistory.do")
             logger.d(TAG, "Requesting portal history URL: $filterUrl")
-            val conn3 = transport.open(filterUrl, handle)
+            val conn3 = openFor(filterUrl, handle)
             conn3.requestMethod = "POST"
             conn3.doOutput = true
             conn3.instanceFollowRedirects = true
@@ -155,7 +218,7 @@ class PortalHistoryClient(
             if (records.isEmpty()) {
                 val fallbackUrl = JUrl("http://$host/registration/main.do?content_key=%2FCustomerSessionHistory.jsp")
                 logger.d(TAG, "Requesting portal history URL: $fallbackUrl")
-                val connFallback = transport.open(fallbackUrl, handle)
+                val connFallback = openFor(fallbackUrl, handle)
                 connFallback.requestMethod = "GET"
                 connFallback.instanceFollowRedirects = true
                 connFallback.connectTimeout = CONNECT_TIMEOUT_MS

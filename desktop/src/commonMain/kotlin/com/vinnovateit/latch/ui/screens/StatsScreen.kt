@@ -58,6 +58,7 @@ import com.vinnovateit.latch.ui.screens.stats.components.UsageInsightsCards
 import com.vinnovateit.latch.ui.screens.stats.components.groupedItemShape
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 import com.vinnovateit.latch.ui.theme.StatsColorPalettes
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import com.vinnovateit.latch.core.mp.JFile as File
@@ -108,6 +109,14 @@ fun StatsScreen(
 
     val displayedSessions = remember(portalHistory, selectedDateKey) {
         portalHistory.filter { it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L) && formatDate(it.loginTime, "yyyy-MM-dd") == selectedDateKey }
+    }
+    LaunchedEffect(portalHistory.size, displayedSessions.size, selectedDateKey) {
+        platform.logger.d(
+            "StatsScreen",
+            "UI state: portalHistory=${portalHistory.size} displayed=${displayedSessions.size} " +
+                "days=${allDayRecords.size} charts=${chartItems.size} " +
+                "date=$selectedDateKey isSyncing=$isSyncing",
+        )
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -196,9 +205,16 @@ fun StatsScreen(
                                     menuExpanded = false
                                     val userId = platform.credentials.userId()
                                     val password = platform.credentials.password()
+                                    platform.logger.d("StatsScreen", "Resync History clicked: credentialsPresent=${!userId.isNullOrBlank() && !password.isNullOrBlank()} userIdLen=${userId?.length ?: 0}")
                                     if (!userId.isNullOrBlank() && !password.isNullOrBlank()) {
                                         coroutineScope.launch {
-                                            sessions.syncPortalHistory(userId, password, force = true)
+                                            val result = kotlinx.coroutines.withContext(com.vinnovateit.latch.core.mp.ioDispatcher) {
+                                                sessions.syncPortalHistory(userId, password, force = true)
+                                            }
+                                            platform.logger.d(
+                                                "StatsScreen",
+                                                "Resync finished: ok=${result.isSuccess} error=${result.exceptionOrNull()?.message}",
+                                            )
                                         }
                                     } else {
                                         platform.logger.w("StatsScreen", "Cannot resync portal history: missing credentials")
@@ -250,6 +266,7 @@ fun StatsScreen(
                                 text = "No stats available",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
+                                fontFamily = satoshiFontFamily(FontWeight.Bold),
                                 textAlign = TextAlign.Center,
                             )
                             Spacer(modifier = Modifier.height(8.dp))
@@ -338,6 +355,7 @@ fun StatsScreen(
                                         text = title,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
+                                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.onBackground,
                                         textAlign = TextAlign.Left,
                                         modifier = Modifier
@@ -440,6 +458,7 @@ fun StatsScreen(
                                     text = title,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
+                                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onBackground,
                                     textAlign = TextAlign.Left,
                                     modifier = Modifier

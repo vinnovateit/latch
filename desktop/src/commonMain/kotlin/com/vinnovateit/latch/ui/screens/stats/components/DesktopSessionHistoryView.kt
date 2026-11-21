@@ -42,6 +42,7 @@ import com.vinnovateit.latch.core.stats.formatBytes
 import com.vinnovateit.latch.core.stats.formatDate
 import com.vinnovateit.latch.ui.components.LatchDetailHeader
 import com.vinnovateit.latch.ui.components.LatchIcons
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import com.vinnovateit.latch.core.mp.KCalendar as Calendar
 import com.vinnovateit.latch.core.mp.nowMillis
 
@@ -178,6 +179,7 @@ fun DesktopSessionHistoryView(
                                     Text(
                                         text = sort.label,
                                         fontWeight = if (sort == selectedSort) FontWeight.Bold else FontWeight.Normal,
+                                        fontFamily = satoshiFontFamily(if (sort == selectedSort) FontWeight.Bold else FontWeight.Normal),
                                         color = if (sort == selectedSort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                     )
                                 },
@@ -286,6 +288,7 @@ fun DesktopSessionHistoryView(
                                 text = monthTitle,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
+                                fontFamily = satoshiFontFamily(FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.primary,
                             )
                             val monthTotalBytes = monthRecords.sumOf { it.totalBytes }

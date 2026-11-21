@@ -54,6 +54,14 @@ interface NetworkHandle {
  */
 interface HttpTransport {
     fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection
+
+    /**
+     * Opens a connection to a PUBLIC endpoint (the account login/history host),
+     * which is reachable from any network. Portal traffic must use [open] with
+     * the Wi-Fi handle instead — this path is only for credential validation
+     * against the publicly reachable account service.
+     */
+    fun openPublic(url: JUrl): JHttpConnection = open(url, null)
 }
 
 // ---------------------------------------------------------------------------

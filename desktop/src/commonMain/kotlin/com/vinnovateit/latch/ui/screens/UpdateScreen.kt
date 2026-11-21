@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.ui.components.LatchIcons
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 
 private val ContentMaxWidth = 560.dp
 
@@ -97,6 +98,7 @@ fun UpdateScreen(
                     text = if (version != null) "Update available: v$version" else "Downloading update…",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -197,6 +199,7 @@ private fun ReleaseNotesCard(notes: String) {
                 text = "What's new",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
+                fontFamily = satoshiFontFamily(FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(8.dp))

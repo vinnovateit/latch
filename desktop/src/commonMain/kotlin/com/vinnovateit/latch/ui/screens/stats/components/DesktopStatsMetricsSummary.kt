@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.vinnovateit.latch.core.model.StatsOverviewMetrics
 import com.vinnovateit.latch.core.stats.formatBytes
 import com.vinnovateit.latch.ui.components.LatchIcons
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 
 @Composable
 fun StatsMetricsSummary(
@@ -55,6 +56,7 @@ fun StatsMetricsSummary(
                 textStyle = MaterialTheme.typography.displayMedium.copy(
                     fontSize = 48.sp,
                     fontWeight = FontWeight.Black,
+                    fontFamily = satoshiFontFamily(FontWeight.Black),
                     color = MaterialTheme.colorScheme.onSurface,
                 ),
             )
@@ -63,6 +65,7 @@ fun StatsMetricsSummary(
                 text = totalFmt.second,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.ExtraBold,
+                fontFamily = satoshiFontFamily(FontWeight.ExtraBold),
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 6.dp),
             )
@@ -85,6 +88,7 @@ fun StatsMetricsSummary(
                     text = "${dlFmt.first} ${dlFmt.second}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -103,6 +107,7 @@ fun StatsMetricsSummary(
                     text = "${ulFmt.first} ${ulFmt.second}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -148,6 +153,7 @@ fun GameStatRow(
                 text = value,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                fontFamily = satoshiFontFamily(FontWeight.Bold),
                 color = valueColor,
             )
             if (unit.isNotBlank()) {
@@ -156,6 +162,7 @@ fun GameStatRow(
                     text = unit,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
+                    fontFamily = satoshiFontFamily(FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 1.dp),
                 )

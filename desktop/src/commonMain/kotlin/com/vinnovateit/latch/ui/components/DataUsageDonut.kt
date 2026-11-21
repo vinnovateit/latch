@@ -20,6 +20,7 @@ import com.vinnovateit.latch.core.model.DataUsage
 import com.vinnovateit.latch.core.stats.formatBytes
 import com.vinnovateit.latch.ui.theme.ColorGraphDownload
 import com.vinnovateit.latch.ui.theme.ColorGraphUpload
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 
 /**
  * The split ring from the Android session card: one arc for received bytes, one
@@ -95,6 +96,7 @@ internal fun DataUsageDonut(
                 text = totalValue,
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp),
                 fontWeight = FontWeight.Bold,
+                fontFamily = satoshiFontFamily(FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(

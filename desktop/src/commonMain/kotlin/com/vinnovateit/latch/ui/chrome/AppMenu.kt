@@ -21,6 +21,8 @@ data class AppMenuActions(
     val onOpenSettings: () -> Unit,
     val onHowItWorks: () -> Unit,
     val onOpenAbout: () -> Unit,
+    /** Hidden while the navigation rail is showing, so wide layouts stay unchanged. */
+    val showMenu: Boolean = true,
 )
 
 /**

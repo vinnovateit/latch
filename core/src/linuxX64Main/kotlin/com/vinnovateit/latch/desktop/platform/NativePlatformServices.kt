@@ -159,9 +159,18 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
         wifiInterface()?.let { currentHandle = NativeHandle(it) }
         scope.launch {
             var lastKey: String? = null
+            var lastSignalLog = 0L
             while (true) {
                 val iface = wifiInterface()
                 val ssid = currentSsid()
+                val signal = signalPercent()
+                val now = nowMillis()
+                // Log weak signal at most once a minute — useful for diagnosing
+                // portal flaps without emitting a WifiEvent for every RSSI change.
+                if (iface != null && signal != null && signal <= 25 && now - lastSignalLog > 60_000L) {
+                    logger.w(TAG, "[NetworkEvent] Weak Wi-Fi signal ${signal}% on '$ssid'")
+                    lastSignalLog = now
+                }
                 val key = if (iface != null) "$iface::${ssid ?: "unknown"}" else null
                 if (key != lastKey) {
                     if (lastKey != null) {
@@ -188,9 +197,14 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
 
     override fun isConnectedToWifi(): Boolean = wifiInterface() != null
     override fun currentSsid(): String? = wifiField("ssid")
-    override fun gatewayIp(): String? =
-        runCommand("ip route 2>/dev/null | grep default | head -1 | awk '{print \$3}'")
+    // The default route may be Ethernet. Read the gateway for the active Wi-Fi
+    // interface only, otherwise the engine validates/login-gates on the wrong
+    // network (and reports the Ethernet gateway as the portal's).
+    override fun gatewayIp(): String? {
+        val iface = wifiInterface() ?: return null
+        return runCommand("ip route show default dev $iface 2>/dev/null | head -1 | awk '{print \$3}'")
             .lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
+    }
 
     override fun wifiInterfaceName(): String? = wifiInterface()
     override fun activeHandle(): NetworkHandle? =
@@ -204,6 +218,9 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
     private fun wifiField(field: String): String? =
         runCommand("nmcli -t -f active,$field dev wifi 2>/dev/null | grep '^yes' | head -1 | cut -d: -f2")
             .lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
+
+    /** Active Wi-Fi signal in percent, for weak-signal diagnostics. */
+    fun signalPercent(): Int? = wifiField("signal")?.toIntOrNull()
 
     private companion object {
         const val POLL_INTERVAL_MS = 1_500L
@@ -238,12 +255,47 @@ class NativeSystemActions(private val logger: Logger) : SystemActions {
 }
 
 class NativeNotifier : UserNotifier {
-    override fun showOngoing(title: String, text: String) {}
-    override fun notifyTransient(title: String, text: String, isError: Boolean) {}
+    /** Installed by the desktop tray so high-frequency status can refresh its tooltip. */
+    @Volatile var onOngoing: ((title: String, text: String) -> Unit)? = null
+    @Volatile var onHideOngoing: (() -> Unit)? = null
+
+    override fun showOngoing(title: String, text: String) {
+        onOngoing?.invoke(title, text)
+    }
+
+    override fun hideOngoing() {
+        onHideOngoing?.invoke()
+    }
+
+    override fun notifyTransient(title: String, text: String, isError: Boolean) {
+        // No-op on hosts without a notification daemon (e.g. CI/headless).
+        val urgency = if (isError) "-u critical" else ""
+        runCatching { runCommand("notify-send -a Latch $urgency ${shellQuote(title)} ${shellQuote(text)}") }
+    }
+
+    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 }
 
 class NativeHttpTransport : HttpTransport {
-    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection = JHttpConnection(url)
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection {
+        val connection = JHttpConnection(url)
+        // NetworkHandle.id is the Wi-Fi interface name (e.g. wlp8s0). Every
+        // portal request must leave on Wi-Fi, never on the default route which
+        // may be Ethernet. JHttpConnection refuses to send without a binding.
+        if (handle == null) {
+            throw com.vinnovateit.latch.core.mp.MPIOException(
+                "No Wi-Fi handle: refusing to send portal traffic on the default route",
+            )
+        }
+        connection.bindToInterface(handle.id)
+        return connection
+    }
+
+    override fun openPublic(url: JUrl): JHttpConnection {
+        // Credential validation talks to the publicly reachable account host,
+        // so the default route (Ethernet) is correct here.
+        return JHttpConnection(url).also { it.allowDefaultRoute() }
+    }
 }
 
 class NativePlatformServices(

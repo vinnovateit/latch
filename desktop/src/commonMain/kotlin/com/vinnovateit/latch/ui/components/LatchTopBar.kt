@@ -86,7 +86,7 @@ internal fun LatchHomeTopBar(
                             style = MaterialTheme.typography.labelMedium,
                             color = if (latched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = satoshiFontFamily(),
+                            fontFamily = satoshiFontFamily(FontWeight.Bold),
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
                         )
                     }
@@ -189,7 +189,7 @@ internal fun StatusPill(
                         style = MaterialTheme.typography.labelMedium,
                         color = if (connected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = satoshiFontFamily(),
+                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     )
                 }

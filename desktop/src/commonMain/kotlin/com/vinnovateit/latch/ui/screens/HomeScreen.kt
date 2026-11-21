@@ -54,6 +54,7 @@ import com.vinnovateit.latch.ui.components.LatchHomeTopBar
 import com.vinnovateit.latch.ui.components.LeafOverlay
 import com.vinnovateit.latch.ui.components.MorphingPowerButton
 import com.vinnovateit.latch.ui.components.SpectrumCard
+import com.vinnovateit.latch.ui.platform.openWifiSettings
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.delay
 
@@ -104,7 +105,9 @@ fun HomeScreen(
     val settingsLink = if (networkNameHidden) {
         SettingsLink("Allow Location access") { platform.systemActions.openLocationSettings() }
     } else {
-        SettingsLink("Open Wi-Fi settings") { platform.systemActions.openWifiSettings() }
+        SettingsLink("Open Wi-Fi settings") {
+            openWifiSettings(fallback = platform.systemActions::openWifiSettings)
+        }
     }
 
     /*
