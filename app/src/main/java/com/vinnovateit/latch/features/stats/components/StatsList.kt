@@ -32,7 +32,8 @@ import com.vinnovateit.latch.core.model.LiveConnectionStatus
 import com.vinnovateit.latch.core.model.PortalSessionRecord
 import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.core.settings.SettingsManager
-import com.vinnovateit.latch.core.stats.formatDate
+import com.vinnovateit.latch.core.stats.dayKey
+import com.vinnovateit.latch.core.stats.sessionsForDay
 import com.vinnovateit.latch.features.stats.StatsViewModel
 import kotlinx.coroutines.delay
 
@@ -63,13 +64,11 @@ fun StatsList(
     delay(300)
     sessionsDayTimestamp = selectedDayTimestamp
   }
-  val todayKey = remember { formatDate(System.currentTimeMillis(), "yyyy-MM-dd") }
-  val selectedDateKey = sessionsDayTimestamp?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
+  val todayKey = remember { dayKey(System.currentTimeMillis()) }
+  val selectedDateKey = sessionsDayTimestamp?.let { dayKey(it) } ?: todayKey
 
   val displayedSessions = remember(portalHistory, selectedDateKey) {
-    portalHistory.filter { session ->
-      session.loginTime > 0 && (session.uploadBytes > 0L || session.downloadBytes > 0L) && formatDate(session.loginTime, "yyyy-MM-dd") == selectedDateKey
-    }
+    sessionsForDay(portalHistory, selectedDateKey)
   }
 
   val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()

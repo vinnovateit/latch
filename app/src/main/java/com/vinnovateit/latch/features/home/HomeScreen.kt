@@ -97,6 +97,7 @@ import com.vinnovateit.latch.common.ui.LeafOverlay
 import com.vinnovateit.latch.core.model.LiveDataPoint
 import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.core.stats.chartWindow
 import com.vinnovateit.latch.features.home.components.SpectrumCard
 import com.vinnovateit.latch.features.wifi.background.ForegroundService
 import com.vinnovateit.latch.features.wifi.manager.ConnectionStatus
@@ -118,7 +119,7 @@ fun HomeScreen(
     onNavigateToStats: () -> Unit = {},
     onNavigateToMeetTheTeam: () -> Unit = {}
 ) {
-    val historyForHomeScreen = session?.history?.takeLast(150) ?: emptyList()
+    val historyForHomeScreen = chartWindow(session?.history ?: emptyList())
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 

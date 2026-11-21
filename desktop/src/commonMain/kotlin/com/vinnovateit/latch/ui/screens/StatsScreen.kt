@@ -26,12 +26,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -41,10 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vinnovateit.latch.core.domain.SessionRepository
 import com.vinnovateit.latch.core.model.DataUsage
 import com.vinnovateit.latch.core.platform.PlatformServices
-import com.vinnovateit.latch.core.settings.SettingsManager
-import com.vinnovateit.latch.core.stats.formatDate
 import com.vinnovateit.latch.core.stats.formatDisplayDate
-import com.vinnovateit.latch.core.stats.generatePortalHtmlReport
 import com.vinnovateit.latch.desktop.resources.Res
 import com.vinnovateit.latch.desktop.resources.stats_title
 import com.vinnovateit.latch.ui.components.LatchDetailHeader
@@ -56,21 +51,22 @@ import com.vinnovateit.latch.ui.screens.stats.components.StatsMetricsSummary
 import com.vinnovateit.latch.ui.screens.stats.components.TodaySessionListItem
 import com.vinnovateit.latch.ui.screens.stats.components.UsageInsightsCards
 import com.vinnovateit.latch.ui.screens.stats.components.groupedItemShape
+import com.vinnovateit.latch.ui.stats.DesktopStatsSettings
+import com.vinnovateit.latch.ui.stats.StatsEvent
+import com.vinnovateit.latch.ui.stats.StatsNavigation
+import com.vinnovateit.latch.ui.stats.StatsPresentationImpl
+import com.vinnovateit.latch.ui.stats.StatsSubScreen
+import com.vinnovateit.latch.ui.stats.StatsUiState
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 import com.vinnovateit.latch.ui.theme.StatsColorPalettes
 import com.vinnovateit.latch.ui.theme.satoshiFontFamily
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import com.vinnovateit.latch.core.mp.JFile as File
 import com.vinnovateit.latch.core.mp.nowMillis
-import com.vinnovateit.latch.core.mp.userHome
-import com.vinnovateit.latch.core.mp.useOutput
 
-enum class StatsSubScreen {
-    Main,
-    SessionHistory,
-}
-
+/**
+ * Narrow view: renders [StatsUiState] and forwards events to a remembered
+ * presentation module. No domain calls, no scope and no derived state live here.
+ */
 @Composable
 fun StatsScreen(
     sessions: SessionRepository,
@@ -78,68 +74,54 @@ fun StatsScreen(
     onBack: (() -> Unit)?,
     onClearHistory: () -> Unit,
 ) {
-    var currentSubScreen by remember { mutableStateOf(StatsSubScreen.Main) }
+    // Host callbacks change identity on every parent recomposition. Route them
+    // through a stable adapter so the remembered module keeps its state.
+    val navigation = remember { StatsNavigation() }
+    navigation.onBack = onBack
+    navigation.onClearHistory = onClearHistory
 
-    val liveStatus by sessions.liveStatus.collectAsStateWithLifecycle()
-    val portalHistory by sessions.portalHistory.collectAsStateWithLifecycle()
-    val isSyncing by sessions.isSyncing.collectAsStateWithLifecycle()
-    val speedUnit by SettingsManager.speedUnits.collectAsStateWithLifecycle()
-    val chartPalette by SettingsManager.chartPalette.collectAsStateWithLifecycle()
-    val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
-    val isAmoled = usePureBlack && LocalIsDarkTheme.current
-    val (dlColor, ulColor) = StatsColorPalettes.resolveColors(chartPalette)
-
-    LaunchedEffect(Unit) {
-        val userId = platform.credentials.userId()
-        val password = platform.credentials.password()
-        if (!userId.isNullOrBlank() && !password.isNullOrBlank()) {
-            sessions.syncPortalHistory(userId, password)
-        }
+    val presentation = remember(sessions, platform) {
+        StatsPresentationImpl(sessions, platform, DesktopStatsSettings, navigation)
+    }
+    DisposableEffect(presentation) {
+        onDispose { presentation.close() }
+    }
+    // Same one-shot behaviour as the old LaunchedEffect(Unit) sync.
+    LaunchedEffect(presentation) {
+        presentation.onEvent(StatsEvent.RefreshHistory)
     }
 
-    val allDayRecords by sessions.aggregatedDayRecords.collectAsStateWithLifecycle()
-    val metrics by sessions.overviewMetrics.collectAsStateWithLifecycle()
-    val insights by sessions.statsInsights.collectAsStateWithLifecycle()
-    val chartItems by sessions.chartItems.collectAsStateWithLifecycle()
+    val uiState by presentation.uiState.collectAsStateWithLifecycle()
+    StatsScreenContent(uiState = uiState, onEvent = presentation::onEvent, onBack = onBack)
+}
 
-    var selectedDayTimestamp by remember { mutableStateOf<Long?>(null) }
-    val todayKey = remember { formatDate(nowMillis(), "yyyy-MM-dd") }
-    val selectedDateKey = selectedDayTimestamp?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
-    val isToday = selectedDateKey == todayKey
+@Composable
+private fun StatsScreenContent(
+    uiState: StatsUiState,
+    onEvent: (StatsEvent) -> Unit,
+    onBack: (() -> Unit)?,
+) {
+    val isAmoled = uiState.usePureBlack && LocalIsDarkTheme.current
+    val (dlColor, ulColor) = StatsColorPalettes.resolveColors(uiState.chartPalette)
 
-    val displayedSessions = remember(portalHistory, selectedDateKey) {
-        portalHistory.filter { it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L) && formatDate(it.loginTime, "yyyy-MM-dd") == selectedDateKey }
-    }
-    LaunchedEffect(portalHistory.size, displayedSessions.size, selectedDateKey) {
-        platform.logger.d(
-            "StatsScreen",
-            "UI state: portalHistory=${portalHistory.size} displayed=${displayedSessions.size} " +
-                "days=${allDayRecords.size} charts=${chartItems.size} " +
-                "date=$selectedDateKey isSyncing=$isSyncing",
-        )
-    }
-
-    var menuExpanded by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-
-    if (currentSubScreen == StatsSubScreen.SessionHistory) {
+    if (uiState.currentSubScreen == StatsSubScreen.SessionHistory) {
         DesktopSessionHistoryView(
-            allDayRecords = allDayRecords,
-            isSyncing = isSyncing,
+            allDayRecords = uiState.allDayRecords,
+            isSyncing = uiState.isSyncing,
             dlColor = dlColor,
             ulColor = ulColor,
             isAmoled = isAmoled,
-            onBack = { currentSubScreen = StatsSubScreen.Main },
+            onBack = { onEvent(StatsEvent.CloseSessionHistory) },
         )
     } else {
         Column(modifier = Modifier.fillMaxSize()) {
             LatchDetailHeader(
                 title = stringResource(Res.string.stats_title),
-                onBack = onBack,
+                onBack = onBack?.let { { onEvent(StatsEvent.Back) } },
                 actions = {
                     Box {
                         IconButton(
-                            onClick = { menuExpanded = true },
+                            onClick = { onEvent(StatsEvent.SetMenuExpanded(true)) },
                             modifier = Modifier.size(36.dp),
                         ) {
                             Icon(
@@ -150,14 +132,14 @@ fun StatsScreen(
                             )
                         }
                         DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false },
+                            expanded = uiState.menuExpanded,
+                            onDismissRequest = { onEvent(StatsEvent.SetMenuExpanded(false)) },
                         ) {
                             DropdownMenuItem(
                                 text = { Text("Session History") },
                                 onClick = {
-                                    menuExpanded = false
-                                    currentSubScreen = StatsSubScreen.SessionHistory
+                                    onEvent(StatsEvent.SetMenuExpanded(false))
+                                    onEvent(StatsEvent.OpenSessionHistory)
                                 },
                                 leadingIcon = {
                                     Icon(
@@ -170,26 +152,8 @@ fun StatsScreen(
                             DropdownMenuItem(
                                 text = { Text("Export Full Report") },
                                 onClick = {
-                                    menuExpanded = false
-                                    coroutineScope.launch {
-                                        try {
-                                            val userHome = userHome()
-                                            val downloadsDir = File(userHome, "Downloads").takeIf { it.exists() && it.isDirectory }
-                                                ?: File(userHome)
-                                            val reportFile = File(downloadsDir, "latch-session-report-${nowMillis()}.html")
-                                            reportFile.outputStream().useOutput { stream ->
-                                                generatePortalHtmlReport(
-                                                    sessions = portalHistory.filter { it.uploadBytes > 0L || it.downloadBytes > 0L },
-                                                    outputStream = stream,
-                                                    appVersion = "Desktop",
-                                                    userId = platform.credentials.userId() ?: "",
-                                                )
-                                            }
-                                            platform.systemActions.openUrl("file://${reportFile.path}")
-                                        } catch (e: Exception) {
-                                            platform.logger.e("StatsScreen", "Failed to export HTML report", e)
-                                        }
-                                    }
+                                    onEvent(StatsEvent.SetMenuExpanded(false))
+                                    onEvent(StatsEvent.ExportReport)
                                 },
                                 leadingIcon = {
                                     Icon(
@@ -202,23 +166,8 @@ fun StatsScreen(
                             DropdownMenuItem(
                                 text = { Text("Resync History") },
                                 onClick = {
-                                    menuExpanded = false
-                                    val userId = platform.credentials.userId()
-                                    val password = platform.credentials.password()
-                                    platform.logger.d("StatsScreen", "Resync History clicked: credentialsPresent=${!userId.isNullOrBlank() && !password.isNullOrBlank()} userIdLen=${userId?.length ?: 0}")
-                                    if (!userId.isNullOrBlank() && !password.isNullOrBlank()) {
-                                        coroutineScope.launch {
-                                            val result = kotlinx.coroutines.withContext(com.vinnovateit.latch.core.mp.ioDispatcher) {
-                                                sessions.syncPortalHistory(userId, password, force = true)
-                                            }
-                                            platform.logger.d(
-                                                "StatsScreen",
-                                                "Resync finished: ok=${result.isSuccess} error=${result.exceptionOrNull()?.message}",
-                                            )
-                                        }
-                                    } else {
-                                        platform.logger.w("StatsScreen", "Cannot resync portal history: missing credentials")
-                                    }
+                                    onEvent(StatsEvent.SetMenuExpanded(false))
+                                    onEvent(StatsEvent.ResyncHistory)
                                 },
                                 leadingIcon = {
                                     Icon(
@@ -233,8 +182,8 @@ fun StatsScreen(
                 },
             )
 
-            if (liveStatus == null && allDayRecords.isEmpty()) {
-                if (isSyncing && !sessions.isHistoryLoaded.value) {
+            if (uiState.liveStatus == null && uiState.allDayRecords.isEmpty()) {
+                if (uiState.isSyncing && !uiState.isHistoryLoaded) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -299,7 +248,7 @@ fun StatsScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                liveStatus?.let { live ->
+                                uiState.liveStatus?.let { live ->
                                     item {
                                         val usage = DataUsage(live.totalRxBytes, live.totalTxBytes)
                                         LiveSessionCard(
@@ -307,7 +256,7 @@ fun StatsScreen(
                                             usage = usage,
                                             latestRxBps = live.liveData.lastOrNull()?.usage?.rxBps ?: 0L,
                                             latestTxBps = live.liveData.lastOrNull()?.usage?.txBps ?: 0L,
-                                            speedUnit = speedUnit,
+                                            speedUnit = uiState.speedUnit,
                                             dlColor = dlColor,
                                             ulColor = ulColor,
                                         )
@@ -317,7 +266,7 @@ fun StatsScreen(
 
                                 item {
                                     StatsMetricsSummary(
-                                        metrics = metrics,
+                                        metrics = uiState.metrics,
                                         dlColor = dlColor,
                                         ulColor = ulColor,
                                     )
@@ -325,7 +274,7 @@ fun StatsScreen(
                                 }
 
                                 item {
-                                    UsageInsightsCards(insights = insights)
+                                    UsageInsightsCards(insights = uiState.insights)
                                 }
                             }
 
@@ -336,21 +285,21 @@ fun StatsScreen(
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                if (chartItems.isNotEmpty()) {
+                                if (uiState.chartItems.isNotEmpty()) {
                                     item {
                                         HistoryBarChart(
-                                            chartItems = chartItems,
+                                            chartItems = uiState.chartItems,
                                             dlColor = dlColor,
                                             ulColor = ulColor,
                                             isAmoled = isAmoled,
-                                            onSelectedDayChange = { selectedDayTimestamp = it },
+                                            onSelectedDayChange = { onEvent(StatsEvent.SelectDay(it)) },
                                         )
                                         Spacer(modifier = Modifier.height(15.dp))
                                     }
                                 }
 
                                 item {
-                                    val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: nowMillis())} Sessions"
+                                    val title = if (uiState.isToday) "Today's Sessions" else "${formatDisplayDate(uiState.selectedDayTimestamp ?: nowMillis())} Sessions"
                                     Text(
                                         text = title,
                                         style = MaterialTheme.typography.titleMedium,
@@ -364,15 +313,15 @@ fun StatsScreen(
                                     )
                                 }
 
-                                if (displayedSessions.isNotEmpty()) {
+                                if (uiState.displayedSessions.isNotEmpty()) {
                                     itemsIndexed(
-                                        items = displayedSessions,
+                                        items = uiState.displayedSessions,
                                         key = { index, session -> "${session.loginTime}_${session.uploadBytes}_${session.downloadBytes}_$index" },
                                         contentType = { _, _ -> "session_item" },
                                     ) { index, session ->
                                         TodaySessionListItem(
                                             session = session,
-                                            shape = groupedItemShape(index, displayedSessions.size),
+                                            shape = groupedItemShape(index, uiState.displayedSessions.size),
                                             isAmoled = isAmoled,
                                             dlColor = dlColor,
                                             ulColor = ulColor,
@@ -380,7 +329,7 @@ fun StatsScreen(
                                     }
                                 } else {
                                     item {
-                                        val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: nowMillis())}."
+                                        val emptyText = if (uiState.isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(uiState.selectedDayTimestamp ?: nowMillis())}."
                                         Surface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -409,7 +358,7 @@ fun StatsScreen(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            liveStatus?.let { live ->
+                            uiState.liveStatus?.let { live ->
                                 item {
                                     val usage = DataUsage(live.totalRxBytes, live.totalTxBytes)
                                     LiveSessionCard(
@@ -417,7 +366,7 @@ fun StatsScreen(
                                         usage = usage,
                                         latestRxBps = live.liveData.lastOrNull()?.usage?.rxBps ?: 0L,
                                         latestTxBps = live.liveData.lastOrNull()?.usage?.txBps ?: 0L,
-                                        speedUnit = speedUnit,
+                                        speedUnit = uiState.speedUnit,
                                         dlColor = dlColor,
                                         ulColor = ulColor,
                                     )
@@ -427,7 +376,7 @@ fun StatsScreen(
 
                             item {
                                 StatsMetricsSummary(
-                                    metrics = metrics,
+                                    metrics = uiState.metrics,
                                     dlColor = dlColor,
                                     ulColor = ulColor,
                                 )
@@ -435,25 +384,25 @@ fun StatsScreen(
                             }
 
                             item {
-                                UsageInsightsCards(insights = insights)
+                                UsageInsightsCards(insights = uiState.insights)
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
 
-                            if (chartItems.isNotEmpty()) {
+                            if (uiState.chartItems.isNotEmpty()) {
                                 item {
                                     HistoryBarChart(
-                                        chartItems = chartItems,
+                                        chartItems = uiState.chartItems,
                                         dlColor = dlColor,
                                         ulColor = ulColor,
                                         isAmoled = isAmoled,
-                                        onSelectedDayChange = { selectedDayTimestamp = it },
+                                        onSelectedDayChange = { onEvent(StatsEvent.SelectDay(it)) },
                                     )
                                     Spacer(modifier = Modifier.height(15.dp))
                                 }
                             }
 
                             item {
-                                val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: nowMillis())} Sessions"
+                                val title = if (uiState.isToday) "Today's Sessions" else "${formatDisplayDate(uiState.selectedDayTimestamp ?: nowMillis())} Sessions"
                                 Text(
                                     text = title,
                                     style = MaterialTheme.typography.titleMedium,
@@ -467,15 +416,15 @@ fun StatsScreen(
                                 )
                             }
 
-                            if (displayedSessions.isNotEmpty()) {
+                            if (uiState.displayedSessions.isNotEmpty()) {
                                 itemsIndexed(
-                                    items = displayedSessions,
+                                    items = uiState.displayedSessions,
                                     key = { index, session -> "${session.loginTime}_${session.uploadBytes}_${session.downloadBytes}_$index" },
                                     contentType = { _, _ -> "session_item" },
                                 ) { index, session ->
                                     TodaySessionListItem(
                                         session = session,
-                                        shape = groupedItemShape(index, displayedSessions.size),
+                                        shape = groupedItemShape(index, uiState.displayedSessions.size),
                                         isAmoled = isAmoled,
                                         dlColor = dlColor,
                                         ulColor = ulColor,
@@ -483,7 +432,7 @@ fun StatsScreen(
                                 }
                             } else {
                                 item {
-                                    val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: nowMillis())}."
+                                    val emptyText = if (uiState.isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(uiState.selectedDayTimestamp ?: nowMillis())}."
                                     Surface(
                                         modifier = Modifier
                                             .fillMaxWidth()

@@ -273,7 +273,7 @@ class PortalSessionRepositoryTest {
     }
 
     @Test
-    fun `portal sync binds every request to the active Wi-Fi handle`() = runBlocking {
+    fun `portal sync uses the public route for the account service`() = runBlocking {
         val transport = FakePortalTransport()
         val repo = SessionRepository(
             statsDao = db.statsDao(),
@@ -287,14 +287,16 @@ class PortalSessionRepositoryTest {
 
         assertTrue(transport.handles.isNotEmpty(), "the portal client should have opened connections")
         transport.handles.forEach { handle ->
-            assertNotNull(handle, "credentials must never be sent on the default network")
-            assertEquals(TestWifiHandle.id, handle.id)
+            // The account endpoint is a public IP — binding to the Wi-Fi NIC
+            // gets connection-refused. Portal LOGIN binds to Wi-Fi; account
+            // history always uses the default/public route.
+            assertEquals(null, handle, "account history must use the public route")
         }
         repo.close()
     }
 
     @Test
-    fun `portal sync is refused when no Wi-Fi network is active`() = runBlocking {
+    fun `portal sync works without Wi-Fi via the public route`() = runBlocking {
         val transport = FakePortalTransport()
         val repo = SessionRepository(
             statsDao = db.statsDao(),
@@ -306,8 +308,8 @@ class PortalSessionRepositoryTest {
 
         val result = repo.syncPortalHistory("24BDS0155", "zero", force = true)
 
-        assertFalse(result.isSuccess, "sync must fail rather than leave the Wi-Fi network")
-        assertTrue(transport.handles.isEmpty(), "no request should have been made at all")
+        assertTrue(result.isSuccess, "account history is public and works over any connection")
+        assertTrue(transport.handles.isNotEmpty(), "requests should have been made on the public route")
         repo.close()
     }
 

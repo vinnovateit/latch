@@ -48,6 +48,7 @@ import com.vinnovateit.latch.core.engine.LatchEngine
 import com.vinnovateit.latch.core.model.LiveDataPoint
 import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.core.stats.chartWindow
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.ui.components.CircularPowerButton
 import com.vinnovateit.latch.ui.components.LatchHomeTopBar
@@ -60,9 +61,6 @@ import kotlinx.coroutines.delay
 
 /** Width at which the home screen switches to the Android landscape arrangement. */
 private val WideBreakpoint = 900.dp
-
-/** Only the last 150 samples are drawn, matching the Android home chart. */
-private const val CHART_WINDOW = 150
 
 /**
  * The home screen, laid out as the Android app lays it out.
@@ -90,7 +88,7 @@ fun HomeScreen(
     val liveStatus by sessions.liveStatus.collectAsStateWithLifecycle()
     val speedUnit by SettingsManager.speedUnits.collectAsStateWithLifecycle()
 
-    val history = liveStatus?.liveData?.takeLast(CHART_WINDOW) ?: emptyList()
+    val history = chartWindow(liveStatus?.liveData ?: emptyList())
 
     // A failed status fades back to Idle after two seconds. The hint that macOS
     // is hiding the Wi-Fi name stays until a check gives a different answer.

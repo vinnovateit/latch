@@ -14,7 +14,7 @@ import com.vinnovateit.latch.core.mp.wrapReportSink
  */
 fun generatePortalHtmlReport(
     sessions: List<PortalSessionRecord>,
-    outputStream: OutputStream,
+    outputStream: Any,
     appVersion: String,
     userId: String? = ""
 ) {
