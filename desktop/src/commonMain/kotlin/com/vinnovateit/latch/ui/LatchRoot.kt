@@ -282,7 +282,6 @@ fun LatchRoot(
                                             selected = destination,
                                             onSelect = { destination = it },
                                             onHowItWorks = { showHowItWorks = true },
-                                            onAbout = { destination = LatchDestination.About },
                                             expanded = railExpanded,
                                         )
                                     }
@@ -386,7 +385,6 @@ private fun LatchNavigationRail(
     selected: LatchDestination,
     onSelect: (LatchDestination) -> Unit,
     onHowItWorks: () -> Unit,
-    onAbout: () -> Unit,
     expanded: Boolean = true,
 ) {
     val railState = rememberWideNavigationRailState(
@@ -444,14 +442,6 @@ private fun LatchNavigationRail(
             onClick = onHowItWorks,
             icon = { Icon(LatchIcons.Help, contentDescription = null) },
             label = { Text("How it works") },
-            railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
-            iconPosition = NavigationItemIconPosition.Start,
-        )
-        WideNavigationRailItem(
-            selected = false,
-            onClick = onAbout,
-            icon = { Icon(LatchIcons.Info, contentDescription = null) },
-            label = { Text("About") },
             railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
             iconPosition = NavigationItemIconPosition.Start,
         )

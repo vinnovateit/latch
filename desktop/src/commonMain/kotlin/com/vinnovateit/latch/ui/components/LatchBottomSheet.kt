@@ -96,8 +96,8 @@ internal fun LatchBottomSheet(
             tonalElevation = 6.dp,
             shadowElevation = 8.dp,
             modifier = Modifier
-                .fillMaxWidth()
                 .widthIn(max = 560.dp)
+                .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .graphicsLayer {
                     translationY = anim.value.coerceAtLeast(0f) * (size.height.takeIf { it > 0 } ?: 1000f)
