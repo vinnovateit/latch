@@ -3,7 +3,8 @@
 package com.vinnovateit.latch.core.mp
 
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
@@ -20,7 +21,11 @@ actual fun nowMillis(): Long = memScoped {
 }
 private val monotonic = TimeSource.Monotonic
 actual fun nanoTime(): Long = monotonic.markNow().elapsedNow().inWholeNanoseconds
-actual val ioDispatcher: CoroutineDispatcher = Dispatchers.Default
+// Dispatchers.IO is internal on Kotlin/Native. Default is the small shared CPU
+// pool that also runs the stats recompute and UI state collection, so give
+// blocking curl/DB work its own fixed Worker pool instead of starving it.
+@OptIn(DelicateCoroutinesApi::class)
+actual val ioDispatcher: CoroutineDispatcher = newFixedThreadPoolContext(4, "latch-io")
 
 /** Minimal `String.format(Locale.US, …)` covering the patterns used by Latch. */
 actual fun formatUs(format: String, vararg args: Any?): String {

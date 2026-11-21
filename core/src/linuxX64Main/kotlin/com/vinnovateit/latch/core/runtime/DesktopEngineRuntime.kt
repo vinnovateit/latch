@@ -5,6 +5,7 @@ import com.vinnovateit.latch.core.data.buildDatabase
 import com.vinnovateit.latch.core.domain.SessionRepository
 import com.vinnovateit.latch.core.engine.LatchCommand
 import com.vinnovateit.latch.core.engine.LatchEngine
+import com.vinnovateit.latch.core.mp.ioDispatcher
 import com.vinnovateit.latch.core.platform.Platform
 import com.vinnovateit.latch.core.platform.UserNotifier
 import com.vinnovateit.latch.core.portal.PortalHistoryClient
@@ -13,7 +14,6 @@ import com.vinnovateit.latch.core.stats.ThroughputMonitor
 import com.vinnovateit.latch.desktop.platform.NativePlatformServices
 import kotlin.concurrent.AtomicInt
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -30,7 +30,9 @@ class DesktopEngineRuntime private constructor(
     private val closed = AtomicInt(0)
     val isClosed: Boolean get() = closed.value == 1
 
-    private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Startup history sync is a blocking 14s curl; keep it off the Default pool
+    // that also runs the derived-stats recompute.
+    private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     fun start() {
         check(closed.value == 0) { "Runtime is closed." }

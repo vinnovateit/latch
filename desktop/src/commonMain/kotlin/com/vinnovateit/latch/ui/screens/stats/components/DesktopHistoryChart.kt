@@ -62,6 +62,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import com.vinnovateit.latch.core.mp.formatUs
 import com.vinnovateit.latch.ui.onHoverCompat
 import androidx.compose.ui.platform.LocalDensity
@@ -122,6 +128,31 @@ fun HistoryBarChart(
     val lazyListState = rememberLazyListState(initialFirstVisibleItemIndex = todayIdx)
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
+
+    // The chart lives inside a vertical LazyColumn that otherwise swallows wheel
+    // and two-finger scroll. Take it in the ancestor's pre-scroll pass and map
+    // whichever axis dominates onto the chart's horizontal scroll. Gate on a
+    // recent Scroll pointer event so ordinary page drags (same UserInput source)
+    // still belong to the LazyColumn.
+    var lastWheelAt by remember { mutableLongStateOf(0L) }
+    val horizontalScrollConnection = remember(lazyListState, coroutineScope) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if (nowMillis() - lastWheelAt > 100L) return Offset.Zero
+                val delta = if (kotlin.math.abs(available.x) >= kotlin.math.abs(available.y)) {
+                    available.x
+                } else {
+                    available.y
+                }
+                if (delta != 0f) {
+                    coroutineScope.launch { lazyListState.scrollBy(delta) }
+                }
+                // Consume it so the enclosing LazyColumn doesn't scroll as well.
+                return available
+            }
+        }
+    }
 
     val (totalUsageDetail, _) = remember(chartItems) {
         var rx = 0L
@@ -497,7 +528,17 @@ fun HistoryBarChart(
                     state = lazyListState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(rowHeight),
+                        .height(rowHeight)
+                        .nestedScroll(horizontalScrollConnection)
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    if (awaitPointerEvent(PointerEventPass.Initial).type == PointerEventType.Scroll) {
+                                        lastWheelAt = nowMillis()
+                                    }
+                                }
+                            }
+                        },
                     contentPadding = PaddingValues(horizontal = centerPadding),
                     flingBehavior = rememberSnapFlingBehavior(lazyListState = lazyListState),
                     horizontalArrangement = Arrangement.spacedBy(0.2.dp),

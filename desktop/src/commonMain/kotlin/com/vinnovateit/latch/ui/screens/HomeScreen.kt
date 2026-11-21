@@ -88,7 +88,10 @@ fun HomeScreen(
     val liveStatus by sessions.liveStatus.collectAsStateWithLifecycle()
     val speedUnit by SettingsManager.speedUnits.collectAsStateWithLifecycle()
 
-    val history = chartWindow(liveStatus?.liveData ?: emptyList())
+    // liveData identity changes once per sample. Don't reallocate the 150-point
+    // window on unrelated recompositions (theme, speed unit, connection status).
+    val liveData = liveStatus?.liveData
+    val history = remember(liveData) { chartWindow(liveData ?: emptyList()) }
 
     // A failed status fades back to Idle after two seconds. The hint that macOS
     // is hiding the Wi-Fi name stays until a check gives a different answer.

@@ -7,7 +7,6 @@ import com.vinnovateit.latch.core.model.LiveConnectionStatus
 import com.vinnovateit.latch.core.model.PortalSessionRecord
 import com.vinnovateit.latch.core.model.StatsOverviewMetrics
 import com.vinnovateit.latch.core.mp.JFile as File
-import com.vinnovateit.latch.core.mp.ioDispatcher
 import com.vinnovateit.latch.core.mp.nowMillis
 import com.vinnovateit.latch.core.mp.userHome
 import com.vinnovateit.latch.core.mp.useOutput
@@ -27,7 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Which pane of Stats is on screen. */
 enum class StatsSubScreen { Main, SessionHistory }
@@ -123,6 +121,12 @@ class StatsPresentationImpl(
     private val menuExpanded = MutableStateFlow(false)
     private var lastLogKey: Triple<Int, Int, String>? = null
 
+    // Fourteen collectors each call updateState() on the same flow emission;
+    // caching the day filter by input identity keeps that to one pass.
+    private var cachedHistory: List<PortalSessionRecord>? = null
+    private var cachedDayKey: String? = null
+    private var cachedDisplayed: List<PortalSessionRecord> = emptyList()
+
     init {
         updateState()
         // One serialized context: concurrent collectors could otherwise publish
@@ -173,7 +177,15 @@ class StatsPresentationImpl(
         val day = selectedDay.value
         val history = sessions.portalHistory.value
         val selectedDateKey = day?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
-        val displayed = sessionsForDay(history, selectedDateKey)
+        val displayed = if (history === cachedHistory && selectedDateKey == cachedDayKey) {
+            cachedDisplayed
+        } else {
+            sessionsForDay(history, selectedDateKey).also {
+                cachedHistory = history
+                cachedDayKey = selectedDateKey
+                cachedDisplayed = it
+            }
+        }
         val syncing = sessions.isSyncing.value
 
         _uiState.value = StatsUiState(
@@ -221,9 +233,8 @@ class StatsPresentationImpl(
         }
         if (!userId.isNullOrBlank() && !password.isNullOrBlank()) {
             scope.launch {
-                val result = withContext(ioDispatcher) {
-                    sessions.syncPortalHistory(userId, password, force = force)
-                }
+                // syncPortalHistory offloads its own blocking body.
+                val result = sessions.syncPortalHistory(userId, password, force = force)
                 if (force) {
                     platform.logger.d(
                         "StatsScreen",

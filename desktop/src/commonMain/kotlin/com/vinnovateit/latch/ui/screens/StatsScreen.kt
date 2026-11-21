@@ -117,7 +117,7 @@ private fun StatsScreenContent(
         Column(modifier = Modifier.fillMaxSize()) {
             LatchDetailHeader(
                 title = stringResource(Res.string.stats_title),
-                onBack = onBack?.let { { onEvent(StatsEvent.Back) } },
+                onBack = null,
                 actions = {
                     Box {
                         IconButton(

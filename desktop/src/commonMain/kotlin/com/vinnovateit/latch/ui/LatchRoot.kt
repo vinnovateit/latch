@@ -19,8 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.NavigationItemIconPosition
+import androidx.compose.material3.WideNavigationRail
+import androidx.compose.material3.WideNavigationRailItem
+import androidx.compose.material3.WideNavigationRailValue
+import androidx.compose.material3.rememberWideNavigationRailState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -41,6 +47,7 @@ import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.desktop.LatchMark
+import com.vinnovateit.latch.ui.theme.modernizFontFamily
 import com.vinnovateit.latch.ui.chrome.AppMenuActions
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
 import com.vinnovateit.latch.ui.components.HowItWorksDialog
@@ -56,6 +63,7 @@ import com.vinnovateit.latch.ui.theme.LatchTheme
 
 /** Below this width the app uses the Android-style overflow menu instead of a rail. */
 private val RailBreakpoint = 900.dp
+private val WideRailExpandedWidth = 900.dp
 
 /**
  * The whole window: theme, credential gate, and the three-screen shell.
@@ -260,6 +268,7 @@ fun LatchRoot(
                         else -> {
                             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                 val railVisible = maxWidth >= RailBreakpoint
+                                val railExpanded = maxWidth >= WideRailExpandedWidth
 
                                 // Visibility rule: the hamburger exists only while
                                 // this shell is mounted, so onboarding, credential
@@ -285,6 +294,7 @@ fun LatchRoot(
                                         LatchNavigationRail(
                                             selected = destination,
                                             onSelect = { destination = it },
+                                            expanded = railExpanded,
                                         )
                                     }
 
@@ -365,31 +375,65 @@ fun LatchRoot(
     }
 }
 
+/**
+ * Material 3 Expressive wide navigation rail: label inline with the icon,
+ * a thicker/longer surface, and a collapsed state for narrower windows.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun LatchNavigationRail(
     selected: LatchDestination,
     onSelect: (LatchDestination) -> Unit,
+    expanded: Boolean = true,
 ) {
-    NavigationRail(
-        containerColor = Color.Transparent,
+    val railState = rememberWideNavigationRailState(
+        initialValue = if (expanded) WideNavigationRailValue.Expanded else WideNavigationRailValue.Collapsed,
+    )
+    LaunchedEffect(expanded) {
+        if (expanded) railState.expand() else railState.collapse()
+    }
+
+    WideNavigationRail(
+        state = railState,
         header = {
-            Box(modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)) {
-                Icon(
-                    imageVector = LatchMark,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(34.dp),
-                )
+            // FAB-like primary header: the Latch mark plus the LATCH wordmark
+            // in the display font, mirroring the M3 expressive wide rail spec.
+            Box(modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)) {
+                FloatingActionButton(
+                    onClick = { onSelect(LatchDestination.Home) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = LatchMark,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        if (railState.currentValue == WideNavigationRailValue.Expanded) {
+                            Spacer(Modifier.size(8.dp))
+                            Text(
+                                text = "LATCH",
+                                fontFamily = modernizFontFamily(),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                }
             }
         },
     ) {
-        Spacer(Modifier.height(8.dp))
         LatchDestination.entries.forEach { entry ->
-            NavigationRailItem(
+            WideNavigationRailItem(
                 selected = entry == selected,
                 onClick = { onSelect(entry) },
-                icon = { Icon(entry.icon, contentDescription = entry.label) },
+                icon = { Icon(entry.icon, contentDescription = null) },
                 label = { Text(entry.label) },
+                railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
+                iconPosition = NavigationItemIconPosition.Start,
             )
         }
     }

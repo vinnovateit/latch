@@ -145,10 +145,14 @@ private fun tokenize(pattern: String): List<Token> {
 }
 
 class KSimpleDateFormat(private val pattern: String, private val locale: Any? = null) {
+    // The pattern never changes; re-tokenising on every format dominated the
+    // derived-stats recompute over thousands of history records.
+    private val tokens = tokenize(pattern)
+
     fun format(date: KDate): String {
         val zone = TimeZone.currentSystemDefault()
         val value = local(date.time, zone)
-        return tokenize(pattern).joinToString("") { token ->
+        return tokens.joinToString("") { token ->
             token.literal?.let { return@joinToString it }
             when (token.pattern) {
                 "yyyy" -> value.year.toString().padStart(4, '0')

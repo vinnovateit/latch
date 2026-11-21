@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "SessionRepository"
 
@@ -233,6 +234,21 @@ class SessionRepository(
             return Result.success(Unit)
         }
 
+        // fetchHistory() (curl_easy_perform) and the Room write are blocking.
+        // Callers launch this from rememberCoroutineScope()/Dispatchers.Main, so
+        // offload at the boundary instead of trusting every caller to remember.
+        return withContext(ioDispatcher) {
+            syncPortalHistoryBlocking(client, userId, password, host, force)
+        }
+    }
+
+    private suspend fun syncPortalHistoryBlocking(
+        client: PortalHistoryClient,
+        userId: String,
+        password: String,
+        host: String,
+        force: Boolean,
+    ): Result<Unit> {
         return try {
             // The account endpoint (136.233.9.110) is a PUBLIC IP — history
             // sync works over any internet connection, not just the captive
