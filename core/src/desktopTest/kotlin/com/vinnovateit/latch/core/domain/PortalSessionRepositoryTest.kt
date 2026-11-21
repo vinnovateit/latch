@@ -5,6 +5,8 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.vinnovateit.latch.core.data.LatchDatabase
 import com.vinnovateit.latch.core.platform.ByteCounts
 import com.vinnovateit.latch.core.platform.ByteCounterSource
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.portal.PortalHistoryClient
 import com.vinnovateit.latch.core.stats.ThroughputMonitor
@@ -40,7 +42,11 @@ class PortalSessionRepositoryTest {
     private class FakePortalTransport : HttpTransport {
         val handles = mutableListOf<com.vinnovateit.latch.core.platform.NetworkHandle?>()
 
-        override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+        override fun open(url: JUrl, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+
             handles += handle
             return object : HttpURLConnection(url) {
                 override fun connect() {}
@@ -70,13 +76,17 @@ class PortalSessionRepositoryTest {
                 override fun getOutputStream() = java.io.ByteArrayOutputStream()
                 override fun getResponseCode() = 200
             }
-        }
+            }
     }
 
     private class SlowPortalTransport : HttpTransport {
         val logins = AtomicInteger(0)
 
-        override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+        override fun open(url: JUrl, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+
             val urlStr = url.toString()
             if ("chooseAuth" in urlStr) logins.incrementAndGet()
             return object : HttpURLConnection(url) {
@@ -95,7 +105,7 @@ class PortalSessionRepositoryTest {
                 override fun getOutputStream() = java.io.ByteArrayOutputStream()
                 override fun getResponseCode() = 200
             }
-        }
+            }
     }
 
     @BeforeTest
@@ -150,7 +160,11 @@ class PortalSessionRepositoryTest {
         """.trimIndent()
 
         val dynamicTransport = object : HttpTransport {
-            override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+            override fun open(url: JUrl, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+
                 return object : HttpURLConnection(url) {
                     override fun connect() {}
                     override fun disconnect() {}
@@ -166,7 +180,7 @@ class PortalSessionRepositoryTest {
                     override fun getOutputStream() = java.io.ByteArrayOutputStream()
                     override fun getResponseCode() = 200
                 }
-            }
+                }
         }
 
         val portalClient = PortalHistoryClient(dynamicTransport)

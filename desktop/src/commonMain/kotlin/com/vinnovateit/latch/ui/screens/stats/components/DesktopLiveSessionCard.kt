@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import com.vinnovateit.latch.core.mp.nowMillis
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -52,11 +53,11 @@ fun LiveSessionCard(
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
 
     var duration by remember(startTimeMillis) {
-        mutableLongStateOf(System.currentTimeMillis() - startTimeMillis)
+        mutableLongStateOf(nowMillis() - startTimeMillis)
     }
     LaunchedEffect(startTimeMillis) {
         while (true) {
-            duration = System.currentTimeMillis() - startTimeMillis
+            duration = nowMillis() - startTimeMillis
             delay(1000)
         }
     }

@@ -2,11 +2,14 @@ package com.vinnovateit.latch.core.stats
 
 import com.vinnovateit.latch.core.model.AggregatedDayRecord
 import com.vinnovateit.latch.core.model.PortalSessionRecord
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.vinnovateit.latch.core.mp.KSimpleDateFormat as SimpleDateFormat
+import com.vinnovateit.latch.core.mp.KDate as Date
+import com.vinnovateit.latch.core.mp.KCalendar as Calendar
+import com.vinnovateit.latch.core.mp.KLocale as Locale
+import com.vinnovateit.latch.core.mp.KThreadLocal
+import com.vinnovateit.latch.core.mp.nowMillis
 
-private val dayKeyFormat = ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
+private val dayKeyFormat = KThreadLocal { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
 
 /**
  * Aggregates individual [PortalSessionRecord] items into daily summary buckets [AggregatedDayRecord].
@@ -14,7 +17,7 @@ private val dayKeyFormat = ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-d
  */
 fun aggregateDays(
     sessions: List<PortalSessionRecord>,
-    nowMillis: Long = System.currentTimeMillis(),
+    nowMillis: Long = nowMillis(),
 ): List<AggregatedDayRecord> {
     val dayKeyFmt = dayKeyFormat.get() ?: SimpleDateFormat("yyyy-MM-dd", Locale.US)
     val todayKey = dayKeyFmt.format(Date(nowMillis))

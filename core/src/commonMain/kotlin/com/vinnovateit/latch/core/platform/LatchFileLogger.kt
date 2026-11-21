@@ -1,11 +1,15 @@
 package com.vinnovateit.latch.core.platform
 
-import java.io.File
-import java.io.FileWriter
-import java.io.PrintWriter
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.vinnovateit.latch.core.mp.JFile as File
+import com.vinnovateit.latch.core.mp.JFileWriter
+import com.vinnovateit.latch.core.mp.JPrintWriter
+import com.vinnovateit.latch.core.mp.KSimpleDateFormat as SimpleDateFormat
+import com.vinnovateit.latch.core.mp.KDate as Date
+import com.vinnovateit.latch.core.mp.KLocale as Locale
+import com.vinnovateit.latch.core.mp.useOutput
+import com.vinnovateit.latch.core.mp.usePrint
+import com.vinnovateit.latch.core.mp.withLock
+import com.vinnovateit.latch.core.mp.printStackTraceTo
 
 class LatchFileLogger(
     val logFile: File,
@@ -13,7 +17,6 @@ class LatchFileLogger(
 ) : Logger {
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
-    @Synchronized
     fun log(level: String, tag: String, message: String, throwable: Throwable? = null) {
         try {
             val parent = logFile.parentFile
@@ -25,12 +28,12 @@ class LatchFileLogger(
                 if (backup.exists()) backup.delete()
                 logFile.renameTo(backup)
             }
-            val timestamp = synchronized(dateFormat) { dateFormat.format(Date()) }
-            FileWriter(logFile, true).use { fw ->
-                PrintWriter(fw).use { pw ->
+            val timestamp = withLock(dateFormat) { dateFormat.format(Date()) }
+            JFileWriter(logFile, true).useOutput { fw ->
+                JPrintWriter(fw).usePrint { pw ->
                     pw.println("$timestamp [$level] [$tag] $message")
                     throwable?.let { t ->
-                        t.printStackTrace(pw)
+                        t.printStackTraceTo(pw)
                     }
                 }
             }

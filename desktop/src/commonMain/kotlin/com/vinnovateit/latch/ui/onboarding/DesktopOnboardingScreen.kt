@@ -277,9 +277,9 @@ fun DesktopOnboardingScreen(
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Credentials Configured", fontFamily = satoshiFontFamily(), fontWeight = FontWeight.Bold)
+                            Text("Credentials Configured", fontFamily = satoshiFontFamily(FontWeight.Bold), fontWeight = FontWeight.Bold)
                         } else {
-                            Text("Set Up Credentials", fontFamily = satoshiFontFamily(), fontWeight = FontWeight.Bold)
+                            Text("Set Up Credentials", fontFamily = satoshiFontFamily(FontWeight.Bold), fontWeight = FontWeight.Bold)
                         }
                     }
 

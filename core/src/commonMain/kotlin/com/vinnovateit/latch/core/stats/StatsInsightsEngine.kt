@@ -1,9 +1,12 @@
 package com.vinnovateit.latch.core.stats
 
 import com.vinnovateit.latch.core.model.PortalSessionRecord
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
+import com.vinnovateit.latch.core.mp.KSimpleDateFormat as SimpleDateFormat
+import com.vinnovateit.latch.core.mp.KDate as Date
+import com.vinnovateit.latch.core.mp.KCalendar as Calendar
+import com.vinnovateit.latch.core.mp.KLocale as Locale
+import com.vinnovateit.latch.core.mp.KThreadLocal
+import com.vinnovateit.latch.core.mp.nowMillis
 
 data class StatsInsights(
     val peakUsageTimeWindow: String,
@@ -23,7 +26,7 @@ data class StatsInsights(
     val nightOwlFormatted: Pair<String, String> = Pair("0", "B")
 )
 
-fun formatInsightDate(timestamp: Long, nowMillis: Long = System.currentTimeMillis()): String {
+fun formatInsightDate(timestamp: Long, nowMillis: Long = nowMillis()): String {
     val cal = Calendar.getInstance().apply { timeInMillis = timestamp }
     val recordYear = cal.get(Calendar.YEAR)
     val nowCal = Calendar.getInstance().apply { timeInMillis = nowMillis }
@@ -46,7 +49,7 @@ private fun getCalendarDayEpoch(timestamp: Long): Long {
 
 fun computeStatsInsights(
     sessions: List<PortalSessionRecord>,
-    nowMillis: Long = System.currentTimeMillis()
+    nowMillis: Long = nowMillis()
 ): StatsInsights {
     val nonZero = sessions.filter { it.loginTime > 0 && (it.uploadBytes > 0 || it.downloadBytes > 0) }
     if (nonZero.isEmpty()) {

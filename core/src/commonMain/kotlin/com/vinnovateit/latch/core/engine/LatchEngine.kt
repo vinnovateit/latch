@@ -16,6 +16,8 @@ import com.vinnovateit.latch.core.wifi.probeCampusNetwork
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import com.vinnovateit.latch.core.mp.nowMillis
+import com.vinnovateit.latch.core.mp.ioDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
@@ -36,11 +38,11 @@ enum class LatchCommand { CheckAndLogin, SilentCheck, Logout, Shutdown }
 class LatchEngine(
     private val platform: PlatformServices,
     private val sessions: SessionRepository,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + ioDispatcher),
     /** Overridable so tests can drive the health check without waiting a minute. */
     private val healthCheckIntervalMs: Long = HEALTH_CHECK_INTERVAL_MS,
     /** Wall-clock time, which keeps running while the machine sleeps. Overridable so tests can fake a wake. */
-    private val wallClock: () -> Long = System::currentTimeMillis,
+    private val wallClock: () -> Long = ::nowMillis,
 ) {
 
     private companion object {
@@ -64,7 +66,7 @@ class LatchEngine(
     private val commands = Channel<QueuedCommand>(Channel.UNLIMITED)
     private var healthCheckJob: Job? = null
     private var activeActionJob: Job? = null
-    @Volatile private var currentHandle: NetworkHandle? = null
+    @kotlin.concurrent.Volatile private var currentHandle: NetworkHandle? = null
     private var started = false
 
     /**

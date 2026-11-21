@@ -7,6 +7,8 @@ import com.vinnovateit.latch.core.platform.BuildInfo
 import com.vinnovateit.latch.core.platform.ByteCounterSource
 import com.vinnovateit.latch.core.platform.ByteCounts
 import com.vinnovateit.latch.core.platform.CredentialStore
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.KeyValueStore
 import com.vinnovateit.latch.core.platform.Logger
@@ -90,7 +92,7 @@ object ZeroByteCounters : ByteCounterSource {
 
 /** Onboarding has no business opening a connection; say so rather than hanging. */
 object ForbiddenHttpTransport : HttpTransport {
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection =
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
         error("onboarding must not make network calls, but something opened $url")
 }
 

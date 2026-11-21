@@ -1,4 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.*
 
@@ -9,121 +8,46 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.compose.desktop.native.bridge)
 }
 
-// Single JVM target. Windows/Linux/macOS differences are handled at RUNTIME via
-// the OsBindings interface, not with separate Kotlin targets -- Compose Desktop
-// produces one JVM artifact and jpackage runs per host OS.
+// The desktop app is a self-contained Kotlin/Native executable (SDL3 + Skia),
+// not a JVM application. The JVM target is gone; the native binary is the only
+// desktop distributable.
 kotlin {
-    jvm("desktop") {
-        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    linuxX64 {
+        binaries.all {
+            // platform.posix asks for libcrypt.so.1, which this binary never
+            // calls. --as-needed drops the DT_NEEDED so it starts on hosts with
+            // only libcrypt.so.2.
+            freeCompilerArgs += listOf("-linker-option", "--as-needed")
+        }
     }
 
     sourceSets {
-        val desktopMain by getting
-        val desktopTest by getting
-
         commonMain.dependencies {
             implementation(project(":core"))
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.ui)
-            implementation(compose.components.resources)
 
-            // Explicit coordinates -- see libs.versions.toml for why not compose.material3
-            implementation(libs.compose.material3)
+            // Official coordinates. The bridge plugin substitutes the port's
+            // Kotlin/Native klibs on the linuxX64 target only.
+            implementation("org.jetbrains.compose.runtime:runtime:${composeDesktopNative.composeRuntime}")
+            implementation("org.jetbrains.compose.ui:ui:${composeDesktopNative.compose}")
+            implementation("org.jetbrains.compose.foundation:foundation:${composeDesktopNative.compose}")
+            implementation("org.jetbrains.compose.animation:animation:${composeDesktopNative.compose}")
+            implementation("org.jetbrains.compose.material3:material3:${composeDesktopNative.composeMaterial3}")
+            implementation("org.jetbrains.compose.components:components-resources:${composeDesktopNative.compose}")
+            // The SDL window shell is the port's own API, no substitution.
+            implementation("com.bitsycore.compose:desktop-native-window:${composeDesktopNative.version}")
 
-            // NOTE: material-icons-extended is deliberately NOT declared. It is a
-            // 36 MB jar -- a third of the entire installer -- and only ~31 of its
-            // icons are ever used. When the remaining screens are ported, vendor
-            // those icons as ImageVector (the pattern already used by
-            // ThemedDrawables/ExportNotes in the Android app) rather than adding
-            // the dependency back.
-
-            implementation(libs.material.kolor)
+            // material-kolor ships no linuxX64 klib; the native source set
+            // provides the two symbols Latch's theme calls.
             implementation(libs.lifecycle.viewmodel.mp)
             implementation(libs.lifecycle.viewmodel.compose.mp)
             implementation(libs.lifecycle.runtime.compose.mp)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
         }
-
-        desktopMain.dependencies {
-            implementation(compose.desktop.currentOs)
-            // Required: Compose Desktop dispatches on the AWT event thread.
-            implementation(libs.kotlinx.coroutines.swing)
-            // Room, sqlite, OSHI and slf4j moved to :core along with the
-            // engine/platform code that uses them (Room is exposed as `api`
-            // there, so LatchDatabase is still visible here transitively).
-            // jna/jna-platform stay declared directly: WindowsBalloonNotifier
-            // and LinuxAppIndicatorTray (tray-icon integration, GUI-only,
-            // stayed in :desktop) call JNA APIs directly.
-            implementation(libs.jna)
-            implementation(libs.jna.platform)
-        }
-
-        // Compose UI tests for the desktop screens. They render offscreen via
-        // Skia, so they run headless in CI with no display server.
-        desktopTest.dependencies {
-            implementation(kotlin("test"))
-            implementation(compose.desktop.currentOs)
-            implementation(compose.desktop.uiTestJUnit4)
-        }
     }
-}
-
-// Compose Desktop renders through Skia offscreen here; without this the AWT
-// toolkit tries to reach a display server and the tests fail on a CI runner.
-tasks.named<Test>("desktopTest") {
-    systemProperty("java.awt.headless", "true")
-}
-
-/**
- * Headless verification of the Windows platform layer, so the risky native seams
- * (SSID detection, OSHI, DPAPI, Room) can be checked without launching the GUI.
- */
-val smoke by tasks.registering(JavaExec::class) {
-    group = "verification"
-    description = "Runs the headless platform smoke test."
-    mainClass.set("com.vinnovateit.latch.desktop.SmokeMainKt")
-    // For a jvm("desktop") target the runtime classpath configuration is named
-    // after the target.
-    classpath = files(
-        layout.buildDirectory.dir("classes/kotlin/desktop/main"),
-        layout.buildDirectory.dir("processedResources/desktop/main"),
-        configurations.named("desktopRuntimeClasspath"),
-    )
-    dependsOn("desktopMainClasses", "assembleDesktopMainResources")
-}
-
-val generateComposePropertiesBin by tasks.registering {
-    val outputFile = project.layout.buildDirectory.file("compose/tmp/checkRuntime/properties.bin")
-    outputs.file(outputFile)
-    doLast {
-        val file = outputFile.get().asFile
-        file.parentFile.mkdirs()
-        val clazz = Class.forName("org.jetbrains.compose.desktop.application.internal.JvmRuntimeProperties")
-        val ctor = clazz.getDeclaredConstructor(Int::class.javaPrimitiveType, Class.forName("java.util.List"))
-        ctor.isAccessible = true
-        val modules = listOf("java.base", "java.desktop", "java.logging", "jdk.crypto.ec", "java.management", "java.naming", "jdk.unsupported", "java.instrument")
-        val instance = ctor.newInstance(21, modules)
-        val fos = FileOutputStream(file)
-        val oos = ObjectOutputStream(fos)
-        try {
-            oos.writeObject(instance)
-        } finally {
-            oos.close()
-            fos.close()
-        }
-    }
-}
-
-tasks.matching { it.name == "checkRuntime" }.configureEach {
-    enabled = false
-}
-
-tasks.matching { it.name == "createRuntimeImage" }.configureEach {
-    dependsOn(generateComposePropertiesBin)
 }
 
 compose.resources {
@@ -133,118 +57,34 @@ compose.resources {
 }
 
 compose.desktop {
-    application {
-        mainClass = "com.vinnovateit.latch.desktop.MainKt"
-
-        jvmArgs += listOf(
-            "-Xms32m",
-            "-Xmx256m",
-            "-XX:MetaspaceSize=96m",
-            "-XX:MaxMetaspaceSize=256m",
-            "-Dfile.encoding=UTF-8",
-        )
-
-
-        // ProGuard is disabled for Desktop builds to prevent JVM stackmap verification errors (VerifyError).
-        // R8 / ProGuard is retained for Android release builds.
-        buildTypes.release.proguard {
-            isEnabled.set(false)
-        }
-
-
-        nativeDistributions {
-            // Each format is built only on its own OS; Dmg only on macOS.
-            targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.AppImage, TargetFormat.Rpm, TargetFormat.Dmg)
-            packageName = "Latch"
-            // jpackage REQUIRES MAJOR.MINOR.PATCH with MAJOR >= 1. The Android
-            // versionName "1.3" has only two components and would be rejected.
-            packageVersion = latchVersion
-            description = "Auto-login for VIT hostel Wi-Fi"
-            vendor = "VinnovateIT"
-            copyright = "(c) 2026 VinnovateIT"
-
-            // jpackage bundles a JRE via jlink, so this list is load-bearing.
-            // java.management -> OSHI, jdk.unsupported -> JNA's Unsafe.
-            // sqlite-bundled ships its own JNI lib, so java.sql is not needed.
-            modules("java.management", "java.naming", "jdk.unsupported", "java.instrument")
-
-            windows {
-                // Without this jpackage stamps its own stock Java icon onto
-                // Latch.exe, which is then what the Start menu, the desktop
-                // shortcut and Explorer show. Regenerate with
-                // `java GenerateIcon.java` in that directory -- it is built from
-                // the same path geometry as the tray and window icons.
-                iconFile.set(project.file("icons/latch.ico"))
-
-                menu = true
-                menuGroup = "Latch"
-                shortcut = true
-                // Per-user install: no admin prompt, and pairs correctly with an
-                // HKCU Run key and %LOCALAPPDATA% data paths.
-                perUserInstall = true
-                dirChooser = true
-                // MUST stay fixed forever. Change it and every MSI becomes a
-                // distinct product that installs side-by-side instead of upgrading.
-                upgradeUuid = "6f3b9c84-1d52-4e7a-9b06-2a8f5c14d7e3"
-                console = false
-            }
-
-            linux {
-                iconFile.set(project.file("icons/latch.png"))
-                menuGroup = "Latch"
-                appCategory = "Network"
-                shortcut = true
-            }
-
-            macOS {
-                // MUST stay fixed: macOS ties Keychain access, Location
-                // permission and the Login Items entry to this identifier.
-                bundleID = "com.vinnovateit.latch"
-                dockName = "Latch"
-                appCategory = "public.app-category.utilities"
-                // Regenerate with `java GenerateIcon.java` in icons/.
-                iconFile.set(project.file("icons/latch.icns"))
-                // CLLocationManager's instance authorizationStatus is macOS 11+;
-                // 12 is the oldest release still receiving security updates
-                // when this was set.
-                minimumSystemVersion = "12.0"
-                infoPlist {
-                    // Since macOS 14 the Wi-Fi network name is location data.
-                    // Without these keys the system never shows the prompt,
-                    // the name stays hidden, and Latch never logs in.
-                    extraKeysRawXml = """
-                        <key>NSLocationUsageDescription</key>
-                        <string>Latch reads the name of your Wi-Fi network so that it only signs in on VIT Wi-Fi. macOS treats the network name as location information.</string>
-                        <key>NSLocationWhenInUseUsageDescription</key>
-                        <string>Latch reads the name of your Wi-Fi network so that it only signs in on VIT Wi-Fi. macOS treats the network name as location information.</string>
-                    """.trimIndent()
-                }
-            }
+    native {
+        entryPoint = "com.vinnovateit.latch.desktop.main"
+        icon {
+            light.from("icons/latch-32.png", "icons/latch-128.png")
         }
     }
 }
 
-tasks.register<Tar>("packageReleaseTarGz") {
+/**
+ * Packages the native executable plus its data.kres resource bundle into a
+ * single .tar.gz, mirroring the old JVM release's "latch-<version>-linux-x64"
+ * wrapper layout so install.sh keeps working.
+ */
+tasks.register<Tar>("packageNativeReleaseTarGz") {
     group = "compose desktop"
-    description = "Packages release distributable directory into a .tar.gz archive"
-    dependsOn("createReleaseDistributable")
+    description = "Packages the native Linux distributable into a .tar.gz archive"
+    dependsOn("linkReleaseExecutableLinuxX64", "packageReleaseComposeResourcesLinuxX64")
 
-    archiveFileName.set("latch-$latchVersion-linux-x64.tar.gz")
+    archiveFileName.set("latch-native-$latchVersion-linux-x64.tar.gz")
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
     compression = Compression.GZIP
-    // Gradle 9 archives are reproducible by default, which also resets every
-    // file to 0644. That shipped bin/ launchers and the runtime's jspawnhelper
-    // non-executable, so extracted installs could not start. Keep the modes
-    // jpackage gave the app image.
-    useFileSystemPermissions()
 
-    // Compose Desktop places the app image one level deeper than the "app"
-    // directory, under a subdirectory named after packageName ("Latch") -
-    // package that directly so the tar has a single latch-1.3.8/ wrapper
-    // around bin/ and lib/, matching what install.sh's --strip-components=1
-    // expects (the previous "app" path produced an extra Latch/ nesting
-    // level that broke the installer).
-    from(layout.buildDirectory.dir("compose/binaries/main-release/app/Latch")) {
-        into("latch-$latchVersion")
+    from(layout.buildDirectory.file("bin/linuxX64/releaseExecutable/desktop.kexe")) {
+        into("latch-native-$latchVersion/bin")
+        rename { "Latch" }
+        filePermissions { unix(0b111101101) } // 0755
+    }
+    from(layout.buildDirectory.file("bin/linuxX64/releaseExecutable/data.kres")) {
+        into("latch-native-$latchVersion/bin")
     }
 }

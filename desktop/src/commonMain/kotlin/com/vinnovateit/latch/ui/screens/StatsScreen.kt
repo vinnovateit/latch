@@ -60,7 +60,10 @@ import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 import com.vinnovateit.latch.ui.theme.StatsColorPalettes
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import java.io.File
+import com.vinnovateit.latch.core.mp.JFile as File
+import com.vinnovateit.latch.core.mp.nowMillis
+import com.vinnovateit.latch.core.mp.userHome
+import com.vinnovateit.latch.core.mp.useOutput
 
 enum class StatsSubScreen {
     Main,
@@ -99,7 +102,7 @@ fun StatsScreen(
     val chartItems by sessions.chartItems.collectAsStateWithLifecycle()
 
     var selectedDayTimestamp by remember { mutableStateOf<Long?>(null) }
-    val todayKey = remember { formatDate(System.currentTimeMillis(), "yyyy-MM-dd") }
+    val todayKey = remember { formatDate(nowMillis(), "yyyy-MM-dd") }
     val selectedDateKey = selectedDayTimestamp?.let { formatDate(it, "yyyy-MM-dd") } ?: todayKey
     val isToday = selectedDateKey == todayKey
 
@@ -161,11 +164,11 @@ fun StatsScreen(
                                     menuExpanded = false
                                     coroutineScope.launch {
                                         try {
-                                            val userHome = System.getProperty("user.home") ?: "."
+                                            val userHome = userHome()
                                             val downloadsDir = File(userHome, "Downloads").takeIf { it.exists() && it.isDirectory }
                                                 ?: File(userHome)
-                                            val reportFile = File(downloadsDir, "latch-session-report-${System.currentTimeMillis()}.html")
-                                            reportFile.outputStream().use { stream ->
+                                            val reportFile = File(downloadsDir, "latch-session-report-${nowMillis()}.html")
+                                            reportFile.outputStream().useOutput { stream ->
                                                 generatePortalHtmlReport(
                                                     sessions = portalHistory.filter { it.uploadBytes > 0L || it.downloadBytes > 0L },
                                                     outputStream = stream,
@@ -173,7 +176,7 @@ fun StatsScreen(
                                                     userId = platform.credentials.userId() ?: "",
                                                 )
                                             }
-                                            platform.systemActions.openUrl(reportFile.toURI().toString())
+                                            platform.systemActions.openUrl("file://${reportFile.path}")
                                         } catch (e: Exception) {
                                             platform.logger.e("StatsScreen", "Failed to export HTML report", e)
                                         }
@@ -330,7 +333,7 @@ fun StatsScreen(
                                 }
 
                                 item {
-                                    val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())} Sessions"
+                                    val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: nowMillis())} Sessions"
                                     Text(
                                         text = title,
                                         style = MaterialTheme.typography.titleMedium,
@@ -359,7 +362,7 @@ fun StatsScreen(
                                     }
                                 } else {
                                     item {
-                                        val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())}."
+                                        val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: nowMillis())}."
                                         Surface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -432,7 +435,7 @@ fun StatsScreen(
                             }
 
                             item {
-                                val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())} Sessions"
+                                val title = if (isToday) "Today's Sessions" else "${formatDisplayDate(selectedDayTimestamp ?: nowMillis())} Sessions"
                                 Text(
                                     text = title,
                                     style = MaterialTheme.typography.titleMedium,
@@ -461,7 +464,7 @@ fun StatsScreen(
                                 }
                             } else {
                                 item {
-                                    val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: System.currentTimeMillis())}."
+                                    val emptyText = if (isToday) "No active portal sessions recorded today." else "No active portal sessions recorded on ${formatDisplayDate(selectedDayTimestamp ?: nowMillis())}."
                                     Surface(
                                         modifier = Modifier
                                             .fillMaxWidth()

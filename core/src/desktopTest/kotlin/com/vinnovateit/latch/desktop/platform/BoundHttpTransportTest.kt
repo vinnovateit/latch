@@ -1,5 +1,7 @@
 package com.vinnovateit.latch.desktop.platform
 
+import com.vinnovateit.latch.core.mp.JUrl
+
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -68,7 +70,7 @@ class BoundHttpTransportTest {
     fun closeServers() = servers.forEach { it.close() }
 
     private fun open(server: ScriptedServer, path: String = "/"): HttpURLConnection =
-        BoundHttpTransport { loopback }.open(URL("http://localhost:${server.port}$path"), null)
+        BoundHttpTransport { loopback }.open(JUrl("http://localhost:${server.port}$path"), null).delegate
 
     @Test
     fun `posts the body with its headers and reads a sized response`() {
@@ -163,14 +165,14 @@ class BoundHttpTransportTest {
         val server = serve("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
         // TEST-NET-1: never assigned to this machine, so binding to it must fail.
         val unowned = InetAddress.getByName("192.0.2.1")
-        val connection = BoundHttpTransport { unowned }.open(URL("http://localhost:${server.port}/"), null)
+        val connection = BoundHttpTransport { unowned }.open(JUrl("http://localhost:${server.port}/"), null).delegate
 
         assertFailsWith<IOException> { connection.responseCode }
     }
 
     @Test
     fun `without an address the default route is used`() {
-        val connection = BoundHttpTransport { null }.open(URL("http://localhost:1/"), null)
+        val connection = BoundHttpTransport { null }.open(JUrl("http://localhost:1/"), null).delegate
 
         assertTrue(connection !is BoundHttpURLConnection)
     }

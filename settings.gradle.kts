@@ -2,6 +2,7 @@ System.setProperty("java.version", "21.0.1")
 
 pluginManagement {
     repositories {
+        maven("https://maven.bitsycore.com/releases")
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -9,6 +10,7 @@ pluginManagement {
 }
 dependencyResolutionManagement {
     repositories {
+        maven("https://maven.bitsycore.com/releases")
         google()
         mavenCentral()
     }

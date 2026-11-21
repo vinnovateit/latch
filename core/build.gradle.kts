@@ -25,9 +25,20 @@ kotlin {
         }
     }
 
+    // Kotlin/Native desktop target for the SDL/Skia build. Kept alongside the
+    // JVM target so the CLI and JVM reference build continue to work.
+    linuxX64 {
+        compilations.getByName("main") {
+            cinterops {
+                create("curl")
+            }
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.serialization.json)
 
             // LatchDatabase (in commonMain -- Room's expect/actual
@@ -62,6 +73,12 @@ kotlin {
         desktopTest.dependencies {
             implementation(kotlin("test"))
         }
+
+        val linuxX64Main by getting
+        linuxX64Main.dependencies {
+            // Bundled SQLite ships a linuxX64 klib, so Room needs no JNI here.
+            api(libs.sqlite.bundled)
+        }
     }
 }
 
@@ -71,6 +88,7 @@ kotlin {
 dependencies {
     add("kspDesktop", libs.room.compiler.desktop)
     add("kspAndroid", libs.room.compiler.desktop)
+    add("kspLinuxX64", libs.room.compiler.desktop)
 }
 
 // latch-version.properties is checked in as `version=${latchVersion}` and is the

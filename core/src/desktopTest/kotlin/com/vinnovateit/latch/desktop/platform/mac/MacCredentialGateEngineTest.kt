@@ -8,6 +8,8 @@ import com.vinnovateit.latch.core.platform.BuildInfo
 import com.vinnovateit.latch.core.platform.ByteCounterSource
 import com.vinnovateit.latch.core.platform.ByteCounts
 import com.vinnovateit.latch.core.platform.CredentialStore
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.InMemoryKeyValueStore
 import com.vinnovateit.latch.core.platform.KeyValueStore
@@ -240,7 +242,11 @@ private class PortalTransport(private val online: Boolean) : HttpTransport {
     /** A different network: its portal has not seen a login yet. */
     fun joinNewNetwork() = loggedIn.set(false)
 
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: NetworkHandle?): HttpURLConnection {
+
         val target = url.toString()
         return object : HttpURLConnection(url) {
             override fun connect() = Unit
@@ -269,7 +275,7 @@ private class PortalTransport(private val online: Boolean) : HttpTransport {
             override fun getInputStream() = ByteArrayInputStream("<html>ok</html>".toByteArray())
             override fun getErrorStream() = ByteArrayInputStream(ByteArray(0))
         }
-    }
+        }
 }
 
 private object NoCounters : ByteCounterSource {
