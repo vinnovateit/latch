@@ -7,6 +7,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import com.compose.sdl.Window
@@ -24,6 +30,7 @@ import com.vinnovateit.latch.desktop.platform.NativeNotifier
 import com.vinnovateit.latch.desktop.platform.NativeTray
 import com.vinnovateit.latch.ui.LatchRoot
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
+import com.vinnovateit.latch.ui.chrome.LatchBackHost
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 
@@ -78,6 +85,7 @@ fun main(args: Array<String>) {
             val startHidden = "--hidden" in args
             val windowVisible = remember { mutableStateOf(!startHidden) }
             val appMenu = remember { AppMenuHost() }
+            val backHost = remember { LatchBackHost() }
             val tray = remember { NativeTray() }
 
             requestShow = { windowVisible.value = true }
@@ -144,6 +152,14 @@ fun main(args: Array<String>) {
                     undecorated = true,
                     resizable = true,
                     onCloseRequest = { windowVisible.value = false },
+                    onKeyEvent = { event ->
+                        val isBack = event.key == Key.Backspace ||
+                            (event.isAltPressed && event.key == Key.DirectionLeft)
+                        if (isBack && event.type == KeyEventType.KeyDown) {
+                            backHost.onBack?.invoke()
+                            true
+                        } else false
+                    },
                 ) {
                     LatchWindow(onCloseRequest = { windowVisible.value = false }, appMenu = appMenu) {
                         LatchRoot(
@@ -157,6 +173,7 @@ fun main(args: Array<String>) {
                             onInstallUpdate = {},
                             onDismissUpdate = {},
                             appMenu = appMenu,
+                            backHost = backHost,
                         )
                     }
                 }

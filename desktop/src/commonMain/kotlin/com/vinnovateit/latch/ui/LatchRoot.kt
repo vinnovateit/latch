@@ -52,6 +52,7 @@ import com.vinnovateit.latch.ui.components.LatchIcons
 import com.vinnovateit.latch.ui.theme.modernizFontFamily
 import com.vinnovateit.latch.ui.chrome.AppMenuActions
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
+import com.vinnovateit.latch.ui.chrome.LatchBackHost
 import com.vinnovateit.latch.ui.components.HowItWorksDialog
 import com.vinnovateit.latch.ui.navigation.LatchDestination
 import com.vinnovateit.latch.ui.onboarding.DesktopOnboardingScreen
@@ -92,6 +93,7 @@ fun LatchRoot(
      * chrome, which is how tests and previews render this screen.
      */
     appMenu: AppMenuHost? = null,
+    backHost: LatchBackHost? = null,
 ) {
     LatchTheme {
         Surface(
@@ -262,6 +264,15 @@ fun LatchRoot(
                                 // setup, About and the update screen never show it.
                                 // Settings is offered only when the rail is not
                                 // already providing it and we are not on it.
+                                DisposableEffect(backHost, destination) {
+                                    backHost?.publish(
+                                        if (destination != LatchDestination.Home) {
+                                            { destination = LatchDestination.Home }
+                                        } else null,
+                                    )
+                                    onDispose { backHost?.publish(null) }
+                                }
+
                                 DisposableEffect(appMenu, railVisible, destination) {
                                     appMenu?.publish(
                                         AppMenuActions(

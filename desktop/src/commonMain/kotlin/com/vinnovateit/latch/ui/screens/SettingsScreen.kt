@@ -106,7 +106,7 @@ fun SettingsScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             LatchDetailHeader(
                 title = "Settings",
-                onBack = null,
+                onBack = onBack,
             )
 
             Column(
