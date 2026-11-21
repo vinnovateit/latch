@@ -2,7 +2,8 @@ package com.vinnovateit.latch.desktop.platform
 
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.NetworkHandle
-import java.net.HttpURLConnection
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import java.net.URL
 
 /**
@@ -26,6 +27,6 @@ import java.net.URL
  * send Wi-Fi-addressed packets out of the Ethernet port.
  */
 class DesktopHttpTransport : HttpTransport {
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection =
-        url.openConnection() as HttpURLConnection
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(java.net.URL(url.toString()).openConnection() as java.net.HttpURLConnection)
 }

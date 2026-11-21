@@ -1,5 +1,7 @@
 package com.vinnovateit.latch.desktop.platform
 
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.NetworkHandle
 import java.io.BufferedInputStream
@@ -36,9 +38,10 @@ import javax.net.ssl.SSLSocketFactory
 class BoundHttpTransport(
     private val localAddress: (NetworkHandle?) -> InetAddress?,
 ) : HttpTransport {
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
-        val address = localAddress(handle) ?: return url.openConnection() as HttpURLConnection
-        return BoundHttpURLConnection(url, address)
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection {
+        val javaUrl = URL(url.toString())
+        val address = localAddress(handle) ?: return JHttpConnection(javaUrl.openConnection() as HttpURLConnection)
+        return JHttpConnection(BoundHttpURLConnection(javaUrl, address))
     }
 }
 

@@ -1,8 +1,8 @@
 package com.vinnovateit.latch.core.platform
 
 import kotlinx.coroutines.flow.Flow
-import java.net.HttpURLConnection
-import java.net.URL
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -53,7 +53,7 @@ interface NetworkHandle {
  * both Ethernet and Wi-Fi -- see DesktopHttpTransport.
  */
 interface HttpTransport {
-    fun open(url: URL, handle: NetworkHandle?): HttpURLConnection
+    fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection
 }
 
 // ---------------------------------------------------------------------------

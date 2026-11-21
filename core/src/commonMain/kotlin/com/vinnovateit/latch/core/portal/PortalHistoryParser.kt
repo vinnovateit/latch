@@ -1,9 +1,9 @@
 package com.vinnovateit.latch.core.portal
 
 import com.vinnovateit.latch.core.model.PortalSessionRecord
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.regex.Pattern
+import com.vinnovateit.latch.core.mp.KSimpleDateFormat as SimpleDateFormat
+import com.vinnovateit.latch.core.mp.KLocale as Locale
+import com.vinnovateit.latch.core.mp.KPattern as Pattern
 
 object PortalHistoryParser {
     private val ROW_PATTERN = Pattern.compile(

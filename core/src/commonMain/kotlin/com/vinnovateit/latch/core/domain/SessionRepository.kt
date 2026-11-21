@@ -23,6 +23,8 @@ import com.vinnovateit.latch.core.stats.computeChartItems
 import com.vinnovateit.latch.core.stats.computeStatsInsights
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import com.vinnovateit.latch.core.mp.nowMillis
+import com.vinnovateit.latch.core.mp.ioDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -52,7 +54,7 @@ class SessionRepository(
     private val statsDao: StatsDao,
     private val throughput: ThroughputMonitor,
     private val portalClient: PortalHistoryClient? = null,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + ioDispatcher),
     private val logger: Logger = Platform.logger,
     /**
      * Resolves the Wi-Fi network the portal lives on. Injected so tests can
@@ -169,7 +171,7 @@ class SessionRepository(
     fun startSession() {
         if (sessionUpdateJob?.isActive == true || _liveStatus.value != null) return
 
-        val startTime = System.currentTimeMillis()
+        val startTime = nowMillis()
         _liveStatus.value = LiveConnectionStatus(
             startTimeMillis = startTime,
             liveData = listOf(LiveDataPoint(startTime, DataUsage(0, 0))),
@@ -179,7 +181,7 @@ class SessionRepository(
         sessionUpdateJob = scope.launch {
             throughput.dataUsageFlow.collect { usage ->
                 val current = _liveStatus.value ?: return@collect
-                val next = current.liveData + LiveDataPoint(System.currentTimeMillis(), usage)
+                val next = current.liveData + LiveDataPoint(nowMillis(), usage)
                 _liveStatus.value = current.copy(
                     liveData = if (next.size > LIVE_HISTORY_CAP) next.drop(1) else next,
                     totalRxBytes = current.totalRxBytes + usage.rxBytes,
@@ -242,7 +244,7 @@ class SessionRepository(
                 return Result.failure(IllegalStateException("Not connected to Wi-Fi"))
             }
 
-            val now = System.currentTimeMillis()
+            val now = nowMillis()
             if (!force && (now - lastSyncTimeMillis < 15 * 60 * 1000L) && _portalHistory.value.isNotEmpty()) {
                 logger.d(TAG, "Skipping portal sync: within 15-minute cooldown and cached data present.")
                 return Result.success(Unit)

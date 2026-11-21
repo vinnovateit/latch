@@ -1,5 +1,7 @@
 package com.vinnovateit.latch.core.platform.android
 
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.NetworkHandle
 import java.net.HttpURLConnection
@@ -11,8 +13,9 @@ import java.net.URL
  * this is just that same call behind the shared HttpTransport seam.
  */
 class AndroidHttpTransport : HttpTransport {
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection {
+        val javaUrl = URL(url.toString())
         val network = (handle as? AndroidNetworkHandle)?.network
-        return (network?.openConnection(url) ?: url.openConnection()) as HttpURLConnection
+        return JHttpConnection((network?.openConnection(javaUrl) ?: javaUrl.openConnection()) as HttpURLConnection)
     }
 }

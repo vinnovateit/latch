@@ -1,5 +1,6 @@
 package com.vinnovateit.latch.core.wifi
 
+import com.vinnovateit.latch.core.mp.ioDispatcher
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.WifiPlatform
@@ -38,7 +39,7 @@ suspend fun probeCampusNetwork(
     wifi: WifiPlatform,
     transport: HttpTransport,
     logger: Logger,
-): CampusNetworkState = withContext(Dispatchers.IO) {
+): CampusNetworkState = withContext(ioDispatcher) {
     val ssid = wifi.currentSsid()
     if (!wifi.isConnectedToWifi()) return@withContext CampusNetworkState(false, false, ssid, wifi.requiresKnownSsid)
 

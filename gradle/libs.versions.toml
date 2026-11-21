@@ -25,7 +25,8 @@ foundationVersion = "1.12.0"
 # --- :desktop (Compose Multiplatform / JVM) ---
 # Kept separate from the Android versions above: the desktop module resolves the
 # multiplatform artifact variants, which are versioned independently.
-composeMultiplatform = "1.12.0"
+composeMultiplatform = "1.12.2"
+composeDesktopNative = "1.12.2-4"
 # Explicitly NOT compose.material3 (which tracks composeMultiplatform). The
 # desktop UI uses expressive APIs -- LoadingIndicator, ExperimentalMaterial3-
 # ExpressiveApi -- that only exist in the alpha line.
@@ -33,6 +34,7 @@ composeMaterial3Mp = "1.12.0-alpha03"
 ksp = "2.3.12"
 lifecycleMp = "2.11.0"
 kotlinxCoroutines = "1.11.0"
+kotlinxDateTime = "0.6.2"
 roomKmp = "2.8.5"
 sqliteBundled = "2.7.0"
 oshi = "7.6.1"
@@ -49,6 +51,7 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+compose-desktop-native-bridge = { id = "com.bitsycore.compose-desktop-native.bridge", version.ref = "composeDesktopNative" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 
 [libraries]
@@ -109,6 +112,7 @@ lifecycle-viewmodel-mp = { module = "androidx.lifecycle:lifecycle-viewmodel", ve
 lifecycle-viewmodel-compose-mp = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycleMp" }
 lifecycle-runtime-compose-mp = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycleMp" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDateTime" }
 # Required: Compose Desktop dispatches on the AWT event thread.
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinxCoroutines" }
 room-runtime-desktop = { module = "androidx.room:room-runtime", version.ref = "roomKmp" }

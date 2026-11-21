@@ -1,4 +1,5 @@
 package com.vinnovateit.latch.core.portal
+import com.vinnovateit.latch.core.mp.nowMillis
 
 import com.vinnovateit.latch.core.model.PortalSessionRecord
 
@@ -7,7 +8,7 @@ object PortalLogoutParser {
     private val BYTES_SENT_REGEX = Regex("""Bytes\s+Sent\s*:\s*(\d+)""", RegexOption.IGNORE_CASE)
     private val BYTES_RECEIVED_REGEX = Regex("""Bytes\s+Received\s*:\s*(\d+)""", RegexOption.IGNORE_CASE)
 
-    fun parse(html: String, logoutTimeMillis: Long = System.currentTimeMillis()): PortalSessionRecord? {
+    fun parse(html: String, logoutTimeMillis: Long = nowMillis()): PortalSessionRecord? {
         val timeMatch = TIME_SPENT_REGEX.find(html) ?: return null
 
         val hours = timeMatch.groupValues.getOrNull(1)?.toLongOrNull() ?: 0L

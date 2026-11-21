@@ -6,9 +6,15 @@ import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.NetworkHandle
 import com.vinnovateit.latch.core.platform.Platform
 import com.vinnovateit.latch.core.platform.logger
-import java.net.URL
-import java.net.URLEncoder
-import java.util.regex.Pattern
+import com.vinnovateit.latch.core.mp.JUrl
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.KPattern as Pattern
+import com.vinnovateit.latch.core.mp.KCalendar as Calendar
+import com.vinnovateit.latch.core.mp.KLocale as Locale
+import com.vinnovateit.latch.core.mp.formatUs
+import com.vinnovateit.latch.core.mp.urlEncode
+import com.vinnovateit.latch.core.mp.useReader
+import com.vinnovateit.latch.core.mp.useWriter
 
 class PortalHistoryClient(
     private val transport: HttpTransport,
@@ -42,10 +48,10 @@ class PortalHistoryClient(
         val startMonth = "00" // Jan (0-indexed)
         val startDay = "01"
 
-        val cal = java.util.Calendar.getInstance()
-        val endYear = cal.get(java.util.Calendar.YEAR).toString()
-        val endMonth = String.format(java.util.Locale.US, "%02d", cal.get(java.util.Calendar.MONTH))
-        val endDay = String.format(java.util.Locale.US, "%02d", cal.get(java.util.Calendar.DAY_OF_MONTH))
+        val cal = Calendar.getInstance()
+        val endYear = cal.get(Calendar.YEAR).toString()
+        val endMonth = formatUs("%02d", cal.get(Calendar.MONTH))
+        val endDay = formatUs("%02d", cal.get(Calendar.DAY_OF_MONTH))
 
         return DateFilter(
             startYear = startYear,
@@ -64,7 +70,7 @@ class PortalHistoryClient(
         host: String = DEFAULT_PORTAL_HOST
     ): Result<List<PortalSessionRecord>> {
         return try {
-            val mainUrl = URL("http://$host/registration/Main.jsp?wispId=1")
+            val mainUrl = JUrl("http://$host/registration/Main.jsp?wispId=1")
             logger.d(TAG, "Requesting portal history URL: $mainUrl")
             val conn1 = transport.open(mainUrl, handle)
             conn1.connectTimeout = CONNECT_TIMEOUT_MS
@@ -72,22 +78,22 @@ class PortalHistoryClient(
             conn1.instanceFollowRedirects = false
             conn1.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
 
-            val mainHtml = conn1.inputStream.bufferedReader().use { it.readText() }
+            val mainHtml = conn1.inputStream!!.bufferedReader().useReader { it.readText() }
             logger.d(TAG, "Response code: ${conn1.responseCode}")
             val setCookieHeader = conn1.getHeaderField("Set-Cookie")
             var cookie = setCookieHeader?.substringBefore(";") ?: ""
 
             // Extract chooseAuth.do action URL (which may contain ;jsessionid=)
             val actionMatcher = Pattern.compile("action=[\"']([^\"']*chooseAuth\\.do[^\"']*)[\"']", Pattern.CASE_INSENSITIVE).matcher(mainHtml)
-            val actionPath = if (actionMatcher.find()) actionMatcher.group(1) else "/registration/chooseAuth.do"
-            val loginUrl = if (actionPath.startsWith("http")) URL(actionPath) else URL("http://$host$actionPath")
+            val actionPath = if (actionMatcher.find()) actionMatcher.group(1) ?: "/registration/chooseAuth.do" else "/registration/chooseAuth.do"
+            val loginUrl = if (actionPath.startsWith("http")) JUrl(actionPath) else JUrl("http://$host$actionPath")
 
             // Step 2: POST credentials
             val postData = buildString {
-                append("loginUserId=").append(URLEncoder.encode(userId, "UTF-8"))
-                append("&authType=").append(URLEncoder.encode("Pronto", "UTF-8"))
-                append("&loginPassword=").append(URLEncoder.encode(password, "UTF-8"))
-                append("&submit=").append(URLEncoder.encode("Login", "UTF-8"))
+                append("loginUserId=").append(urlEncode(userId, ))
+                append("&authType=").append(urlEncode("Pronto", ))
+                append("&loginPassword=").append(urlEncode(password, ))
+                append("&submit=").append(urlEncode("Login", ))
             }
 
             val conn2 = transport.open(loginUrl, handle)
@@ -102,30 +108,30 @@ class PortalHistoryClient(
                 conn2.setRequestProperty("Cookie", cookie)
             }
 
-            conn2.outputStream.bufferedWriter().use { it.write(postData) }
+            conn2.outputStream.bufferedWriter().useWriter { it.write(postData) }
             val conn2Cookie = conn2.getHeaderField("Set-Cookie")
             if (!conn2Cookie.isNullOrEmpty()) {
                 cookie = conn2Cookie.substringBefore(";")
             }
             val responseCode2 = conn2.responseCode
             val stream2 = if (responseCode2 in 200..399) conn2.inputStream else conn2.errorStream
-            stream2?.bufferedReader()?.use { it.readText() }
+            stream2?.bufferedReader()?.useReader { it.readText() }
 
             // Step 3: Query history with registration number date range
             val dateFilter = computeDateFilter(userId)
             val filterPostData = buildString {
-                append("location=").append(URLEncoder.encode("allLocations", "UTF-8"))
-                append("&parameter=").append(URLEncoder.encode("custom", "UTF-8"))
-                append("&customStartMonth=").append(URLEncoder.encode(dateFilter.startMonth, "UTF-8"))
-                append("&customStartDay=").append(URLEncoder.encode(dateFilter.startDay, "UTF-8"))
-                append("&customStartYear=").append(URLEncoder.encode(dateFilter.startYear, "UTF-8"))
-                append("&customEndMonth=").append(URLEncoder.encode(dateFilter.endMonth, "UTF-8"))
-                append("&customEndDay=").append(URLEncoder.encode(dateFilter.endDay, "UTF-8"))
-                append("&customEndYear=").append(URLEncoder.encode(dateFilter.endYear, "UTF-8"))
-                append("&button=").append(URLEncoder.encode("View", "UTF-8"))
+                append("location=").append(urlEncode("allLocations", ))
+                append("&parameter=").append(urlEncode("custom", ))
+                append("&customStartMonth=").append(urlEncode(dateFilter.startMonth, ))
+                append("&customStartDay=").append(urlEncode(dateFilter.startDay, ))
+                append("&customStartYear=").append(urlEncode(dateFilter.startYear, ))
+                append("&customEndMonth=").append(urlEncode(dateFilter.endMonth, ))
+                append("&customEndDay=").append(urlEncode(dateFilter.endDay, ))
+                append("&customEndYear=").append(urlEncode(dateFilter.endYear, ))
+                append("&button=").append(urlEncode("View", ))
             }
 
-            val filterUrl = URL("http://$host/registration/customerSessionHistory.do")
+            val filterUrl = JUrl("http://$host/registration/customerSessionHistory.do")
             logger.d(TAG, "Requesting portal history URL: $filterUrl")
             val conn3 = transport.open(filterUrl, handle)
             conn3.requestMethod = "POST"
@@ -139,15 +145,15 @@ class PortalHistoryClient(
                 conn3.setRequestProperty("Cookie", cookie)
             }
 
-            conn3.outputStream.bufferedWriter().use { it.write(filterPostData) }
-            var historyHtml = conn3.inputStream.bufferedReader().use { it.readText() }
+            conn3.outputStream.bufferedWriter().useWriter { it.write(filterPostData) }
+            var historyHtml = conn3.inputStream!!.bufferedReader().useReader { it.readText() }
             logger.d(TAG, "Response code: ${conn3.responseCode}")
             var records = PortalHistoryParser.parse(historyHtml)
             logger.d(TAG, "Parsed ${records.size} records")
 
             // Fallback to default GET if filtered request returns no records
             if (records.isEmpty()) {
-                val fallbackUrl = URL("http://$host/registration/main.do?content_key=%2FCustomerSessionHistory.jsp")
+                val fallbackUrl = JUrl("http://$host/registration/main.do?content_key=%2FCustomerSessionHistory.jsp")
                 logger.d(TAG, "Requesting portal history URL: $fallbackUrl")
                 val connFallback = transport.open(fallbackUrl, handle)
                 connFallback.requestMethod = "GET"
@@ -158,7 +164,7 @@ class PortalHistoryClient(
                 if (cookie.isNotEmpty()) {
                     connFallback.setRequestProperty("Cookie", cookie)
                 }
-                historyHtml = connFallback.inputStream.bufferedReader().use { it.readText() }
+                historyHtml = connFallback.inputStream!!.bufferedReader().useReader { it.readText() }
                 logger.d(TAG, "Response code: ${connFallback.responseCode}")
                 records = PortalHistoryParser.parse(historyHtml)
                 logger.d(TAG, "Parsed ${records.size} records")

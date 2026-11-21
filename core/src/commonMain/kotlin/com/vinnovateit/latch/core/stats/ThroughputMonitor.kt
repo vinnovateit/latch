@@ -2,6 +2,8 @@ package com.vinnovateit.latch.core.stats
 
 import com.vinnovateit.latch.core.model.DataUsage
 import com.vinnovateit.latch.core.platform.ByteCounterSource
+import com.vinnovateit.latch.core.mp.nowMillis
+import com.vinnovateit.latch.core.mp.ioDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,9 +29,9 @@ import kotlinx.coroutines.launch
 class ThroughputMonitor(
     private val source: ByteCounterSource,
     private val intervalMs: Long = 2000L,
-    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val clock: () -> Long = { nowMillis() },
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private var loggingJob: Job? = null
 
     private var lastRxBytes: Long = 0
