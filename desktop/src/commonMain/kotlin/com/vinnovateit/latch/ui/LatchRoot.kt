@@ -105,7 +105,6 @@ fun LatchRoot(
             var validatingCredentials by remember { mutableStateOf(false) }
             var credentialValidationError by remember { mutableStateOf<String?>(null) }
             val scope = rememberCoroutineScope()
-            var showAbout by remember { mutableStateOf(false) }
             var showHowItWorks by remember { mutableStateOf(false) }
             var destination by remember { mutableStateOf(LatchDestination.Home) }
 
@@ -139,7 +138,6 @@ fun LatchRoot(
                 editingCredentials -> "Credentials"
                 !hasSeenOnboarding -> "Onboarding"
                 !hasCredentials -> "Credentials"
-                showAbout -> "About"
                 showUpdateScreen -> "Update"
                 else -> "Main"
             }
@@ -241,19 +239,6 @@ fun LatchRoot(
                             )
                         }
 
-                        "About" -> {
-                            AboutScreen(
-                                platform = platform,
-                                onBack = { showAbout = false },
-                                updateState = updateState,
-                                onCheckForUpdates = onCheckForUpdates,
-                                onDownloadUpdate = onDownloadUpdate,
-                                onCancelDownload = onCancelDownload,
-                                onInstallUpdate = onInstallUpdate,
-                                onDismissUpdate = onDismissUpdate,
-                            )
-                        }
-
                         "Update" -> {
                             UpdateScreen(
                                 state = updateState,
@@ -285,7 +270,7 @@ fun LatchRoot(
                                             showMenu = !railVisible,
                                             onOpenSettings = { destination = LatchDestination.Settings },
                                             onHowItWorks = { showHowItWorks = true },
-                                            onOpenAbout = { showAbout = true },
+                                            onOpenAbout = { destination = LatchDestination.About },
                                         ),
                                     )
                                     onDispose { appMenu?.publish(null) }
@@ -297,7 +282,7 @@ fun LatchRoot(
                                             selected = destination,
                                             onSelect = { destination = it },
                                             onHowItWorks = { showHowItWorks = true },
-                                            onAbout = { showAbout = true },
+                                            onAbout = { destination = LatchDestination.About },
                                             expanded = railExpanded,
                                         )
                                     }
@@ -332,9 +317,10 @@ fun LatchRoot(
                                         label = "LatchDestination",
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
                                     ) { current ->
-                                        // Stats and Settings always lead back to Home,
-                                        // with or without the rail beside them.
-                                        val back: () -> Unit = { destination = LatchDestination.Home }
+                                        // With the rail visible it provides navigation;
+                                        // without it, secondary screens need a back arrow.
+                                        val back: (() -> Unit)? =
+                                            if (!railVisible) ({ destination = LatchDestination.Home }) else null
 
                                         when (current) {
                                             LatchDestination.Home -> HomeScreen(
@@ -349,6 +335,17 @@ fun LatchRoot(
                                                 platform = platform,
                                                 onBack = back,
                                                 onClearHistory = { sessions.clearHistory() },
+                                            )
+
+                                            LatchDestination.About -> AboutScreen(
+                                                platform = platform,
+                                                onBack = back,
+                                                updateState = updateState,
+                                                onCheckForUpdates = onCheckForUpdates,
+                                                onDownloadUpdate = onDownloadUpdate,
+                                                onCancelDownload = onCancelDownload,
+                                                onInstallUpdate = onInstallUpdate,
+                                                onDismissUpdate = onDismissUpdate,
                                             )
 
                                             LatchDestination.Settings -> SettingsScreen(
