@@ -14,6 +14,9 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -34,6 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.vinnovateit.latch.core.stats.generatePortalHtmlReport
 import com.vinnovateit.latch.features.about.MeetTheTeamPage
@@ -118,172 +122,198 @@ fun LatchNavGraph(
         }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = startDestination,
-        enterTransition = {
-            slideInHorizontally(
-                initialOffsetX = { fullWidth -> fullWidth },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            )
-        },
-        exitTransition = {
-            slideOutHorizontally(
-                targetOffsetX = { fullWidth -> -fullWidth / 3 },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            )
-        },
-        popEnterTransition = {
-            EnterTransition.None
-        },
-        popExitTransition = {
-            ExitTransition.None
-        }
-    ) {
-        // Onboarding pager
-        composable(LatchRoutes.ONBOARDING) {
-            val context = LocalContext.current
-            OnboardingScreen(
-                onComplete = {
-                    val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                    prefs.edit { putBoolean("hasSeenOnboarding", true) }
-                    navController.navigate(LatchRoutes.HOME) {
-                        popUpTo(LatchRoutes.ONBOARDING) { inclusive = true }
-                    }
-                },
-                onNavigateToCredentials = {
-                    navController.navigate(LatchRoutes.credentials(editMode = false))
-                }
-            )
-        }
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
 
-        // Credentials screen
-        composable(LatchRoutes.CREDENTIALS) { backStackEntry ->
-            val editMode = backStackEntry.arguments?.getString("editMode")?.toBoolean() ?: false
-            PredictiveSlideBackContainer(
-                onBackPressed = {
-                    if (editMode) {
-                        navController.popBackStack()
-                    } else {
-                        navController.popBackStack(LatchRoutes.ONBOARDING, inclusive = false)
-                    }
-                },
-                backgroundContent = if (editMode) settingsContent else null
-            ) { triggerBack ->
-                CredentialsScreen(
-                    editMode = editMode,
-                    onCredentialsSaved = {
-                        LatchAppGraph.triggerHistorySync(force = true)
-                        triggerBack()
-                    },
-                    onBackClick = triggerBack
-                )
-            }
-        }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val railVisible = currentRoute in RailTopLevelRoutes && maxWidth >= RailVisibleWidth
+        val railExpanded = maxWidth >= RailExpandedWidth
 
-        // Home screen
-        composable(LatchRoutes.HOME) {
-            homeContent()
-        }
-
-        // Settings
-        composable(LatchRoutes.SETTINGS) {
-            PredictiveSlideBackContainer(
-                onBackPressed = { navController.popBackStack() },
-                backgroundContent = homeContent
-            ) { triggerBack ->
-                SettingsScreen(
-                    onBackClick = triggerBack,
-                    onNavigateToCredentials = { navController.navigate(LatchRoutes.credentials(editMode = true)) }
-                )
-            }
-        }
-
-        // Stats
-        composable(LatchRoutes.STATS) {
-            val coroutineScope = rememberCoroutineScope()
-            val context = LocalContext.current
-
-            val createDocumentLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.CreateDocument("text/html")
-            ) { uri: Uri? ->
-                uri?.let {
-                    coroutineScope.launch(Dispatchers.IO) {
-                        try {
-                            val userId = LatchAppGraph.platform.credentials.userId() ?: ""
-                            context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                                generatePortalHtmlReport(
-                                    sessions = statsViewModel.portalHistory.value,
-                                    outputStream = outputStream,
-                                    appVersion = com.vinnovateit.latch.BuildConfig.VERSION_NAME,
-                                    userId = userId
-                                )
+        Row(modifier = Modifier.fillMaxSize()) {
+            if (railVisible) {
+                LatchNavigationRail(
+                    selectedRoute = currentRoute,
+                    onSelect = { route ->
+                        if (route != currentRoute) {
+                            navController.navigate(route) {
+                                popUpTo(LatchRoutes.HOME) { inclusive = false }
+                                launchSingleTop = true
                             }
-                        } catch (_: Exception) { }
+                        }
+                    },
+                    expanded = railExpanded,
+                )
+            }
+
+            NavHost(
+                navController = navController,
+                startDestination = startDestination,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                enterTransition = {
+                    slideInHorizontally(
+                        initialOffsetX = { fullWidth -> fullWidth },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+                },
+                exitTransition = {
+                    slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> -fullWidth / 3 },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+                },
+                popEnterTransition = {
+                    EnterTransition.None
+                },
+                popExitTransition = {
+                    ExitTransition.None
+                }
+            ) {
+                // Onboarding pager
+                composable(LatchRoutes.ONBOARDING) {
+                    val context = LocalContext.current
+                    OnboardingScreen(
+                        onComplete = {
+                            val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+                            prefs.edit { putBoolean("hasSeenOnboarding", true) }
+                            navController.navigate(LatchRoutes.HOME) {
+                                popUpTo(LatchRoutes.ONBOARDING) { inclusive = true }
+                            }
+                        },
+                        onNavigateToCredentials = {
+                            navController.navigate(LatchRoutes.credentials(editMode = false))
+                        }
+                    )
+                }
+
+                // Credentials screen
+                composable(LatchRoutes.CREDENTIALS) { backStackEntry ->
+                    val editMode = backStackEntry.arguments?.getString("editMode")?.toBoolean() ?: false
+                    PredictiveSlideBackContainer(
+                        onBackPressed = {
+                            if (editMode) {
+                                navController.popBackStack()
+                            } else {
+                                navController.popBackStack(LatchRoutes.ONBOARDING, inclusive = false)
+                            }
+                        },
+                        backgroundContent = if (editMode) settingsContent else null
+                    ) { triggerBack ->
+                        CredentialsScreen(
+                            editMode = editMode,
+                            onCredentialsSaved = {
+                                LatchAppGraph.triggerHistorySync(force = true)
+                                triggerBack()
+                            },
+                            onBackClick = triggerBack
+                        )
                     }
                 }
-            }
 
-            PredictiveSlideBackContainer(
-                onBackPressed = { navController.popBackStack() },
-                backgroundContent = homeContent
-            ) { triggerBack ->
-                StatsScreen(
-                    onSaveReport = {
-                        val epoch = System.currentTimeMillis()
-                        val appVersion = com.vinnovateit.latch.BuildConfig.VERSION_NAME
-                        val fileName = "latch_report_${appVersion}_${epoch}.html"
-                        createDocumentLauncher.launch(fileName)
-                    },
-                    onBackPressed = triggerBack,
-                    onNavigateToHistory = { navController.navigate(LatchRoutes.SESSION_HISTORY) },
-                    onNavigateToPortalAccount = { navController.navigate(LatchRoutes.PORTAL_ACCOUNT) },
-                    statsViewModel = statsViewModel
-                )
-            }
-        }
+                // Home screen
+                composable(LatchRoutes.HOME) {
+                    homeContent()
+                }
 
-        // Session History
-        composable(LatchRoutes.SESSION_HISTORY) {
-            PredictiveSlideBackContainer(
-                onBackPressed = { navController.popBackStack() },
-                backgroundContent = statsContent
-            ) { triggerBack ->
-                com.vinnovateit.latch.features.stats.SessionHistoryScreen(
-                    onBackPressed = triggerBack,
-                    statsViewModel = statsViewModel
-                )
-            }
-        }
+                // Settings
+                composable(LatchRoutes.SETTINGS) {
+                    PredictiveSlideBackContainer(
+                        onBackPressed = { navController.popBackStack() },
+                        backgroundContent = homeContent
+                    ) { triggerBack ->
+                        SettingsScreen(
+                            onBackClick = triggerBack,
+                            onNavigateToCredentials = { navController.navigate(LatchRoutes.credentials(editMode = true)) }
+                        )
+                    }
+                }
 
-        // Portal Account Management
-        composable(LatchRoutes.PORTAL_ACCOUNT) {
-            PredictiveSlideBackContainer(
-                onBackPressed = { navController.popBackStack() },
-                backgroundContent = statsContent
-            ) { triggerBack ->
-                com.vinnovateit.latch.features.stats.PortalAccountScreen(
-                    onBackPressed = triggerBack
-                )
-            }
-        }
+                // Stats
+                composable(LatchRoutes.STATS) {
+                    val coroutineScope = rememberCoroutineScope()
+                    val context = LocalContext.current
 
-        // Meet the Team
-        composable(LatchRoutes.MEET_THE_TEAM) {
-            PredictiveSlideBackContainer(
-                onBackPressed = { navController.popBackStack() },
-                backgroundContent = homeContent
-            ) { triggerBack ->
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    MeetTheTeamPage(
-                        onBackClick = triggerBack
-                    )
+                    val createDocumentLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.CreateDocument("text/html")
+                    ) { uri: Uri? ->
+                        uri?.let {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                try {
+                                    val userId = LatchAppGraph.platform.credentials.userId() ?: ""
+                                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                                        generatePortalHtmlReport(
+                                            sessions = statsViewModel.portalHistory.value,
+                                            outputStream = outputStream,
+                                            appVersion = com.vinnovateit.latch.BuildConfig.VERSION_NAME,
+                                            userId = userId
+                                        )
+                                    }
+                                } catch (_: Exception) { }
+                            }
+                        }
+                    }
+
+                    PredictiveSlideBackContainer(
+                        onBackPressed = { navController.popBackStack() },
+                        backgroundContent = homeContent
+                    ) { triggerBack ->
+                        StatsScreen(
+                            onSaveReport = {
+                                val epoch = System.currentTimeMillis()
+                                val appVersion = com.vinnovateit.latch.BuildConfig.VERSION_NAME
+                                val fileName = "latch_report_${appVersion}_${epoch}.html"
+                                createDocumentLauncher.launch(fileName)
+                            },
+                            onBackPressed = triggerBack,
+                            onNavigateToHistory = { navController.navigate(LatchRoutes.SESSION_HISTORY) },
+                            onNavigateToPortalAccount = { navController.navigate(LatchRoutes.PORTAL_ACCOUNT) },
+                            statsViewModel = statsViewModel
+                        )
+                    }
+                }
+
+                // Session History
+                composable(LatchRoutes.SESSION_HISTORY) {
+                    PredictiveSlideBackContainer(
+                        onBackPressed = { navController.popBackStack() },
+                        backgroundContent = statsContent
+                    ) { triggerBack ->
+                        com.vinnovateit.latch.features.stats.SessionHistoryScreen(
+                            onBackPressed = triggerBack,
+                            statsViewModel = statsViewModel
+                        )
+                    }
+                }
+
+                // Portal Account Management
+                composable(LatchRoutes.PORTAL_ACCOUNT) {
+                    PredictiveSlideBackContainer(
+                        onBackPressed = { navController.popBackStack() },
+                        backgroundContent = statsContent
+                    ) { triggerBack ->
+                        com.vinnovateit.latch.features.stats.PortalAccountScreen(
+                            onBackPressed = triggerBack
+                        )
+                    }
+                }
+
+                // Meet the Team
+                composable(LatchRoutes.MEET_THE_TEAM) {
+                    PredictiveSlideBackContainer(
+                        onBackPressed = { navController.popBackStack() },
+                        backgroundContent = homeContent
+                    ) { triggerBack ->
+                        Surface(modifier = Modifier.fillMaxSize()) {
+                            MeetTheTeamPage(
+                                onBackClick = triggerBack
+                            )
+                        }
+                    }
                 }
             }
         }
