@@ -72,10 +72,11 @@ fun main(args: Array<String>) {
     try {
         nativeComposeApp {
             val appScope = this
-            // Tray-only launch: never create the SDL window (and its taskbar
-            // icon) at startup. "Open Latch" from the tray or ACTIVATE_UI flips
-            // this to true, which composes the Window on the next frame.
-            val windowVisible = remember { mutableStateOf(false) }
+            // Manual launch (desktop entry / terminal) opens the window.
+            // Only autostart / launch-at-login passes --hidden to stay in the
+            // tray with no taskbar icon.
+            val startHidden = "--hidden" in args
+            val windowVisible = remember { mutableStateOf(!startHidden) }
             val appMenu = remember { AppMenuHost() }
             val tray = remember { NativeTray() }
 

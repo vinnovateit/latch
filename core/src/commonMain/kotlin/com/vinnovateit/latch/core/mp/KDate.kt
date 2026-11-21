@@ -32,6 +32,7 @@ private fun epoch(value: LocalDateTime, zone: TimeZone): Long = value.toInstant(
 private val MONTHS_SHORT = arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 private val MONTHS_LONG = arrayOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
 private val DAYS_SHORT = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+private val DAYS_LONG = arrayOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 
 class KCalendar private constructor(private val timeZone: KTimeZone) {
     companion object {
@@ -158,6 +159,7 @@ class KSimpleDateFormat(private val pattern: String, private val locale: Any? = 
                 "M" -> value.monthNumber.toString()
                 "dd" -> value.dayOfMonth.toString().padStart(2, '0')
                 "d" -> value.dayOfMonth.toString()
+                "EEEE" -> DAYS_LONG[value.dayOfWeek.ordinal]
                 "EEE" -> DAYS_SHORT[value.dayOfWeek.ordinal]
                 "HH" -> value.hour.toString().padStart(2, '0')
                 "hh" -> ((value.hour + 11) % 12 + 1).toString().padStart(2, '0')
@@ -182,7 +184,7 @@ class KSimpleDateFormat(private val pattern: String, private val locale: Any? = 
                 regex += when (field) {
                     "yyyy" -> "(\\d{4})"
                     "yy" -> "(\\d{2})"
-                    "MMMM", "MMM", "EEE", "a" -> "([A-Za-z]+)"
+                    "MMMM", "MMM", "EEEE", "EEE", "a" -> "([A-Za-z]+)"
                     else -> "(\\d{1,4})"
                 }
             }
