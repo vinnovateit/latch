@@ -198,12 +198,18 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
 
     override fun isConnectedToWifi(): Boolean = wifiInterface() != null
     override fun currentSsid(): String? = wifiField("ssid")
-    // The default route may be Ethernet. Read the gateway for the active Wi-Fi
-    // interface only, otherwise the engine validates/login-gates on the wrong
-    // network (and reports the Ethernet gateway as the portal's).
+    // The default route may be Ethernet or USB tethering. Portal traffic is
+    // still pinned to the Wi-Fi interface (see NativeHttpTransport), so the
+    // gateway fallback must come from that interface too — never the default
+    // route's. Do not require Wi-Fi to own the default route: with tethering
+    // plugged in it may have no `default dev` entry at all.
     override fun gatewayIp(): String? {
         val iface = wifiInterface() ?: return null
-        return runCommand("ip route show default dev $iface 2>/dev/null | head -1 | awk '{print \$3}'")
+        val fromNmcli = runCommand("nmcli -g IP4.GATEWAY device show $iface 2>/dev/null")
+            .lineSequence().map(String::trim)
+            .firstOrNull { it.isNotBlank() && it != "--" }
+        if (fromNmcli != null) return fromNmcli
+        return runCommand("ip route show dev $iface 2>/dev/null | awk '\$1==\"default\"{print \$3}' | head -1")
             .lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
     }
 
