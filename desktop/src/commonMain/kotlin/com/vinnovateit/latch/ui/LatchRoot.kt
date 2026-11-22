@@ -7,8 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -54,13 +53,12 @@ import com.vinnovateit.latch.core.engine.LatchEngine
 import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
-import com.vinnovateit.latch.desktop.LatchMark
 import com.vinnovateit.latch.ui.components.LatchIcons
-import com.vinnovateit.latch.ui.theme.modernizFontFamily
 import com.vinnovateit.latch.ui.chrome.AppMenuActions
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
 import com.vinnovateit.latch.ui.chrome.LatchBackHost
 import com.vinnovateit.latch.ui.components.HowItWorksDialog
+import com.vinnovateit.latch.ui.components.LatchStatusPill
 import com.vinnovateit.latch.ui.navigation.LatchDestination
 import com.vinnovateit.latch.ui.onboarding.DesktopOnboardingScreen
 import com.vinnovateit.latch.ui.screens.AboutScreen
@@ -321,8 +319,8 @@ fun LatchRoot(
                                         label = "LatchDestination",
                                         modifier = Modifier.fillMaxSize(),
                                     ) { current ->
-                                        val back: (() -> Unit)? =
-                                            if (!railVisible) ({ destination = LatchDestination.Home }) else null
+                                        // The compact row's menu replaces the back button.
+                                        val back: (() -> Unit)? = null
 
                                         when (current) {
                                             LatchDestination.Home -> HomeScreen(
@@ -330,7 +328,8 @@ fun LatchRoot(
                                                 sessions = sessions,
                                                 platform = platform,
                                                 onOpenStats = { destination = LatchDestination.Stats },
-                                                showStatusBadge = !railVisible,
+                                                // The compact row already shows the status pill.
+                                                showStatusBadge = false,
                                             )
 
                                             LatchDestination.Stats -> StatsScreen(
@@ -396,12 +395,20 @@ fun LatchRoot(
                                         },
                                     ) {
                                         Column(modifier = Modifier.fillMaxSize()) {
-                                            Box(
-                                                modifier = Modifier.height(56.dp).padding(start = 4.dp),
-                                                contentAlignment = Alignment.CenterStart,
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(56.dp)
+                                                    .background(MaterialTheme.colorScheme.surface)
+                                                    .padding(start = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                                     Icon(LatchIcons.Menu, contentDescription = "Open navigation menu")
+                                                }
+                                                if (destination == LatchDestination.Home) {
+                                                    Spacer(Modifier.size(4.dp))
+                                                    LatchStatusPill(isLatched = isLatchedForDrawer)
                                                 }
                                             }
                                             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -445,31 +452,8 @@ private fun LatchRailDrawerContent(
             // Branded header: the Latch mark + LATCH wordmark in the display
             // font. Not a FAB — the rail's Home item handles navigation.
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(
-                    modifier = Modifier
-                        .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { onSelect(LatchDestination.Home); onClose() },
-                        ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = LatchMark,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp),
-                    )
-                    Spacer(Modifier.size(10.dp))
-                    Text(
-                        text = "LATCH",
-                        fontFamily = modernizFontFamily(),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                // Connection status sits under the wordmark, as on the rail.
+                // App identity is in the OS title bar now; the rail only carries status.
+                // Connection status, as on the rail.
                 Surface(
                     shape = androidx.compose.foundation.shape.CircleShape,
                     color = if (isLatched) MaterialTheme.colorScheme.primaryContainer
@@ -535,33 +519,8 @@ private fun LatchNavigationRail(
             // Branded header: the Latch mark + LATCH wordmark in the display
             // font. Not a FAB — the rail's Home item handles navigation.
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(
-                    modifier = Modifier
-                        .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { onSelect(LatchDestination.Home) },
-                        ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = LatchMark,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp),
-                    )
-                    if (railState.currentValue == WideNavigationRailValue.Expanded) {
-                        Spacer(Modifier.size(10.dp))
-                        Text(
-                            text = "LATCH",
-                            fontFamily = modernizFontFamily(),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-                // Connection status sits under the wordmark when the rail is shown.
+                // App identity is in the OS title bar now; the rail only carries status.
+                // Connection status, as before.
                 Surface(
                     shape = androidx.compose.foundation.shape.CircleShape,
                     color = if (isLatched) MaterialTheme.colorScheme.primaryContainer

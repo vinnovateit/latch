@@ -70,33 +70,38 @@ internal fun LatchHomeTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(start = 4.dp),
             ) {
-                if (showStatusPill) {
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isLatched) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
-                        AnimatedContent(
-                            targetState = isLatched,
-                            transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
-                            label = "TopBarTitlePill",
-                        ) { latched ->
-                            Text(
-                                text = stringResource(
-                                    if (latched) Res.string.home_status_connected
-                                    else Res.string.home_status_disconnected,
-                                ),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (latched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = satoshiFontFamily(FontWeight.Bold),
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
-                            )
-                        }
-                    }
-                }
+                if (showStatusPill) LatchStatusPill(isLatched = isLatched)
             }
         },
     )
+}
+
+/** The LATCHED / DISCONNECTED pill, shared by Home and the compact nav row. */
+@Composable
+internal fun LatchStatusPill(isLatched: Boolean, modifier: Modifier = Modifier) {
+    Surface(
+        shape = CircleShape,
+        color = if (isLatched) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier,
+    ) {
+        AnimatedContent(
+            targetState = isLatched,
+            transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
+            label = "StatusPill",
+        ) { latched ->
+            Text(
+                text = stringResource(
+                    if (latched) Res.string.home_status_connected
+                    else Res.string.home_status_disconnected,
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (latched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold,
+                fontFamily = satoshiFontFamily(FontWeight.Bold),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+            )
+        }
+    }
 }
 
 /**

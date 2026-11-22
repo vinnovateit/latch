@@ -56,11 +56,48 @@ compose.resources {
     generateResClass = auto
 }
 
+// One source of truth for the app icon: icons/latch.svg. Rasterise the sizes
+// the native bridge consumes at build time; no checked-in PNG/ICO/ICNS copies.
+val generatedIconDir = layout.buildDirectory.dir("generated/desktop-icons")
+val generateDesktopIcons = tasks.register("generateDesktopIcons") {
+    val svg = layout.projectDirectory.file("icons/latch.svg")
+    inputs.file(svg)
+    outputs.dir(generatedIconDir)
+    doLast {
+        val outDir = generatedIconDir.get().asFile
+        outDir.mkdirs()
+        val pathDirs = System.getenv("PATH").orEmpty().split(File.pathSeparator)
+        fun find(vararg names: String) = pathDirs.flatMap { dir -> names.map { File(dir, it) } }
+            .firstOrNull { it.exists() }?.absolutePath
+        val tool = find("magick", "convert")
+            ?: error("ImageMagick (magick or convert) is required to build the desktop icon")
+        for (size in listOf(32, 64, 128, 256, 512)) {
+            val process = ProcessBuilder(
+                tool, "-background", "none", svg.asFile.absolutePath,
+                "-resize", "${size}x${size}",
+                File(outDir, "latch-$size.png").absolutePath,
+            ).inheritIO().start()
+            if (process.waitFor() != 0) error("Failed to rasterise latch.svg at ${size}px")
+        }
+    }
+}
+tasks.configureEach {
+    if (name in setOf(
+            "generateComposeNativeIconBlobs",
+            "generateComposeNativeIco",
+            "compileComposeNativeIconResource",
+        )
+    ) dependsOn(generateDesktopIcons)
+}
+
 compose.desktop {
     native {
         entryPoint = "com.vinnovateit.latch.desktop.main"
         icon {
-            light.from("icons/latch-32.png", "icons/latch-128.png")
+            light.from(
+                generatedIconDir.map { it.file("latch-32.png").asFile.absolutePath }.get(),
+                generatedIconDir.map { it.file("latch-128.png").asFile.absolutePath }.get(),
+            )
         }
         // The app sets Satoshi/MODERNIZ explicitly on every Text style. Skip the
         // port's ~6MB bundled Noto fonts; any unspecified family falls back to

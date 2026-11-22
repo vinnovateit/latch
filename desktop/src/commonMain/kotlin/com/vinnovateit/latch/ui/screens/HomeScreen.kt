@@ -129,8 +129,10 @@ fun HomeScreen(
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // When the status pill lives in the compact nav row, do not reserve a
+        // second top-app-bar here: it would clip the Home illustration.
         val topBar: @Composable () -> Unit = {
-            LatchHomeTopBar(isLatched = isLatched, showStatusPill = showStatusBadge)
+            if (showStatusBadge) LatchHomeTopBar(isLatched = isLatched)
         }
 
         if (maxWidth >= WideBreakpoint) {
