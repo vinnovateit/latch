@@ -237,10 +237,10 @@ private fun CompactHome(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(
-                            top = buttonDiameter / 2 + 20.dp,
+                            top = buttonDiameter / 2 + 8.dp,
                             start = 24.dp,
                             end = 24.dp,
-                            bottom = 24.dp,
+                            bottom = 12.dp,
                         ),
                 )
             }
@@ -276,7 +276,7 @@ private fun WideHome(
 
         Row(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(0.45f).fillMaxHeight(),
+                modifier = Modifier.weight(0.35f).fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 topBar()
@@ -302,9 +302,9 @@ private fun WideHome(
 
             Box(
                 modifier = Modifier
-                    .weight(0.55f)
+                    .weight(0.65f)
                     .fillMaxHeight()
-                    .padding(top = 20.dp, bottom = 24.dp, end = 24.dp),
+                    .padding(top = 12.dp, bottom = 16.dp, end = 24.dp),
             ) {
                 SpectrumCard(
                     history = history,
