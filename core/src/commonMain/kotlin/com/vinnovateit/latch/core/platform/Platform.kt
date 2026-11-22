@@ -54,6 +54,9 @@ interface NetworkHandle {
  */
 interface HttpTransport {
     fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection
+
+    /** Public endpoint (account host) — any network is fine, including tethering. */
+    fun openPublic(url: JUrl): JHttpConnection = open(url, null)
 }
 
 // ---------------------------------------------------------------------------

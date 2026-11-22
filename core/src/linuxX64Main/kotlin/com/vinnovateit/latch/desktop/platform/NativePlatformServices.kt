@@ -139,8 +139,17 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
     override fun isWifiEnabled(): Boolean = runCommand("nmcli -t -f RUNNING general").contains("running", ignoreCase = true)
     override fun isConnectedToWifi(): Boolean = wifiInterface() != null
     override fun currentSsid(): String? = wifiField("ssid")
-    override fun gatewayIp(): String? =
-        runCommand("ip route 2>/dev/null | grep default | head -1 | awk '{print \$3}'").lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
+    // The default route may be Ethernet/USB tethering. Get the gateway from the
+    // Wi-Fi device itself so the portal fallback never uses the wrong network.
+    override fun gatewayIp(): String? {
+        val iface = wifiInterface() ?: return null
+        val fromNmcli = runCommand("nmcli -g IP4.GATEWAY device show $iface 2>/dev/null")
+            .lineSequence().map(String::trim)
+            .firstOrNull { it.isNotBlank() && it != "--" }
+        if (fromNmcli != null) return fromNmcli
+        return runCommand("ip route show dev $iface 2>/dev/null | awk '\$1==\"default\"{print \$3}' | head -1")
+            .lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
+    }
 
     override fun wifiInterfaceName(): String? = wifiInterface()
     override fun activeHandle(): NetworkHandle? = currentHandle ?: wifiInterface()?.let { NativeHandle(it).also { currentHandle = it } }
@@ -188,7 +197,21 @@ class NativeNotifier : UserNotifier {
 }
 
 class NativeHttpTransport : HttpTransport {
-    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection = JHttpConnection(url)
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection {
+        // The default route may be Ethernet or USB tethering. Portal traffic
+        // must leave on Wi-Fi or credentials go off-network in plaintext.
+        val connection = JHttpConnection(url)
+        if (handle == null) {
+            throw com.vinnovateit.latch.core.mp.MPIOException(
+                "No Wi-Fi handle: refusing to send portal traffic on the default route",
+            )
+        }
+        connection.bindToInterface(handle.id)
+        return connection
+    }
+
+    override fun openPublic(url: JUrl): JHttpConnection =
+        JHttpConnection(url).also { it.allowDefaultRoute() }
 }
 
 class NativePlatformServices(

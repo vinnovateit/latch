@@ -9,6 +9,7 @@ import curl.CURLOPT_FOLLOWLOCATION
 import curl.CURLOPT_HEADERDATA
 import curl.CURLOPT_HEADERFUNCTION
 import curl.CURLOPT_HTTPHEADER
+import curl.CURLOPT_INTERFACE
 import curl.CURLOPT_POSTFIELDS
 import curl.CURLOPT_TIMEOUT_MS
 import curl.CURLOPT_URL
@@ -150,10 +151,14 @@ actual class JHttpConnection actual constructor(url: JUrl) {
     private val properties = mutableMapOf<String, String>()
     private val requestBody = NativeOutputStream()
     private var cached: CurlResult? = null
+    private var boundInterface: String? = null
+    private var publicEndpoint = false
 
     actual val outputStream: JOutputStream get() = JOutputStream(requestBody)
 
     actual fun setRequestProperty(key: String, value: String) { properties[key] = value }
+    actual fun bindToInterface(interfaceName: String) { boundInterface = interfaceName }
+    actual fun allowDefaultRoute() { publicEndpoint = true }
     actual fun connect() { result() }
 
     actual val responseCode: Int get() = result().status
@@ -186,6 +191,14 @@ actual class JHttpConnection actual constructor(url: JUrl) {
                 var slist: CPointer<curl_slist>? = null
                 try {
                     curl_easy_setopt(handle, CURLOPT_URL, spec)
+                    // Pin portal traffic to Wi-Fi. Never silently fall back to
+                    // the default route: with Ethernet/USB tethering plugged in
+                    // that would send credentials off-network in plaintext.
+                    val iface = boundInterface
+                    if (iface == null && !publicEndpoint) {
+                        throw MPIOException("No Wi-Fi handle: refusing to send portal traffic on the default route")
+                    }
+                    if (iface != null) curl_easy_setopt(handle, CURLOPT_INTERFACE, iface)
                     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, if (instanceFollowRedirects) 1L else 0L)
                     if (connectTimeout > 0) curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT_MS, connectTimeout.toLong())
                     if (readTimeout > 0) curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, readTimeout.toLong())

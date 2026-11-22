@@ -41,6 +41,8 @@ actual class JHttpConnection internal constructor(val delegate: java.net.HttpURL
 
     actual fun setRequestProperty(key: String, value: String) = delegate.setRequestProperty(key, value)
     actual fun getHeaderField(name: String): String? = delegate.getHeaderField(name)
+    actual fun bindToInterface(interfaceName: String) = Unit
+    actual fun allowDefaultRoute() = Unit
     actual fun connect() = delegate.connect()
     actual fun disconnect() = delegate.disconnect()
 }

@@ -20,6 +20,10 @@ expect class JHttpConnection(url: JUrl) {
     val responseCode: Int
     fun setRequestProperty(key: String, value: String)
     fun getHeaderField(name: String): String?
+    /** Pin this request to a specific network interface (Wi-Fi only). */
+    fun bindToInterface(interfaceName: String)
+    /** Explicitly allow the default route — only for public endpoints. */
+    fun allowDefaultRoute()
     fun connect()
     fun disconnect()
     companion object { val HTTP_OK: Int }

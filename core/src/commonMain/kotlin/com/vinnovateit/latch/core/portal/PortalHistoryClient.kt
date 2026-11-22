@@ -72,7 +72,7 @@ class PortalHistoryClient(
         return try {
             val mainUrl = JUrl("http://$host/registration/Main.jsp?wispId=1")
             logger.d(TAG, "Requesting portal history URL: $mainUrl")
-            val conn1 = transport.open(mainUrl, handle)
+            val conn1 = transport.openPublic(mainUrl)
             conn1.connectTimeout = CONNECT_TIMEOUT_MS
             conn1.readTimeout = READ_TIMEOUT_MS
             conn1.instanceFollowRedirects = false
@@ -96,7 +96,7 @@ class PortalHistoryClient(
                 append("&submit=").append(urlEncode("Login", ))
             }
 
-            val conn2 = transport.open(loginUrl, handle)
+            val conn2 = transport.openPublic(loginUrl)
             conn2.requestMethod = "POST"
             conn2.doOutput = true
             conn2.instanceFollowRedirects = false
@@ -133,7 +133,7 @@ class PortalHistoryClient(
 
             val filterUrl = JUrl("http://$host/registration/customerSessionHistory.do")
             logger.d(TAG, "Requesting portal history URL: $filterUrl")
-            val conn3 = transport.open(filterUrl, handle)
+            val conn3 = transport.openPublic(filterUrl)
             conn3.requestMethod = "POST"
             conn3.doOutput = true
             conn3.instanceFollowRedirects = true
@@ -155,7 +155,7 @@ class PortalHistoryClient(
             if (records.isEmpty()) {
                 val fallbackUrl = JUrl("http://$host/registration/main.do?content_key=%2FCustomerSessionHistory.jsp")
                 logger.d(TAG, "Requesting portal history URL: $fallbackUrl")
-                val connFallback = transport.open(fallbackUrl, handle)
+                val connFallback = transport.openPublic(fallbackUrl)
                 connFallback.requestMethod = "GET"
                 connFallback.instanceFollowRedirects = true
                 connFallback.connectTimeout = CONNECT_TIMEOUT_MS
