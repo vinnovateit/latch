@@ -7,28 +7,28 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.NavigationItemIconPosition
-import androidx.compose.material3.WideNavigationRail
-import androidx.compose.material3.WideNavigationRailItem
-import androidx.compose.material3.WideNavigationRailValue
-import androidx.compose.material3.rememberWideNavigationRailState
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Surface
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -65,18 +65,12 @@ import com.vinnovateit.latch.ui.screens.StatsScreen
 import com.vinnovateit.latch.ui.screens.UpdateScreen
 import com.vinnovateit.latch.ui.theme.LatchTheme
 
-/** Below this width the app uses the Android-style overflow menu instead of a rail. */
-private val RailBreakpoint = 900.dp
-private val WideRailExpandedWidth = 900.dp
-
 /**
- * The whole window: theme, credential gate, and the three-screen shell.
+ * The whole window: theme, credential gate, and the navigation shell.
  *
- * Navigation adapts rather than picking one idiom and forcing it. A wide window
- * gets a persistent navigation rail, which is what a desktop user expects and
- * what makes Stats and Settings one click away; a narrow one falls back to the
- * Android app's own pattern, an overflow menu in the top bar with a back arrow
- * on the secondary screens. Neither mode leaves a dead affordance on screen.
+ * The OS draws the window frame; the only in-app chrome is the hamburger at the
+ * top left, which opens the navigation drawer (Home / Stats / Settings / About
+ * plus How it works). Secondary screens keep a back arrow.
  */
 @Composable
 fun LatchRoot(
@@ -102,7 +96,7 @@ fun LatchRoot(
             color = MaterialTheme.colorScheme.background,
         ) {
             var hasCredentials by remember { mutableStateOf(platform.credentials.exists()) }
-            val isLatchedForRail by controller.isLatched.collectAsStateWithLifecycle()
+            val isLatchedForDrawer by controller.isLatched.collectAsStateWithLifecycle()
             val hasSeenOnboarding by SettingsManager.hasSeenOnboarding.collectAsStateWithLifecycle()
             val onboardingPagerState = rememberPagerState(initialPage = 0, pageCount = { 6 })
             var editingCredentials by remember { mutableStateOf(false) }
@@ -257,15 +251,10 @@ fun LatchRoot(
                         }
 
                         else -> {
-                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                                val railVisible = maxWidth >= RailBreakpoint
-                                val railExpanded = maxWidth >= WideRailExpandedWidth
-
+                            Box(modifier = Modifier.fillMaxSize()) {
                                 // Visibility rule: the hamburger exists only while
                                 // this shell is mounted, so onboarding, credential
                                 // setup, About and the update screen never show it.
-                                // Settings is offered only when the rail is not
-                                // already providing it and we are not on it.
                                 DisposableEffect(backHost, destination) {
                                     backHost?.publish(
                                         if (destination != LatchDestination.Home) {
@@ -275,12 +264,11 @@ fun LatchRoot(
                                     onDispose { backHost?.publish(null) }
                                 }
 
-                                DisposableEffect(appMenu, railVisible, destination) {
+                                DisposableEffect(appMenu, destination) {
                                     appMenu?.publish(
                                         AppMenuActions(
-                                            showSettings = !railVisible &&
-                                                destination != LatchDestination.Settings,
-                                            showMenu = !railVisible,
+                                            showSettings = destination != LatchDestination.Settings,
+                                            showMenu = true,
                                             onOpenSettings = { destination = LatchDestination.Settings },
                                             onHowItWorks = { showHowItWorks = true },
                                             onOpenAbout = { destination = LatchDestination.About },
@@ -289,91 +277,106 @@ fun LatchRoot(
                                     onDispose { appMenu?.publish(null) }
                                 }
 
-                                Row(modifier = Modifier.fillMaxSize()) {
-                                    if (railVisible) {
-                                        LatchNavigationRail(
+                                val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+                                val closeDrawer: () -> Unit = { scope.launch { drawerState.close() } }
+                                ModalNavigationDrawer(
+                                    drawerState = drawerState,
+                                    drawerContent = {
+                                        LatchDrawerContent(
                                             selected = destination,
                                             onSelect = { destination = it },
                                             onHowItWorks = { showHowItWorks = true },
-                                            isLatched = isLatchedForRail,
-                                            expanded = railExpanded,
+                                            isLatched = isLatchedForDrawer,
+                                            onClose = closeDrawer,
                                         )
-                                    }
-
-                                    AnimatedContent(
-                                        targetState = destination,
-                                        transitionSpec = {
-                                            if (targetState.ordinal > initialState.ordinal) {
-                                                // Slide in from right when opening a deeper section
-                                                (androidx.compose.animation.slideInHorizontally(
-                                                    initialOffsetX = { fullWidth -> fullWidth },
-                                                    animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                                                ) + fadeIn(tween(100))) togetherWith (
-                                                    androidx.compose.animation.slideOutHorizontally(
-                                                        targetOffsetX = { fullWidth -> -fullWidth / 3 },
-                                                        animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                                                    ) + fadeOut(tween(90))
-                                                )
-                                            } else {
-                                                // Slide in from left when returning to previous section
-                                                (androidx.compose.animation.slideInHorizontally(
-                                                    initialOffsetX = { fullWidth -> -fullWidth / 3 },
-                                                    animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                                                ) + fadeIn(tween(100))) togetherWith (
-                                                    androidx.compose.animation.slideOutHorizontally(
-                                                        targetOffsetX = { fullWidth -> fullWidth },
-                                                        animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                                                    ) + fadeOut(tween(90))
-                                                )
+                                    },
+                                ) {
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        // The only chrome in the app: the system draws
+                                        // the window frame, this opens the nav drawer.
+                                        Box(
+                                            modifier = Modifier.height(56.dp).padding(start = 4.dp),
+                                            contentAlignment = Alignment.CenterStart,
+                                        ) {
+                                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                                Icon(LatchIcons.Menu, contentDescription = "Open navigation menu")
                                             }
-                                        },
-                                        label = "LatchDestination",
-                                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                                    ) { current ->
-                                        // With the rail visible it provides navigation;
-                                        // without it, secondary screens need a back arrow.
-                                        val back: (() -> Unit)? =
-                                            if (!railVisible) ({ destination = LatchDestination.Home }) else null
+                                        }
 
-                                        when (current) {
-                                            LatchDestination.Home -> HomeScreen(
-                                                controller = controller,
-                                                sessions = sessions,
-                                                platform = platform,
-                                                onOpenStats = { destination = LatchDestination.Stats },
-                                                showStatusBadge = !railVisible,
-                                            )
+                                        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                            AnimatedContent(
+                                                targetState = destination,
+                                                transitionSpec = {
+                                                    if (targetState.ordinal > initialState.ordinal) {
+                                                        // Slide in from right when opening a deeper section
+                                                        (androidx.compose.animation.slideInHorizontally(
+                                                            initialOffsetX = { fullWidth -> fullWidth },
+                                                            animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                        ) + fadeIn(tween(100))) togetherWith (
+                                                            androidx.compose.animation.slideOutHorizontally(
+                                                                targetOffsetX = { fullWidth -> -fullWidth / 3 },
+                                                                animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                            ) + fadeOut(tween(90))
+                                                        )
+                                                    } else {
+                                                        // Slide in from left when returning to previous section
+                                                        (androidx.compose.animation.slideInHorizontally(
+                                                            initialOffsetX = { fullWidth -> -fullWidth / 3 },
+                                                            animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                        ) + fadeIn(tween(100))) togetherWith (
+                                                            androidx.compose.animation.slideOutHorizontally(
+                                                                targetOffsetX = { fullWidth -> fullWidth },
+                                                                animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                            ) + fadeOut(tween(90))
+                                                        )
+                                                    }
+                                                },
+                                                label = "LatchDestination",
+                                                modifier = Modifier.weight(1f).fillMaxHeight(),
+                                            ) { current ->
+                                                val back: (() -> Unit)? = { destination = LatchDestination.Home }
 
-                                            LatchDestination.Stats -> StatsScreen(
-                                                sessions = sessions,
-                                                platform = platform,
-                                                onBack = back,
-                                                onClearHistory = { sessions.clearHistory() },
-                                            )
+                                                when (current) {
+                                                    LatchDestination.Home -> HomeScreen(
+                                                        controller = controller,
+                                                        sessions = sessions,
+                                                        platform = platform,
+                                                        onOpenStats = { destination = LatchDestination.Stats },
+                                                        showStatusBadge = true,
+                                                    )
 
-                                            LatchDestination.About -> AboutScreen(
-                                                platform = platform,
-                                                onBack = back,
-                                                updateState = updateState,
-                                                onCheckForUpdates = onCheckForUpdates,
-                                                onDownloadUpdate = onDownloadUpdate,
-                                                onCancelDownload = onCancelDownload,
-                                                onInstallUpdate = onInstallUpdate,
-                                                onDismissUpdate = onDismissUpdate,
-                                            )
+                                                    LatchDestination.Stats -> StatsScreen(
+                                                        sessions = sessions,
+                                                        platform = platform,
+                                                        onBack = back,
+                                                        onClearHistory = { sessions.clearHistory() },
+                                                    )
 
-                                            LatchDestination.Settings -> SettingsScreen(
-                                                platform = platform,
-                                                updateState = updateState,
-                                                onBack = back,
-                                                onNavigateToCredentials = { editingCredentials = true },
-                                                onClearStats = { sessions.clearHistory() },
-                                                onCheckForUpdates = onCheckForUpdates,
-                                                onDownloadUpdate = onDownloadUpdate,
-                                                onCancelDownload = onCancelDownload,
-                                                onInstallUpdate = onInstallUpdate,
-                                                onDismissUpdate = onDismissUpdate,
-                                            )
+                                                    LatchDestination.About -> AboutScreen(
+                                                        platform = platform,
+                                                        onBack = back,
+                                                        updateState = updateState,
+                                                        onCheckForUpdates = onCheckForUpdates,
+                                                        onDownloadUpdate = onDownloadUpdate,
+                                                        onCancelDownload = onCancelDownload,
+                                                        onInstallUpdate = onInstallUpdate,
+                                                        onDismissUpdate = onDismissUpdate,
+                                                    )
+
+                                                    LatchDestination.Settings -> SettingsScreen(
+                                                        platform = platform,
+                                                        updateState = updateState,
+                                                        onBack = back,
+                                                        onNavigateToCredentials = { editingCredentials = true },
+                                                        onClearStats = { sessions.clearHistory() },
+                                                        onCheckForUpdates = onCheckForUpdates,
+                                                        onDownloadUpdate = onDownloadUpdate,
+                                                        onCancelDownload = onCancelDownload,
+                                                        onInstallUpdate = onInstallUpdate,
+                                                        onDismissUpdate = onDismissUpdate,
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -391,38 +394,27 @@ fun LatchRoot(
 }
 
 /**
- * Material 3 Expressive wide navigation rail: label inline with the icon,
- * a thicker/longer surface, and a collapsed state for narrower windows.
+ * The drawer reproduces the former wide navigation rail exactly: same branded
+ * header, same status badge, same destinations in the same order and icons.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun LatchNavigationRail(
+private fun LatchDrawerContent(
     selected: LatchDestination,
     onSelect: (LatchDestination) -> Unit,
     onHowItWorks: () -> Unit,
     isLatched: Boolean,
-    expanded: Boolean = true,
+    onClose: () -> Unit,
 ) {
-    val railState = rememberWideNavigationRailState(
-        initialValue = if (expanded) WideNavigationRailValue.Expanded else WideNavigationRailValue.Collapsed,
-    )
-    LaunchedEffect(expanded) {
-        if (expanded) railState.expand() else railState.collapse()
-    }
-
-    WideNavigationRail(
-        state = railState,
-        header = {
-            // Branded header: the Latch mark + LATCH wordmark in the display
-            // font. Not a FAB — the rail's Home item handles navigation.
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    ModalDrawerSheet {
+        // Branded header: the Latch mark + LATCH wordmark in the display font.
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Row(
                 modifier = Modifier
                     .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { onSelect(LatchDestination.Home) },
+                        onClick = { onSelect(LatchDestination.Home); onClose() },
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -432,18 +424,16 @@ private fun LatchNavigationRail(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(32.dp),
                 )
-                if (railState.currentValue == WideNavigationRailValue.Expanded) {
-                    Spacer(Modifier.size(10.dp))
-                    Text(
-                        text = "LATCH",
-                        fontFamily = modernizFontFamily(),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
+                Spacer(Modifier.size(10.dp))
+                Text(
+                    text = "LATCH",
+                    fontFamily = modernizFontFamily(),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
-            // Connection status sits under the wordmark when the rail is shown.
-            androidx.compose.material3.Surface(
+            // Connection status sits under the wordmark, as on the rail.
+            Surface(
                 shape = androidx.compose.foundation.shape.CircleShape,
                 color = if (isLatched) MaterialTheme.colorScheme.primaryContainer
                         else MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -455,30 +445,27 @@ private fun LatchNavigationRail(
                     color = if (isLatched) MaterialTheme.colorScheme.onPrimaryContainer
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    fontFamily = com.vinnovateit.latch.ui.theme.satoshiFontFamily(androidx.compose.ui.text.font.FontWeight.Bold),
+                    fontFamily = com.vinnovateit.latch.ui.theme.satoshiFontFamily(
+                        androidx.compose.ui.text.font.FontWeight.Bold,
+                    ),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
             }
-            }
-        },
-    ) {
+        }
+
         LatchDestination.entries.forEach { entry ->
-            WideNavigationRailItem(
-                selected = entry == selected,
-                onClick = { onSelect(entry) },
-                icon = { Icon(entry.icon, contentDescription = null) },
+            NavigationDrawerItem(
                 label = { Text(entry.label) },
-                railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
-                iconPosition = NavigationItemIconPosition.Start,
+                selected = entry == selected,
+                icon = { Icon(entry.icon, contentDescription = null) },
+                onClick = { onSelect(entry); onClose() },
             )
         }
-        WideNavigationRailItem(
-            selected = false,
-            onClick = onHowItWorks,
-            icon = { Icon(LatchIcons.Help, contentDescription = null) },
+        NavigationDrawerItem(
             label = { Text("How it works") },
-            railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
-            iconPosition = NavigationItemIconPosition.Start,
+            selected = false,
+            icon = { Icon(LatchIcons.Help, contentDescription = null) },
+            onClick = { onHowItWorks(); onClose() },
         )
     }
 }

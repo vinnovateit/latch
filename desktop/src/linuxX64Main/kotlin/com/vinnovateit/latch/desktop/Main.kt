@@ -15,6 +15,7 @@ import androidx.compose.ui.input.key.type
 
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableIntStateOf
 import com.compose.sdl.Window
 import com.compose.sdl.nativeComposeApp
 import com.vinnovateit.latch.core.mp.JFile
@@ -83,12 +84,17 @@ fun main(args: Array<String>) {
             // Only autostart / launch-at-login passes --hidden to stay in the
             // tray with no taskbar icon.
             val startHidden = "--hidden" in args
-            val windowVisible = remember { mutableStateOf(!startHidden) }
+            val showRequest = remember { mutableIntStateOf(0) }
             val appMenu = remember { AppMenuHost() }
             val backHost = remember { LatchBackHost() }
             val tray = remember { NativeTray() }
 
-            requestShow = { windowVisible.value = true }
+            // ACTIVATE_UI arrives on the instance listener's background thread.
+            // Bump a snapshot counter there; do the SDL show on the main thread.
+            requestShow = { showRequest.intValue++ }
+            LaunchedEffect(showRequest.intValue) {
+                if (showRequest.intValue > 0) NativeWindowControl.show()
+            }
 
             val status by app.engine.status.collectAsState()
             val isLatched by app.engine.isLatched.collectAsState()
@@ -131,7 +137,7 @@ fun main(args: Array<String>) {
                     tooltip = tooltip,
                     showDisconnect = shouldDisconnect,
                     statusText = statusText,
-                    onOpen = { windowVisible.value = true },
+                    onOpen = { requestShow() },
                     onToggleConnect = {
                         if (latestShouldDisconnect.value) app.engine.submit(LatchCommand.Logout)
                         else app.engine.submit(LatchCommand.CheckAndLogin)
@@ -140,43 +146,43 @@ fun main(args: Array<String>) {
                 )
                 // No tray on this host (e.g. missing libappindicator): show the
                 // window instead of leaving an unreachable hidden process.
-                if (!trayReady) windowVisible.value = true
+                if (!trayReady && startHidden) requestShow()
                 onDispose { tray.destroy() }
             }
 
-            if (windowVisible.value) {
-                Window(
-                    title = "Latch",
-                    width = START_WIDTH,
-                    height = START_HEIGHT,
-                    undecorated = true,
-                    resizable = true,
-                    onCloseRequest = { windowVisible.value = false },
-                    onKeyEvent = { event ->
-                        val isBack = event.key == Key.Backspace ||
-                            (event.isAltPressed && event.key == Key.DirectionLeft)
-                        if (isBack && event.type == KeyEventType.KeyDown) {
-                            backHost.onBack?.invoke()
-                            true
-                        } else false
-                    },
-                ) {
-                    LatchWindow(onCloseRequest = { windowVisible.value = false }, appMenu = appMenu) {
-                        LatchRoot(
-                            controller = app.engine,
-                            sessions = app.sessions,
-                            platform = app.platform,
-                            updateState = UpdateState.Idle,
-                            onCheckForUpdates = {},
-                            onDownloadUpdate = {},
-                            onCancelDownload = {},
-                            onInstallUpdate = {},
-                            onDismissUpdate = {},
-                            appMenu = appMenu,
-                            backHost = backHost,
-                        )
-                    }
-                }
+            // The window lives for the whole process; closing hides it to the
+            // tray (NativeWindowLifecycle vetoes the close), and only the tray's
+            // Quit entry ends the app.
+            Window(
+                title = "Latch",
+                width = START_WIDTH,
+                height = START_HEIGHT,
+                undecorated = false,
+                resizable = true,
+                onCloseRequest = {},
+                onKeyEvent = { event ->
+                    val isBack = event.key == Key.Backspace ||
+                        (event.isAltPressed && event.key == Key.DirectionLeft)
+                    if (isBack && event.type == KeyEventType.KeyDown) {
+                        backHost.onBack?.invoke()
+                        true
+                    } else false
+                },
+            ) {
+                NativeWindowLifecycle(startHidden = startHidden)
+                LatchRoot(
+                    controller = app.engine,
+                    sessions = app.sessions,
+                    platform = app.platform,
+                    updateState = UpdateState.Idle,
+                    onCheckForUpdates = {},
+                    onDownloadUpdate = {},
+                    onCancelDownload = {},
+                    onInstallUpdate = {},
+                    onDismissUpdate = {},
+                    appMenu = appMenu,
+                    backHost = backHost,
+                )
             }
         }
     } finally {
