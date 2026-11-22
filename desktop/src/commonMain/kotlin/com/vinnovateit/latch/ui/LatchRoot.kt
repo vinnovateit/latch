@@ -10,6 +10,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -70,12 +71,15 @@ import com.vinnovateit.latch.ui.screens.StatsScreen
 import com.vinnovateit.latch.ui.screens.UpdateScreen
 import com.vinnovateit.latch.ui.theme.LatchTheme
 
+/** Below this width the rail cannot fit, so navigation moves into a drawer. */
+private val RailBreakpoint = 900.dp
+private val WideRailExpandedWidth = 900.dp
+
 /**
  * The whole window: theme, credential gate, and the navigation shell.
  *
- * The OS draws the window frame; the only in-app chrome is the hamburger at the
- * top left, which opens the navigation drawer (Home / Stats / Settings / About
- * plus How it works). Secondary screens keep a back arrow.
+ * A wide window keeps the persistent wide navigation rail. Below [RailBreakpoint]
+ * the rail is replaced by a hamburger that opens the very same rail in a drawer.
  */
 @Composable
 fun LatchRoot(
@@ -256,10 +260,11 @@ fun LatchRoot(
                         }
 
                         else -> {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                // Visibility rule: the hamburger exists only while
-                                // this shell is mounted, so onboarding, credential
-                                // setup, About and the update screen never show it.
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val railVisible = maxWidth >= RailBreakpoint
+                                val railExpanded = maxWidth >= WideRailExpandedWidth
+
+                                // Back handling only exists for secondary screens.
                                 DisposableEffect(backHost, destination) {
                                     backHost?.publish(
                                         if (destination != LatchDestination.Home) {
@@ -269,11 +274,14 @@ fun LatchRoot(
                                     onDispose { backHost?.publish(null) }
                                 }
 
-                                DisposableEffect(appMenu, destination) {
+                                // The window chrome only carries a menu when the
+                                // rail is not providing navigation itself.
+                                DisposableEffect(appMenu, railVisible, destination) {
                                     appMenu?.publish(
                                         AppMenuActions(
-                                            showSettings = destination != LatchDestination.Settings,
-                                            showMenu = true,
+                                            showSettings = !railVisible &&
+                                                destination != LatchDestination.Settings,
+                                            showMenu = !railVisible,
                                             onOpenSettings = { destination = LatchDestination.Settings },
                                             onHowItWorks = { showHowItWorks = true },
                                             onOpenAbout = { destination = LatchDestination.About },
@@ -282,105 +290,122 @@ fun LatchRoot(
                                     onDispose { appMenu?.publish(null) }
                                 }
 
-                                val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-                                val closeDrawer: () -> Unit = { scope.launch { drawerState.close() } }
-                                ModalNavigationDrawer(
-                                    drawerState = drawerState,
-                                    drawerContent = {
-                                        LatchRailDrawerContent(
+                                val screenContent: @Composable () -> Unit = {
+                                    AnimatedContent(
+                                        targetState = destination,
+                                        transitionSpec = {
+                                            if (targetState.ordinal > initialState.ordinal) {
+                                                // Slide in from right when opening a deeper section
+                                                (androidx.compose.animation.slideInHorizontally(
+                                                    initialOffsetX = { fullWidth -> fullWidth },
+                                                    animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                ) + fadeIn(tween(100))) togetherWith (
+                                                    androidx.compose.animation.slideOutHorizontally(
+                                                        targetOffsetX = { fullWidth -> -fullWidth / 3 },
+                                                        animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                    ) + fadeOut(tween(90))
+                                                )
+                                            } else {
+                                                // Slide in from left when returning to previous section
+                                                (androidx.compose.animation.slideInHorizontally(
+                                                    initialOffsetX = { fullWidth -> -fullWidth / 3 },
+                                                    animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                ) + fadeIn(tween(100))) togetherWith (
+                                                    androidx.compose.animation.slideOutHorizontally(
+                                                        targetOffsetX = { fullWidth -> fullWidth },
+                                                        animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                    ) + fadeOut(tween(90))
+                                                )
+                                            }
+                                        },
+                                        label = "LatchDestination",
+                                        modifier = Modifier.fillMaxSize(),
+                                    ) { current ->
+                                        val back: (() -> Unit)? =
+                                            if (!railVisible) ({ destination = LatchDestination.Home }) else null
+
+                                        when (current) {
+                                            LatchDestination.Home -> HomeScreen(
+                                                controller = controller,
+                                                sessions = sessions,
+                                                platform = platform,
+                                                onOpenStats = { destination = LatchDestination.Stats },
+                                                showStatusBadge = !railVisible,
+                                            )
+
+                                            LatchDestination.Stats -> StatsScreen(
+                                                sessions = sessions,
+                                                platform = platform,
+                                                onBack = back,
+                                                onClearHistory = { sessions.clearHistory() },
+                                            )
+
+                                            LatchDestination.About -> AboutScreen(
+                                                platform = platform,
+                                                onBack = back,
+                                                updateState = updateState,
+                                                onCheckForUpdates = onCheckForUpdates,
+                                                onDownloadUpdate = onDownloadUpdate,
+                                                onCancelDownload = onCancelDownload,
+                                                onInstallUpdate = onInstallUpdate,
+                                                onDismissUpdate = onDismissUpdate,
+                                            )
+
+                                            LatchDestination.Settings -> SettingsScreen(
+                                                platform = platform,
+                                                updateState = updateState,
+                                                onBack = back,
+                                                onNavigateToCredentials = { editingCredentials = true },
+                                                onClearStats = { sessions.clearHistory() },
+                                                onCheckForUpdates = onCheckForUpdates,
+                                                onDownloadUpdate = onDownloadUpdate,
+                                                onCancelDownload = onCancelDownload,
+                                                onInstallUpdate = onInstallUpdate,
+                                                onDismissUpdate = onDismissUpdate,
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (railVisible) {
+                                    Row(modifier = Modifier.fillMaxSize()) {
+                                        LatchNavigationRail(
                                             selected = destination,
                                             onSelect = { destination = it },
                                             onHowItWorks = { showHowItWorks = true },
                                             isLatched = isLatchedForDrawer,
-                                            onClose = closeDrawer,
+                                            expanded = railExpanded,
                                         )
-                                    },
-                                ) {
-                                    Column(modifier = Modifier.fillMaxSize()) {
-                                        // The only chrome in the app: the system draws
-                                        // the window frame, this opens the nav drawer.
-                                        Box(
-                                            modifier = Modifier.height(56.dp).padding(start = 4.dp),
-                                            contentAlignment = Alignment.CenterStart,
-                                        ) {
-                                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                                Icon(LatchIcons.Menu, contentDescription = "Open navigation menu")
-                                            }
+                                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                            screenContent()
                                         }
-
-                                        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                                            AnimatedContent(
-                                                targetState = destination,
-                                                transitionSpec = {
-                                                    if (targetState.ordinal > initialState.ordinal) {
-                                                        // Slide in from right when opening a deeper section
-                                                        (androidx.compose.animation.slideInHorizontally(
-                                                            initialOffsetX = { fullWidth -> fullWidth },
-                                                            animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                                                        ) + fadeIn(tween(100))) togetherWith (
-                                                            androidx.compose.animation.slideOutHorizontally(
-                                                                targetOffsetX = { fullWidth -> -fullWidth / 3 },
-                                                                animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                                                            ) + fadeOut(tween(90))
-                                                        )
-                                                    } else {
-                                                        // Slide in from left when returning to previous section
-                                                        (androidx.compose.animation.slideInHorizontally(
-                                                            initialOffsetX = { fullWidth -> -fullWidth / 3 },
-                                                            animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                                                        ) + fadeIn(tween(100))) togetherWith (
-                                                            androidx.compose.animation.slideOutHorizontally(
-                                                                targetOffsetX = { fullWidth -> fullWidth },
-                                                                animationSpec = tween(150, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                                                            ) + fadeOut(tween(90))
-                                                        )
-                                                    }
-                                                },
-                                                label = "LatchDestination",
-                                                modifier = Modifier.weight(1f).fillMaxHeight(),
-                                            ) { current ->
-                                                val back: (() -> Unit)? = { destination = LatchDestination.Home }
-
-                                                when (current) {
-                                                    LatchDestination.Home -> HomeScreen(
-                                                        controller = controller,
-                                                        sessions = sessions,
-                                                        platform = platform,
-                                                        onOpenStats = { destination = LatchDestination.Stats },
-                                                        showStatusBadge = true,
-                                                    )
-
-                                                    LatchDestination.Stats -> StatsScreen(
-                                                        sessions = sessions,
-                                                        platform = platform,
-                                                        onBack = back,
-                                                        onClearHistory = { sessions.clearHistory() },
-                                                    )
-
-                                                    LatchDestination.About -> AboutScreen(
-                                                        platform = platform,
-                                                        onBack = back,
-                                                        updateState = updateState,
-                                                        onCheckForUpdates = onCheckForUpdates,
-                                                        onDownloadUpdate = onDownloadUpdate,
-                                                        onCancelDownload = onCancelDownload,
-                                                        onInstallUpdate = onInstallUpdate,
-                                                        onDismissUpdate = onDismissUpdate,
-                                                    )
-
-                                                    LatchDestination.Settings -> SettingsScreen(
-                                                        platform = platform,
-                                                        updateState = updateState,
-                                                        onBack = back,
-                                                        onNavigateToCredentials = { editingCredentials = true },
-                                                        onClearStats = { sessions.clearHistory() },
-                                                        onCheckForUpdates = onCheckForUpdates,
-                                                        onDownloadUpdate = onDownloadUpdate,
-                                                        onCancelDownload = onCancelDownload,
-                                                        onInstallUpdate = onInstallUpdate,
-                                                        onDismissUpdate = onDismissUpdate,
-                                                    )
+                                    }
+                                } else {
+                                    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+                                    val closeDrawer: () -> Unit = { scope.launch { drawerState.close() } }
+                                    ModalNavigationDrawer(
+                                        drawerState = drawerState,
+                                        drawerContent = {
+                                            LatchRailDrawerContent(
+                                                selected = destination,
+                                                onSelect = { destination = it },
+                                                onHowItWorks = { showHowItWorks = true },
+                                                isLatched = isLatchedForDrawer,
+                                                onClose = closeDrawer,
+                                            )
+                                        },
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxSize()) {
+                                            Box(
+                                                modifier = Modifier.height(56.dp).padding(start = 4.dp),
+                                                contentAlignment = Alignment.CenterStart,
+                                            ) {
+                                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                                    Icon(LatchIcons.Menu, contentDescription = "Open navigation menu")
                                                 }
+                                            }
+                                            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                                screenContent()
                                             }
                                         }
                                     }
@@ -482,6 +507,98 @@ private fun LatchRailDrawerContent(
             icon = { Icon(LatchIcons.Help, contentDescription = null) },
             label = { Text("How it works") },
             railExpanded = true,
+            iconPosition = NavigationItemIconPosition.Start,
+        )
+    }
+}
+
+/** The persistent wide navigation rail used when there is room for it. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun LatchNavigationRail(
+    selected: LatchDestination,
+    onSelect: (LatchDestination) -> Unit,
+    onHowItWorks: () -> Unit,
+    isLatched: Boolean,
+    expanded: Boolean = true,
+) {
+    val railState = rememberWideNavigationRailState(
+        initialValue = if (expanded) WideNavigationRailValue.Expanded else WideNavigationRailValue.Collapsed,
+    )
+    LaunchedEffect(expanded) {
+        if (expanded) railState.expand() else railState.collapse()
+    }
+
+    WideNavigationRail(
+        state = railState,
+        header = {
+            // Branded header: the Latch mark + LATCH wordmark in the display
+            // font. Not a FAB — the rail's Home item handles navigation.
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    modifier = Modifier
+                        .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onSelect(LatchDestination.Home) },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = LatchMark,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    if (railState.currentValue == WideNavigationRailValue.Expanded) {
+                        Spacer(Modifier.size(10.dp))
+                        Text(
+                            text = "LATCH",
+                            fontFamily = modernizFontFamily(),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                // Connection status sits under the wordmark when the rail is shown.
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = if (isLatched) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Text(
+                        text = if (isLatched) "LATCHED" else "DISCONNECTED",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isLatched) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        fontFamily = com.vinnovateit.latch.ui.theme.satoshiFontFamily(
+                            androidx.compose.ui.text.font.FontWeight.Bold,
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        },
+    ) {
+        LatchDestination.entries.forEach { entry ->
+            WideNavigationRailItem(
+                selected = entry == selected,
+                onClick = { onSelect(entry) },
+                icon = { Icon(entry.icon, contentDescription = null) },
+                label = { Text(entry.label) },
+                railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
+                iconPosition = NavigationItemIconPosition.Start,
+            )
+        }
+        WideNavigationRailItem(
+            selected = false,
+            onClick = onHowItWorks,
+            icon = { Icon(LatchIcons.Help, contentDescription = null) },
+            label = { Text("How it works") },
+            railExpanded = railState.currentValue == WideNavigationRailValue.Expanded,
             iconPosition = NavigationItemIconPosition.Start,
         )
     }
