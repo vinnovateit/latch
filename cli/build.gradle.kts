@@ -44,6 +44,8 @@ kotlin {
             kotlin.srcDir(generatedVersionDir)
             dependencies {
                 implementation(project(":core"))
+                // SDL3 cinterop for the daemon's system tray (AppIndicator on Linux).
+                implementation("com.bitsycore.compose.sdl:sdl-core:${libs.versions.composeDesktopNative.get()}")
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.datetime)

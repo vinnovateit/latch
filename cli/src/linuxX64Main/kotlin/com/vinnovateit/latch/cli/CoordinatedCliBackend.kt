@@ -1,6 +1,7 @@
 package com.vinnovateit.latch.cli
 
 import com.vinnovateit.latch.core.engine.LatchCommand
+import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.core.runtime.AcquireResult
 import com.vinnovateit.latch.core.runtime.DesktopEngineRuntime
 import com.vinnovateit.latch.core.runtime.INSTANCE_PROTOCOL_VERSION
@@ -14,7 +15,12 @@ import com.vinnovateit.latch.core.runtime.tryAcquireOneShot
 import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.mp.JFile as File
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlin.concurrent.Volatile
+import platform.posix.system
 
 internal suspend fun createCoordinatedCliBackend(
     command: CliCommand,
@@ -85,13 +91,25 @@ private suspend fun createOwnerBackend(
         // already authenticated is recognised without waiting for the next
         // Wi-Fi event, which otherwise leaves `--status` reporting "latched: no"
         // for a freshly activated daemon.
+        var tray: CliTray? = null
+        val toggle = TrayToggle(runtime)
         if (ownerKind == OwnerKind.CLI_DAEMON) {
             runtime.engine.submit(
                 if (SettingsManager.autoLogin.value) LatchCommand.CheckAndLogin
                 else LatchCommand.SilentCheck,
             )
+            val daemonTray = CliTray()
+            val started = daemonTray.start(
+                tooltip = "Latch — Disconnected",
+                statusText = "Status: Idle",
+                showDisconnect = false,
+                onOpen = { openGui() },
+                onToggleConnect = { toggle.invoke() },
+                onExit = { stopSignal.complete(Unit) },
+            )
+            if (started) tray = daemonTray else daemonTray.destroy()
         }
-        OwnedCliBackend(ownerKind, runtime, coordinator, service, stopSignal)
+        OwnedCliBackend(ownerKind, runtime, coordinator, service, stopSignal, tray, toggle)
     } catch (error: Exception) {
         serviceReady.completeExceptionally(error)
         coordinator.close()
@@ -105,6 +123,8 @@ private class OwnedCliBackend(
     private val coordinator: InstanceCoordinator,
     service: RuntimeCommandService,
     private val stopSignal: CompletableDeferred<Unit>,
+    private val tray: CliTray? = null,
+    private val toggle: TrayToggle,
 ) : CliBackend by ProtocolCliBackend({ command, arguments ->
     service.execute(
         InstanceRequest(
@@ -120,13 +140,37 @@ private class OwnedCliBackend(
 
     override suspend fun runDaemon(): OperationResult<Unit> {
         check(ownerKind == OwnerKind.CLI_DAEMON)
-        stopSignal.await()
+        val activeTray = tray
+        if (activeTray == null) {
+            stopSignal.await()
+        } else {
+            // SDL tray calls must stay on the thread that owns SDL. runDaemon
+            // is called from main()'s runBlocking, so these updates land there.
+            coroutineScope {
+                val statusJob = launch {
+                    combine(runtime.engine.status, runtime.engine.isLatched) { status, latched ->
+                        val disconnect = latched || status is ConnectionStatus.Connecting
+                        toggle.disconnect = disconnect
+                        val text = when {
+                            latched -> "Status: Connected"
+                            status is ConnectionStatus.Connecting -> "Status: Connecting…"
+                            status is ConnectionStatus.Failed -> "Status: Disconnected"
+                            else -> "Status: Idle"
+                        }
+                        text to disconnect
+                    }.collect { (text, disconnect) -> activeTray.setStatus(text, disconnect) }
+                }
+                stopSignal.await()
+                statusJob.cancel()
+            }
+        }
         return OperationResult(Unit)
     }
 
     override fun close() {
         if (closed) return
         closed = true
+        tray?.destroy()
         runBlocking { runtime.close() }
         coordinator.close()
     }
@@ -140,6 +184,24 @@ private class ExistingDaemonBackend(
     override suspend fun runDaemon(): OperationResult<Unit> {
         terminal.println("Latch is already running as ${activeOwner.name.lowercase().replace('_', '-')}.")
         return OperationResult(Unit)
+    }
+}
+
+/** Latest connection state for the tray's Connect/Disconnect toggle. */
+private class TrayToggle(private val runtime: DesktopEngineRuntime) {
+    @Volatile var disconnect = false
+
+    fun invoke() {
+        runtime.engine.submit(if (disconnect) LatchCommand.Logout else LatchCommand.CheckAndLogin)
+    }
+}
+
+/** The CLI daemon has no window, so "Open Latch" brings up the GUI app. */
+private fun openGui() {
+    if (system("test -x /opt/latch-new/bin/Latch") == 0) {
+        system("nohup /opt/latch-new/bin/Latch >/dev/null 2>&1 &")
+    } else {
+        system("nohup latch >/dev/null 2>&1 &")
     }
 }
 
