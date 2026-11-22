@@ -21,14 +21,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationItemIconPosition
 import androidx.compose.material3.Surface
+import androidx.compose.material3.WideNavigationRail
+import androidx.compose.material3.WideNavigationRailItem
+import androidx.compose.material3.WideNavigationRailValue
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberWideNavigationRailState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -282,7 +287,7 @@ fun LatchRoot(
                                 ModalNavigationDrawer(
                                     drawerState = drawerState,
                                     drawerContent = {
-                                        LatchDrawerContent(
+                                        LatchRailDrawerContent(
                                             selected = destination,
                                             onSelect = { destination = it },
                                             onHowItWorks = { showHowItWorks = true },
@@ -394,78 +399,90 @@ fun LatchRoot(
 }
 
 /**
- * The drawer reproduces the former wide navigation rail exactly: same branded
- * header, same status badge, same destinations in the same order and icons.
+ * The drawer is the exact same WideNavigationRail the wide layout used —
+ * same header, same status badge, same item padding and content-sized items.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun LatchDrawerContent(
+private fun LatchRailDrawerContent(
     selected: LatchDestination,
     onSelect: (LatchDestination) -> Unit,
     onHowItWorks: () -> Unit,
     isLatched: Boolean,
     onClose: () -> Unit,
 ) {
-    ModalDrawerSheet {
-        // Branded header: the Latch mark + LATCH wordmark in the display font.
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(
-                modifier = Modifier
-                    .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onSelect(LatchDestination.Home); onClose() },
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = LatchMark,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp),
-                )
-                Spacer(Modifier.size(10.dp))
-                Text(
-                    text = "LATCH",
-                    fontFamily = modernizFontFamily(),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+    val railState = rememberWideNavigationRailState(
+        initialValue = WideNavigationRailValue.Expanded,
+    )
+    WideNavigationRail(
+        state = railState,
+        header = {
+            // Branded header: the Latch mark + LATCH wordmark in the display
+            // font. Not a FAB — the rail's Home item handles navigation.
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    modifier = Modifier
+                        .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onSelect(LatchDestination.Home); onClose() },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = LatchMark,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Spacer(Modifier.size(10.dp))
+                    Text(
+                        text = "LATCH",
+                        fontFamily = modernizFontFamily(),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                // Connection status sits under the wordmark, as on the rail.
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = if (isLatched) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Text(
+                        text = if (isLatched) "LATCHED" else "DISCONNECTED",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isLatched) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        fontFamily = com.vinnovateit.latch.ui.theme.satoshiFontFamily(
+                            androidx.compose.ui.text.font.FontWeight.Bold,
+                        ),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
             }
-            // Connection status sits under the wordmark, as on the rail.
-            Surface(
-                shape = androidx.compose.foundation.shape.CircleShape,
-                color = if (isLatched) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.padding(top = 8.dp),
-            ) {
-                Text(
-                    text = if (isLatched) "LATCHED" else "DISCONNECTED",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isLatched) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    fontFamily = com.vinnovateit.latch.ui.theme.satoshiFontFamily(
-                        androidx.compose.ui.text.font.FontWeight.Bold,
-                    ),
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                )
-            }
-        }
-
+        },
+    ) {
         LatchDestination.entries.forEach { entry ->
-            NavigationDrawerItem(
-                label = { Text(entry.label) },
+            WideNavigationRailItem(
                 selected = entry == selected,
-                icon = { Icon(entry.icon, contentDescription = null) },
                 onClick = { onSelect(entry); onClose() },
+                icon = { Icon(entry.icon, contentDescription = null) },
+                label = { Text(entry.label) },
+                railExpanded = true,
+                iconPosition = NavigationItemIconPosition.Start,
             )
         }
-        NavigationDrawerItem(
-            label = { Text("How it works") },
+        WideNavigationRailItem(
             selected = false,
-            icon = { Icon(LatchIcons.Help, contentDescription = null) },
             onClick = { onHowItWorks(); onClose() },
+            icon = { Icon(LatchIcons.Help, contentDescription = null) },
+            label = { Text("How it works") },
+            railExpanded = true,
+            iconPosition = NavigationItemIconPosition.Start,
         )
     }
 }
