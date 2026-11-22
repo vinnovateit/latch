@@ -516,6 +516,17 @@ class LatchEngine(
                     logger.d(TAG, "Detected resume from sleep (drift ${drift}ms); re-checking.")
                 }
 
+                // The portal endpoint is not reliable enough to be the only
+                // health signal. Check the OS-level link first: a dead carrier
+                // or lost IP tears the session down at once instead of waiting
+                // for three timeouts from generate_204.
+                if (!platform.wifi.linkHealthy(handle)) {
+                    logger.w(TAG, "Wi-Fi link is down on ${handle.id}; dropping session without a portal probe.")
+                    failCount = 0
+                    unlatch()
+                    return@launch
+                }
+
                 val probeResult = withTimeoutOrNull(5000L) {
                     portal.probe(handle)
                 } ?: PortalProbeResult.Error("Timeout")

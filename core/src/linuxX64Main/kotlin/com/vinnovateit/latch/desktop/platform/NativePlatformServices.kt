@@ -218,6 +218,26 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
         currentHandle ?: wifiInterface()?.let { NativeHandle(it).also { currentHandle = it } }
     override fun enableWifi(): Boolean = isWifiEnabled()
 
+    /**
+     * Independent of the portal endpoint. An associated Wi-Fi with no carrier,
+     * no IPv4 address or a state other than connected is a dead link, even if
+     * generate_204 never answers. Missing sysfs files are ignored so an
+     * unusual interface is not marked down by a read failure.
+     */
+    override fun linkHealthy(handle: NetworkHandle): Boolean {
+        val iface = wifiInterface() ?: return false
+        if (iface != handle.id) return false
+        val state = runCommand("nmcli -t -f GENERAL.STATE device show $iface 2>/dev/null")
+            .lineSequence().firstOrNull()?.substringAfterLast(':')?.trim().orEmpty()
+        if (!state.startsWith("100")) return false
+        val carrier = runCatching { readText(JFile("/sys/class/net/$iface/carrier")).trim() }.getOrNull()
+        if (carrier == "0") return false
+        val operState = runCatching { readText(JFile("/sys/class/net/$iface/operstate")).trim() }.getOrNull()
+        if (operState != null && operState != "up") return false
+        return runCommand("nmcli -g IP4.ADDRESS device show $iface 2>/dev/null")
+            .lineSequence().map(String::trim).any { it.isNotBlank() && it != "--" }
+    }
+
     private fun wifiInterface(): String? =
         runCommand("nmcli -t -f active,device dev wifi 2>/dev/null | grep '^yes' | head -1 | cut -d: -f2")
             .lineSequence().firstOrNull()?.takeIf(String::isNotBlank)

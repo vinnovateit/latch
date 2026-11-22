@@ -120,6 +120,14 @@ interface WifiPlatform {
 
     fun activeHandle(): NetworkHandle?
 
+    /**
+     * Whether the Wi-Fi link itself is up. This is independent of the portal
+     * endpoint: a dead carrier or a lost IP means the session is gone even if
+     * generate_204 never answers. Default true so platforms without an OS-level
+     * check keep the portal probe as their only health signal.
+     */
+    fun linkHealthy(handle: NetworkHandle): Boolean = true
+
     fun wifiInterfaceName(): String? = activeHandle()?.id
 
     val events: Flow<WifiEvent>
