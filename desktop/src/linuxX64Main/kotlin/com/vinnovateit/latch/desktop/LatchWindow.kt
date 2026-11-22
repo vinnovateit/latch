@@ -1,7 +1,11 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package com.vinnovateit.latch.desktop
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -30,6 +34,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.cinterop.IntVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.value
+import sdl3.SDL_GetWindowPosition
+import sdl3.SDL_SetWindowPosition
 import com.compose.sdl.ComposeWindowScope
 import com.vinnovateit.latch.ui.chrome.AppMenuActions
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
@@ -57,7 +69,29 @@ internal fun ComposeWindowScope.LatchWindow(
     LatchTheme {
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             Row(
-                modifier = Modifier.fillMaxWidth().height(TITLE_BAR_HEIGHT.dp).background(TITLE_BAR_COLOR),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(TITLE_BAR_HEIGHT.dp)
+                    .background(TITLE_BAR_COLOR)
+                    // Undecorated SDL window: drag the title bar to move it.
+                    .pointerInput(Unit) {
+                        val sdlWindow = window.rawSdlHandles().window
+                            ?.reinterpret<cnames.structs.SDL_Window>()
+                        if (sdlWindow != null) {
+                            detectDragGestures { _, dragAmount ->
+                                memScoped {
+                                    val x = alloc<IntVar>()
+                                    val y = alloc<IntVar>()
+                                    SDL_GetWindowPosition(sdlWindow, x.ptr, y.ptr)
+                                    SDL_SetWindowPosition(
+                                        sdlWindow,
+                                        x.value + dragAmount.x.toInt(),
+                                        y.value + dragAmount.y.toInt(),
+                                    )
+                                }
+                            }
+                        }
+                    },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
