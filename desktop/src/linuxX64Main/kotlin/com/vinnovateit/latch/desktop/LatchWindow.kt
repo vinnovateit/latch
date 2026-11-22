@@ -75,20 +75,24 @@ internal fun ComposeWindowScope.LatchWindow(
                     .background(TITLE_BAR_COLOR)
                     // Undecorated SDL window: drag the title bar to move it.
                     .pointerInput(Unit) {
-                        val sdlWindow = window.rawSdlHandles().window
-                            ?.reinterpret<cnames.structs.SDL_Window>()
-                        if (sdlWindow != null) {
-                            detectDragGestures { _, dragAmount ->
-                                memScoped {
-                                    val x = alloc<IntVar>()
-                                    val y = alloc<IntVar>()
-                                    SDL_GetWindowPosition(sdlWindow, x.ptr, y.ptr)
-                                    SDL_SetWindowPosition(
-                                        sdlWindow,
-                                        x.value + dragAmount.x.toInt(),
-                                        y.value + dragAmount.y.toInt(),
-                                    )
-                                }
+                        detectDragGestures { _, dragAmount ->
+                            // Resolve the SDL handle at drag time — at first
+                            // composition the native window may not exist yet.
+                            val sdlWindow = window.rawSdlHandles().window
+                                ?.reinterpret<cnames.structs.SDL_Window>()
+                            if (sdlWindow == null) {
+                                println("DRAG: no SDL window handle")
+                                return@detectDragGestures
+                            }
+                            memScoped {
+                                val x = alloc<IntVar>()
+                                val y = alloc<IntVar>()
+                                SDL_GetWindowPosition(sdlWindow, x.ptr, y.ptr)
+                                SDL_SetWindowPosition(
+                                    sdlWindow,
+                                    x.value + dragAmount.x.toInt(),
+                                    y.value + dragAmount.y.toInt(),
+                                )
                             }
                         }
                     },

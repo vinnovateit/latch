@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Row
@@ -101,6 +102,7 @@ fun LatchRoot(
             color = MaterialTheme.colorScheme.background,
         ) {
             var hasCredentials by remember { mutableStateOf(platform.credentials.exists()) }
+            val isLatchedForRail by controller.isLatched.collectAsStateWithLifecycle()
             val hasSeenOnboarding by SettingsManager.hasSeenOnboarding.collectAsStateWithLifecycle()
             val onboardingPagerState = rememberPagerState(initialPage = 0, pageCount = { 6 })
             var editingCredentials by remember { mutableStateOf(false) }
@@ -293,6 +295,7 @@ fun LatchRoot(
                                             selected = destination,
                                             onSelect = { destination = it },
                                             onHowItWorks = { showHowItWorks = true },
+                                            isLatched = isLatchedForRail,
                                             expanded = railExpanded,
                                         )
                                     }
@@ -338,6 +341,7 @@ fun LatchRoot(
                                                 sessions = sessions,
                                                 platform = platform,
                                                 onOpenStats = { destination = LatchDestination.Stats },
+                                                showStatusBadge = !railVisible,
                                             )
 
                                             LatchDestination.Stats -> StatsScreen(
@@ -396,6 +400,7 @@ private fun LatchNavigationRail(
     selected: LatchDestination,
     onSelect: (LatchDestination) -> Unit,
     onHowItWorks: () -> Unit,
+    isLatched: Boolean,
     expanded: Boolean = true,
 ) {
     val railState = rememberWideNavigationRailState(
@@ -410,6 +415,7 @@ private fun LatchNavigationRail(
         header = {
             // Branded header: the Latch mark + LATCH wordmark in the display
             // font. Not a FAB — the rail's Home item handles navigation.
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Row(
                 modifier = Modifier
                     .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)
@@ -435,6 +441,24 @@ private fun LatchNavigationRail(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
+            }
+            // Connection status sits under the wordmark when the rail is shown.
+            androidx.compose.material3.Surface(
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = if (isLatched) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text(
+                    text = if (isLatched) "LATCHED" else "DISCONNECTED",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isLatched) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    fontFamily = com.vinnovateit.latch.ui.theme.satoshiFontFamily(androidx.compose.ui.text.font.FontWeight.Bold),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
             }
         },
     ) {

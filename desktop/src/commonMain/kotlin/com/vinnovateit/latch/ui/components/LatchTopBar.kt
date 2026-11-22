@@ -56,6 +56,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun LatchHomeTopBar(
     isLatched: Boolean,
+    showStatusPill: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     TopAppBar(
@@ -69,26 +70,28 @@ internal fun LatchHomeTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(start = 4.dp),
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = if (isLatched) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    AnimatedContent(
-                        targetState = isLatched,
-                        transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
-                        label = "TopBarTitlePill",
-                    ) { latched ->
-                        Text(
-                            text = stringResource(
-                                if (latched) Res.string.home_status_connected
-                                else Res.string.home_status_disconnected,
-                            ),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (latched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = satoshiFontFamily(FontWeight.Bold),
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
-                        )
+                if (showStatusPill) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isLatched) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        AnimatedContent(
+                            targetState = isLatched,
+                            transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
+                            label = "TopBarTitlePill",
+                        ) { latched ->
+                            Text(
+                                text = stringResource(
+                                    if (latched) Res.string.home_status_connected
+                                    else Res.string.home_status_disconnected,
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (latched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = satoshiFontFamily(FontWeight.Bold),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+                            )
+                        }
                     }
                 }
             }

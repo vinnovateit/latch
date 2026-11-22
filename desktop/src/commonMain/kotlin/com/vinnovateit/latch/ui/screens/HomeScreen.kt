@@ -82,6 +82,7 @@ fun HomeScreen(
     sessions: SessionRepository,
     platform: PlatformServices,
     onOpenStats: () -> Unit,
+    showStatusBadge: Boolean = true,
 ) {
     val isLatched by controller.isLatched.collectAsStateWithLifecycle()
     val status by controller.status.collectAsStateWithLifecycle()
@@ -129,7 +130,7 @@ fun HomeScreen(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val topBar: @Composable () -> Unit = {
-            LatchHomeTopBar(isLatched = isLatched)
+            LatchHomeTopBar(isLatched = isLatched, showStatusPill = showStatusBadge)
         }
 
         if (maxWidth >= WideBreakpoint) {
