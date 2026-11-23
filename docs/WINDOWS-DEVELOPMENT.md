@@ -35,6 +35,6 @@ The desktop app is Kotlin/Native on both hosts: `linuxX64` and `mingwX64` use th
 - The JVM desktop tasks are gone. Build Windows with `:desktop:linkDebugExecutableMingwX64` / `:desktop:linkReleaseExecutableMingwX64`; Linux keeps `:desktop:packageNativeReleaseTarGz`.
 - Linux CI needs `libcurl4-openssl-dev` for the curl cinterop. Windows uses the OS `curl.exe` and needs no cinterop.
 - Native checks are `:core:desktopTest :desktop:linuxX64Test :cli:test` and `:desktop:packageNativeReleaseTarGz`.
-- Windows checks run `:core:desktopTest` with the Windows test filters, plus `:desktop:packageNativeMsiMingwX64` (WiX 5, `Scope="perUser"`, `-dcl high`). The `windows-msi` CI job reports the installer size and uploads it as `windows-native-msi`.
-- The release workflow builds the same MSI and stages it as `LatchSetup.msi`; `packaging/qualify-windows-native-msi.ps1` verifies identity, silent per-user install, installed files and uninstall.
+- Windows checks run `:core:desktopTest` with the Windows test filters, plus `:desktop:packageNativeMsiMingwX64` (WiX 5, `Scope="perMachine"`, `-arch x64`, `-dcl high`). The `windows-msi` CI job reports the installer size and uploads it as `windows-native-msi`.
+- The release workflow builds the same MSI and stages it as `LatchSetup.msi`; `packaging/qualify-windows-native-msi.ps1` verifies identity, elevated silent per-machine install into Program Files, installed files and uninstall. Both shortcuts target `Latch.exe` directly.
 - Linux keeps a `.tar.gz` but recompresses it at gzip level 9, so the filename and install scripts stay unchanged.

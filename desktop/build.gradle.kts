@@ -192,7 +192,7 @@ tasks.register("packageNativeMsiMingwX64") {
 
         output.get().asFile.parentFile.mkdirs()
         val command = listOf(
-            "wix", "build", "-dcl", "high", "-ext", "WixToolset.UI.wixext",
+            "wix", "build", "-arch", "x64", "-dcl", "high", "-ext", "WixToolset.UI.wixext",
             "-d", "Version=$latchVersion",
             "-d", "SourceDir=${stage.absolutePath}",
             "-o", output.get().asFile.absolutePath,

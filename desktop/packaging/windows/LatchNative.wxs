@@ -11,9 +11,9 @@
       Version="$(Version)"
       UpgradeCode="6F3B9C84-1D52-4E7A-9B06-2A8F5C14D7E3"
       ProductCode="*"
-      Scope="perUser">
+      Scope="perMachine">
 
-    <!-- perUser scope above: no UAC prompt, no ALLUSERS property. -->
+    <!-- perMachine scope: UAC prompt, ALLUSERS=1, installs under Program Files. -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of Latch is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
@@ -23,15 +23,16 @@
     <Icon Id="LatchIcon" SourceFile="$(SourceDir)\latch.ico" />
     <Property Id="ARPPRODUCTICON" Value="LatchIcon" />
 
-    <StandardDirectory Id="LocalAppDataFolder">
+    <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Latch">
         <Component Id="LatchExe" Guid="D3A7B4C1-9E2F-4A6B-8C11-5F0E7A2B9D01">
           <File Id="LatchExe" Source="$(SourceDir)\Latch.exe" KeyPath="yes" />
+          <!-- Target must point at the exe: without it the shortcut opens INSTALLFOLDER. -->
           <Shortcut Id="StartMenuLatch" Directory="LatchMenuFolder" Name="Latch"
-                    Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
+                    Target="[LatchExe]" Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
           <Shortcut Id="DesktopLatch" Directory="DesktopFolder" Name="Latch"
-                    Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
-          <RegistryValue Root="HKCU" Key="Software\VinnovateIT\Latch"
+                    Target="[LatchExe]" Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
+          <RegistryValue Root="HKLM" Key="Software\VinnovateIT\Latch"
                          Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
         </Component>
         <Component Id="DataKres" Guid="D3A7B4C1-9E2F-4A6B-8C11-5F0E7A2B9D02">

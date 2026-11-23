@@ -30,8 +30,8 @@ foreach ($key in $expected.Keys) {
         throw "$key is '$($properties[$key])', expected '$($expected[$key])'"
     }
 }
-if ($properties['ALLUSERS']) { throw 'Native MSI must be per-user (ALLUSERS must be absent)' }
-Write-Host "Identity OK: $($expected.ProductName) $Version, per-user"
+if ($properties['ALLUSERS'] -ne '1') { throw 'Native MSI must be per-machine (ALLUSERS=1)' }
+Write-Host "Identity OK: $($expected.ProductName) $Version, per-machine"
 
 function Invoke-Msi([string[]] $Arguments, [string] $LogName) {
     $log = Join-Path (Get-Location) $LogName
@@ -44,11 +44,11 @@ function Invoke-Msi([string[]] $Arguments, [string] $LogName) {
 }
 
 $productCode = $properties['ProductCode']
-$installDir = Join-Path $env:LOCALAPPDATA 'Latch'
+$installDir = Join-Path ${env:ProgramFiles} 'Latch'
 Invoke-Msi @("/i `"$msiPath`"", '/qn', '/norestart') 'native-install.log'
 
 $assignment = $installer.ProductInfo($productCode, 'AssignmentType')
-if ($assignment -ne 0) { throw "Not a per-user install (AssignmentType $assignment)" }
+if ($assignment -ne 1) { throw "Not a per-machine install (AssignmentType $assignment)" }
 foreach ($name in 'Latch.exe', 'data.kres', 'icudtl.dat', 'skiko-windows-x64.dll') {
     if (-not (Test-Path -LiteralPath (Join-Path $installDir $name) -PathType Leaf)) {
         throw "Installed file missing: $name"
