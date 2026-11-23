@@ -1,13 +1,13 @@
 # Windows development
 
-This branch ships a Kotlin/Native Linux binary. Windows still builds from the JVM `desktopMain` source set. The list below collects the behaviour the Windows build needs so it matches the native Linux app.
+The desktop app is Kotlin/Native on both hosts: `linuxX64` and `mingwX64` use the same SDL3 + Skia bridge. There is no JVM in either distributable. Build the Windows binary with `:desktop:linkDebugExecutableMingwX64` (or `linkReleaseExecutableMingwX64`). The list below collects the behaviour the Windows build matches against the native Linux app.
 
 ## Window
 
 - Use the OS window frame, not a custom title bar. Drag and resize belong to the window manager.
 - Closing the window hides it to the tray. Only the tray Quit entry ends the process.
 - Minimize keeps the tray icon. Launching a second copy raises the existing window.
-- The app icon comes from `desktop/icons/latch.svg`. The build generates the PNG sizes and the Windows `.ico`. Set the generated `.ico` as the exe and shortcut icon.
+- The app icon comes from `desktop/icons/latch.svg`. `desktop/icons/GenerateIcon.java` rasterises the PNG sizes at build time using only the build JDK, so no rsvg-convert or ImageMagick is needed on Windows.
 - The LATCH mark and wordmark stay in the wide navigation rail.
 
 ## Navigation
@@ -30,7 +30,9 @@ This branch ships a Kotlin/Native Linux binary. Windows still builds from the JV
 
 ## CI
 
-- The old JVM desktop tasks are gone on the native branch. Do not call `:desktop:compileKotlinDesktop`, `:desktop:desktopTest`, `:desktop:smoke` or `:desktop:packageReleaseMsi`.
-- Linux CI needs `libcurl4-openssl-dev` for the curl cinterop.
+- The JVM desktop tasks are gone. Build Windows with `:desktop:linkDebugExecutableMingwX64` / `:desktop:linkReleaseExecutableMingwX64`; Linux keeps `:desktop:packageNativeReleaseTarGz`.
+- Linux CI needs `libcurl4-openssl-dev` for the curl cinterop. Windows uses the OS `curl.exe` and needs no cinterop.
 - Native checks are `:core:desktopTest :desktop:linuxX64Test :cli:test` and `:desktop:packageNativeReleaseTarGz`.
-- Windows checks still run `:core:desktopTest` with the Windows test filters. Re-add an MSI job only when a Windows native target exists.
+- Windows checks run `:core:desktopTest` with the Windows test filters, plus `:desktop:packageNativeMsiMingwX64` (WiX 5, `Scope="perUser"`, `-dcl high`). The `windows-msi` CI job reports the installer size and uploads it as `windows-native-msi`.
+- The release workflow builds the same MSI and stages it as `LatchSetup.msi`; `packaging/qualify-windows-native-msi.ps1` verifies identity, silent per-user install, installed files and uninstall.
+- Linux keeps a `.tar.gz` but recompresses it at gzip level 9, so the filename and install scripts stay unchanged.

@@ -1,5 +1,8 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.*
+import java.util.zip.Deflater
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 val latchVersion = providers.gradleProperty("latchVersion").get()
 
@@ -11,9 +14,9 @@ plugins {
     alias(libs.plugins.compose.desktop.native.bridge)
 }
 
-// The desktop app is a self-contained Kotlin/Native executable (SDL3 + Skia),
-// not a JVM application. The JVM target is gone; the native binary is the only
-// desktop distributable.
+// Native desktop app (SDL3 + Skia) for both supported hosts. There is no JVM
+// in either distributable; Windows uses the same compose-desktop-native bridge
+// as Linux, on the mingwX64 target.
 kotlin {
     linuxX64 {
         binaries.all {
@@ -21,6 +24,13 @@ kotlin {
             // calls. --as-needed drops the DT_NEEDED so it starts on hosts with
             // only libcrypt.so.2.
             freeCompilerArgs += listOf("-linker-option", "--as-needed")
+        }
+    }
+
+    mingwX64 {
+        binaries.all {
+            // GUI subsystem: no black console window behind the app.
+            freeCompilerArgs += listOf("-linker-option", "-Wl,--subsystem,windows")
         }
     }
 
@@ -50,42 +60,35 @@ kotlin {
     }
 }
 
+configurations.matching { it.name.contains("mingwX64", ignoreCase = true) }.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute(module("androidx.room:room-runtime")).using(project(":roomstub"))
+    }
+    exclude(group = "androidx.sqlite", module = "sqlite-bundled")
+}
+
 compose.resources {
     publicResClass = false
     packageOfResClass = "com.vinnovateit.latch.desktop.resources"
     generateResClass = auto
 }
 
-// One source of truth for the app icon: icons/latch.svg. Rasterise the sizes
-// the native bridge consumes at build time; no checked-in PNG/ICO/ICNS copies.
+// One source of truth for the app icon: icons/latch.svg. GenerateIcon.java
+// rasterises it with the build JDK alone -- Windows has no rsvg/ImageMagick.
 val generatedIconDir = layout.buildDirectory.dir("generated/desktop-icons")
 val generateDesktopIcons = tasks.register("generateDesktopIcons") {
     val svg = layout.projectDirectory.file("icons/latch.svg")
-    inputs.file(svg)
+    val generator = layout.projectDirectory.file("icons/GenerateIcon.java")
+    inputs.files(svg, generator)
     outputs.dir(generatedIconDir)
     doLast {
-        val outDir = generatedIconDir.get().asFile
-        outDir.mkdirs()
-        val pathDirs = System.getenv("PATH").orEmpty().split(File.pathSeparator)
-        fun find(vararg names: String) = pathDirs.flatMap { dir -> names.map { File(dir, it) } }
-            .firstOrNull { it.exists() }?.absolutePath
-        val rsvg = find("rsvg-convert")
-        val imagemagick = find("magick", "convert")
-        if (rsvg == null && imagemagick == null) {
-            error("rsvg-convert or ImageMagick is required to build the desktop icon")
-        }
-        for (size in listOf(32, 64, 128, 256, 512)) {
-            val out = File(outDir, "latch-$size.png").absolutePath
-            val command = if (rsvg != null) {
-                listOf(rsvg, "-w", "$size", "-h", "$size", svg.asFile.absolutePath, "-o", out)
-            } else {
-                listOf(imagemagick!!, "-background", "none", svg.asFile.absolutePath,
-                    "-resize", "${size}x${size}", "-gravity", "center",
-                    "-extent", "${size}x${size}", out)
-            }
-            val process = ProcessBuilder(command).inheritIO().start()
-            if (process.waitFor() != 0) error("Failed to rasterise latch.svg at ${size}px")
-        }
+        val java = listOf(System.getProperty("java.home"), "bin", "java").joinToString(File.separator)
+        val command = listOf(
+            java, generator.asFile.absolutePath,
+            svg.asFile.absolutePath, generatedIconDir.get().asFile.absolutePath,
+        )
+        val process = ProcessBuilder(command).inheritIO().start()
+        if (process.waitFor() != 0) error("Failed to generate desktop icons from latch.svg")
     }
 }
 tasks.configureEach {
@@ -138,5 +141,65 @@ tasks.register<Tar>("packageNativeReleaseTarGz") {
     }
     from(layout.buildDirectory.file("bin/linuxX64/releaseExecutable/data.kres")) {
         into("latch-native-$latchVersion/bin")
+    }
+
+    // Gradle's Tar always uses the default gzip level. Recompress at the
+    // strongest level so the download is as small as possible; the archive
+    // name and layout stay identical, so install.sh and CI need no changes.
+    doLast {
+        val archive = destinationDirectory.get().asFile.resolve(archiveFileName.get())
+        val recompressed = File.createTempFile("latch-gzip-", ".tar.gz", archive.parentFile)
+        GZIPInputStream(archive.inputStream()).use { input ->
+            GZIPOutputStream(recompressed.outputStream(), Deflater.BEST_COMPRESSION).use { output ->
+                input.copyTo(output, 64 * 1024)
+            }
+        }
+        check(archive.delete() && recompressed.renameTo(archive)) { "Cannot recompress $archive" }
+        println("Linux archive: ${archive.name} (${archive.length()} bytes, gzip level 9)")
+    }
+}
+
+/**
+ * Compressed per-user MSI for the native Windows executable. WiX embeds a
+ * high-compression cabinet in the package, so the installer is a single file.
+ */
+tasks.register("packageNativeMsiMingwX64") {
+    group = "compose desktop"
+    description = "Builds a compressed native Windows MSI with WiX"
+    dependsOn(
+        "linkReleaseExecutableMingwX64",
+        "provisionSkikoDllReleaseMingwX64",
+        "provisionSkikoIcuReleaseMingwX64",
+        "packageReleaseComposeResourcesMingwX64",
+        "generateDesktopIcons",
+    )
+
+    val stageDir = layout.buildDirectory.dir("msi-stage")
+    val nativeDir = layout.buildDirectory.dir("bin/mingwX64/releaseExecutable")
+    val wxs = layout.projectDirectory.file("packaging/windows/LatchNative.wxs")
+    val output = layout.buildDirectory.file("distributions/latch-native-$latchVersion-windows-x64.msi")
+    inputs.files(wxs, nativeDir, generatedIconDir)
+    outputs.file(output)
+
+    doLast {
+        val stage = stageDir.get().asFile
+        stage.mkdirs()
+        listOf("data.kres", "icudtl.dat", "skiko-windows-x64.dll").forEach { name ->
+            nativeDir.get().asFile.resolve(name).copyTo(stage.resolve(name), overwrite = true)
+        }
+        nativeDir.get().asFile.resolve("desktop.exe").copyTo(stage.resolve("Latch.exe"), overwrite = true)
+        generatedIconDir.get().asFile.resolve("latch.ico").copyTo(stage.resolve("latch.ico"), overwrite = true)
+
+        output.get().asFile.parentFile.mkdirs()
+        val command = listOf(
+            "wix", "build", "-dcl", "high",
+            "-d", "Version=$latchVersion",
+            "-d", "SourceDir=${stage.absolutePath}",
+            "-o", output.get().asFile.absolutePath,
+            wxs.asFile.absolutePath,
+        )
+        val process = ProcessBuilder(command).inheritIO().start()
+        if (process.waitFor() != 0) error("WiX failed to build the native MSI")
+        println("Windows MSI: ${output.get().asFile.name} (${output.get().asFile.length()} bytes, high compression)")
     }
 }

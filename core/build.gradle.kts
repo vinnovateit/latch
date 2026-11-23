@@ -25,7 +25,7 @@ kotlin {
         }
     }
 
-    // Kotlin/Native desktop target for the SDL/Skia build. Kept alongside the
+    // Kotlin/Native desktop targets for the SDL/Skia build. Kept alongside the
     // JVM target so the CLI and JVM reference build continue to work.
     linuxX64 {
         compilations.getByName("main") {
@@ -35,20 +35,18 @@ kotlin {
         }
     }
 
+    // Windows native desktop target. No cinterop: HTTP goes through curl.exe
+    // from the mingwX64 JRuntime implementation instead of libcurl.
+    mingwX64()
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.serialization.json)
 
-            // LatchDatabase (in commonMain -- Room's expect/actual
-            // RoomDatabaseConstructor pattern requires the @Database class to
-            // live here, compiled for every target) extends RoomDatabase, and
-            // that type crosses the module boundary into :desktop, :cli and
-            // :app -- api, not implementation, or their compile fails with a
-            // missing supertype. Only the runtime artifact goes in commonMain;
-            // the SQLite driver is target-specific (see desktopMain below --
-            // Android needs no equivalent, it has its own framework driver).
+            // Room has no mingwX64 klib. The shared metadata compile keeps the
+            // real API; the Windows platform compile substitutes source stubs.
             api(libs.room.runtime.desktop)
         }
 
@@ -79,7 +77,19 @@ kotlin {
             // Bundled SQLite ships a linuxX64 klib, so Room needs no JNI here.
             api(libs.sqlite.bundled)
         }
+
+        // Neither Room nor bundled SQLite ships a mingwX64 klib.
+        val mingwX64Main by getting
     }
+}
+
+// The shared compile uses the real Room API; Windows platform configurations
+// substitute a tiny module with the same androidx.* declarations (see :roomstub).
+configurations.matching { it.name.contains("mingwX64", ignoreCase = true) }.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute(module("androidx.room:room-runtime")).using(project(":roomstub"))
+    }
+    exclude(group = "androidx.sqlite", module = "sqlite-bundled")
 }
 
 // KSP config names derive from the target name: jvm("desktop") -> kspDesktop,

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!--
+    Native (Kotlin/Native + SDL3/Skia) Windows installer. No JVM, no jpackage.
+    Built with WiX 5: wix build -dcl high -d Version=... -d SourceDir=... -o LatchSetup.msi
+  -->
+  <Package
+      Name="Latch"
+      Manufacturer="VinnovateIT"
+      Version="$(Version)"
+      UpgradeCode="6F3B9C84-1D52-4E7A-9B06-2A8F5C14D7E3"
+      ProductCode="*"
+      Scope="perUser">
+
+    <!-- perUser scope above: no UAC prompt, no ALLUSERS property. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Latch is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="LatchIcon" SourceFile="$(SourceDir)\latch.ico" />
+    <Property Id="ARPPRODUCTICON" Value="LatchIcon" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Latch">
+        <Component Id="LatchExe" Guid="D3A7B4C1-9E2F-4A6B-8C11-5F0E7A2B9D01">
+          <File Id="LatchExe" Source="$(SourceDir)\Latch.exe" KeyPath="yes" />
+          <Shortcut Id="StartMenuLatch" Directory="LatchMenuFolder" Name="Latch"
+                    Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
+          <Shortcut Id="DesktopLatch" Directory="DesktopFolder" Name="Latch"
+                    Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
+          <RegistryValue Root="HKCU" Key="Software\VinnovateIT\Latch"
+                         Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
+        </Component>
+        <Component Id="DataKres" Guid="D3A7B4C1-9E2F-4A6B-8C11-5F0E7A2B9D02">
+          <File Id="DataKres" Source="$(SourceDir)\data.kres" KeyPath="yes" />
+        </Component>
+        <Component Id="IcuData" Guid="D3A7B4C1-9E2F-4A6B-8C11-5F0E7A2B9D03">
+          <File Id="IcuData" Source="$(SourceDir)\icudtl.dat" KeyPath="yes" />
+        </Component>
+        <Component Id="SkikoDll" Guid="D3A7B4C1-9E2F-4A6B-8C11-5F0E7A2B9D04">
+          <File Id="SkikoDll" Source="$(SourceDir)\skiko-windows-x64.dll" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="LatchMenuFolder" Name="Latch" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Feature Id="Main" Title="Latch" Level="1" ConfigurableDirectory="INSTALLFOLDER">
+      <ComponentRef Id="LatchExe" />
+      <ComponentRef Id="DataKres" />
+      <ComponentRef Id="IcuData" />
+      <ComponentRef Id="SkikoDll" />
+    </Feature>
+  </Package>
+</Wix>

@@ -167,16 +167,20 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Install WiX 5
+        shell: pwsh
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Put WiX on PATH
+        shell: pwsh
+        run: '"$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
+
       # The only place a release exercises real DPAPI: the Linux job's tests
       # reach DpapiCredentialStore through a fake backend.
       - name: Verify DPAPI credential store
         run: .\gradlew.bat :core:desktopTest --tests "com.vinnovateit.latch.desktop.platform.windows.*" --tests "com.vinnovateit.latch.core.runtime.SecureRuntimeFilesTest" --tests "com.vinnovateit.latch.desktop.LegacyDataMigrationTest" --tests "com.vinnovateit.latch.desktop.DatabaseLocationTest"
 
-      - name: Verify desktop layout
-        run: .\gradlew.bat :desktop:desktopTest
-
-      - name: Build Desktop MSI
-        run: .\gradlew.bat :desktop:packageReleaseMsi
+      - name: Build compressed native MSI
+        run: .\gradlew.bat :desktop:packageNativeMsiMingwX64
 
       - name: Build portable CLI
         if: needs.prepare.outputs.mode == 'full'
@@ -198,15 +202,16 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path staging | Out-Null
           # Keep one stable GUI installer filename across patch rebuilds. The
-          # MSI's internal product/version metadata remains controlled by
-          # Compose/jpackage; only the release asset name is normalized here.
+          # MSI's internal product/version metadata comes from the WiX source;
+          # only the release asset name is normalized here.
           # Not Latch-*.msi: updaters up to 1.4.2 offer that shape and then
           # break the install (see WINDOWS_PACKAGE_ASSET in GithubUpdater.kt).
-          $msi = @(Get-ChildItem desktop\build\compose\binaries\main-release\msi\*.msi)
+          $msi = @(Get-ChildItem desktop\build\distributions\*-windows-x64.msi)
           if ($msi.Count -ne 1) {
-            throw "Expected exactly one Desktop MSI, found $($msi.Count)"
+            throw "Expected exactly one native MSI, found $($msi.Count)"
           }
           Copy-Item $msi.FullName staging\LatchSetup.msi
+          Write-Host "MSI size: $([math]::Round($msi[0].Length / 1MB, 2)) MB"
           # Updaters up to 1.4.2 only show an update when a Latch-*.msi is
           # published, so this carries the manual-install notice to them. It
           # is the notice text, not an installer: if they choose to download
@@ -221,18 +226,15 @@ jobs:
         shell: pwsh
         run: Copy-Item cli\build\distributions\*.zip staging\
 
-      # Installs the exact file about to be uploaded: database open, silent
-      # per-user install, installed files and version, silent uninstall, and
-      # a silent upgrade from the previous published release. Failing here
-      # stops the release before the MSI reaches anyone.
-      - name: Qualify the staged MSI on Windows
+      # Installs the exact file about to be uploaded: identity, silent
+      # per-user install, installed native runtime files, silent uninstall.
+      # Failing here stops the release before the MSI reaches anyone.
+      - name: Qualify the staged native MSI on Windows
         shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          packaging/qualify-windows-msi.ps1 -Msi staging\LatchSetup.msi -Version $env:VERSION `
-            -BaselineRepo $env:GITHUB_REPOSITORY -LegacyNotice staging\Latch-Update-Notice.msi -LogDir msi-logs
+          packaging/qualify-windows-native-msi.ps1 -Msi staging\LatchSetup.msi -Version $env:VERSION
 
       - name: Upload Windows Installer logs
         if: failure()

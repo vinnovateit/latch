@@ -1,6 +1,6 @@
 # Native desktop status
 
-The desktop app is a self-contained Kotlin/Native (`linuxX64`) binary built on
+The desktop app is a self-contained Kotlin/Native binary for `linuxX64` and `mingwX64` (Windows), built on
 [compose-desktop-native](https://github.com/bitsycore/compose-desktop-native)
 (SDL3 + Skia). There is **no JVM** in the desktop distributable.
 
@@ -29,7 +29,7 @@ The desktop app is a self-contained Kotlin/Native (`linuxX64`) binary built on
 
 ## Known limitations / what does not work
 
-- **Windows**: not built or tested in this branch. The old JVM Windows installer/MSI is not produced. A native `mingwX64` build would need the port's Windows Skiko fork and a Windows host (or cross-compile setup); SDL tray relies on libayatana-appindicator/GTK on Linux and Windows would need its own tray backend. The JVM-specific Windows code (DPAPI credentials, `netsh` Wi-Fi, balloon notifier) has no native equivalent yet — the Linux native platform layer uses JSON credentials (0600) and nmcli.
+- **Windows**: native `mingwX64` build links and runs on Windows using the same SDL3 + Skia port; SDL tray works via its Windows backend. Wi-Fi uses `netsh`, portal traffic is pinned to the Wi-Fi interface through `curl.exe`, credentials are stored in a user-ACL'd JSON file, and session history uses a JSON-backed DAO (Room/SQLite have no mingwX64 klib). The compressed per-user MSI is built with `desktop/packaging/windows/LatchNative.wxs` via `:desktop:packageNativeMsiMingwX64` (~15 MB from ~54 MB of staged files); the release workflow stages it as `LatchSetup.msi`.
 - **Credentials at rest**: native fallback is a 0600 JSON file, not the GNOME keyring/Secret Service or Windows DPAPI.
 - **Tray on GNOME/Wayland**: needs an AppIndicator extension; SDL sets tooltip as a no-op on Linux, so status is mirrored in a disabled menu entry.
 - **Window position persistence**: the window does not remember its position/size across restarts.

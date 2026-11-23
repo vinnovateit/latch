@@ -89,6 +89,52 @@ jobs:
         shell: pwsh
         run: Get-ChildItem core\build\test-results\desktopTest\TEST-*.windows.*.xml, core\build\test-results\desktopTest\TEST-*.SecureRuntimeFilesTest.xml, core\build\test-results\desktopTest\TEST-*.LegacyDataMigrationTest.xml, core\build\test-results\desktopTest\TEST-*.DatabaseLocationTest.xml, core\build\test-results\desktopTest\TEST-*.InstanceCoordinatorTest.xml | Select-String '<testsuite |<testcase '
 
+  # Builds the self-contained native Windows installer. No JVM is involved:
+  # :desktop:packageNativeMsiMingwX64 links the mingwX64 executable and packs
+  # it with WiX at maximum compression.
+  windows-msi:
+
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install WiX 5
+        shell: pwsh
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Put WiX on PATH
+        shell: pwsh
+        run: '"$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
+
+      - name: Build compressed native MSI
+        run: .\gradlew.bat :desktop:packageNativeMsiMingwX64 --no-daemon
+
+      - name: Report installer size
+        id: size
+        shell: pwsh
+        run: |
+          $msi = @(Get-ChildItem desktop\build\distributions\*-windows-x64.msi)
+          if ($msi.Count -ne 1) { throw "Expected exactly one native MSI, found $($msi.Count)" }
+          $mb = [math]::Round($msi[0].Length / 1MB, 2)
+          Write-Host "MSI: $($msi[0].Name) - $mb MB ($($msi[0].Length) bytes, high compression)"
+          "size-mb=$mb" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload Windows MSI
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-native-msi
+          path: desktop/build/distributions/*-windows-x64.msi
+          if-no-files-found: error
+
 
   # Builds the native Linux tarball and checks its contents. The old smoke
   # script expects the JVM desktop layout, so it does not apply here.
@@ -124,6 +170,12 @@ jobs:
           test -f "$archive"
           tar -tzf "$archive" | grep -qx "latch-native-$version/bin/Latch"
           tar -tzf "$archive" | grep -qx "latch-native-$version/bin/data.kres"
+
+      - name: Report Linux archive size
+        run: |
+          version="$(sed -n 's/^latchVersion=//p' gradle.properties)"
+          archive="desktop/build/distributions/latch-native-$version-linux-x64.tar.gz"
+          echo "Linux archive: $archive - $(du -h "$archive" | cut -f1) ($(stat -c%s "$archive") bytes, gzip level 9)"
 
       - name: Test the winget submission logic
         run: packaging/test-submit-winget.sh
