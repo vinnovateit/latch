@@ -69,14 +69,21 @@ val generateDesktopIcons = tasks.register("generateDesktopIcons") {
         val pathDirs = System.getenv("PATH").orEmpty().split(File.pathSeparator)
         fun find(vararg names: String) = pathDirs.flatMap { dir -> names.map { File(dir, it) } }
             .firstOrNull { it.exists() }?.absolutePath
-        val tool = find("magick", "convert")
-            ?: error("ImageMagick (magick or convert) is required to build the desktop icon")
+        val rsvg = find("rsvg-convert")
+        val imagemagick = find("magick", "convert")
+        if (rsvg == null && imagemagick == null) {
+            error("rsvg-convert or ImageMagick is required to build the desktop icon")
+        }
         for (size in listOf(32, 64, 128, 256, 512)) {
-            val process = ProcessBuilder(
-                tool, "-background", "none", svg.asFile.absolutePath,
-                "-resize", "${size}x${size}",
-                File(outDir, "latch-$size.png").absolutePath,
-            ).inheritIO().start()
+            val out = File(outDir, "latch-$size.png").absolutePath
+            val command = if (rsvg != null) {
+                listOf(rsvg, "-w", "$size", "-h", "$size", svg.asFile.absolutePath, "-o", out)
+            } else {
+                listOf(imagemagick!!, "-background", "none", svg.asFile.absolutePath,
+                    "-resize", "${size}x${size}", "-gravity", "center",
+                    "-extent", "${size}x${size}", out)
+            }
+            val process = ProcessBuilder(command).inheritIO().start()
             if (process.waitFor() != 0) error("Failed to rasterise latch.svg at ${size}px")
         }
     }

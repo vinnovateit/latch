@@ -44,7 +44,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install --yes libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install --yes libcurl4-openssl-dev librsvg2-bin imagemagick libfontconfig1-dev libgl1-mesa-dev libx11-dev
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -110,7 +110,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install --yes libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install --yes libcurl4-openssl-dev librsvg2-bin imagemagick libfontconfig1-dev libgl1-mesa-dev libx11-dev
 
       - name: Build Linux tarballs
         run: |
