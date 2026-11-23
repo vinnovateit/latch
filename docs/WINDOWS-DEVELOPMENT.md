@@ -8,6 +8,8 @@ The desktop app is Kotlin/Native on both hosts: `linuxX64` and `mingwX64` use th
 - Closing the window hides it to the tray. Only the tray Quit entry ends the process.
 - Minimize keeps the tray icon. Launching a second copy raises the existing window.
 - The app icon comes from `desktop/icons/latch.svg`. `desktop/icons/GenerateIcon.java` rasterises the PNG sizes at build time using only the build JDK, so no rsvg-convert or ImageMagick is needed on Windows.
+- No console windows: every `netsh`/`powershell`/`curl.exe` call goes through `runHidden()` (`CreateProcessW` with `CREATE_NO_WINDOW`), never `platform.posix.system()`.
+- Startup is lazy: engine start, Wi-Fi polling and history sync happen off the UI path; the window is composed in roughly 300 ms (~900 ms on a cold first launch).
 - The LATCH mark and wordmark stay in the wide navigation rail.
 
 ## Navigation

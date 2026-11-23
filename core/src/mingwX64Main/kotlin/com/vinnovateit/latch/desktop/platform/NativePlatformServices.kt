@@ -356,7 +356,7 @@ internal fun runCommand(command: String, redirect: Boolean = true): String {
     val dir = com.vinnovateit.latch.core.mp.winTempDir()
     val outFile = "$dir\\$stem.out"
     val suffix = if (redirect) " > \"$outFile\" 2>nul" else ""
-    platform.posix.system("cmd /c $command$suffix")
+    com.vinnovateit.latch.core.mp.runHidden("cmd /c $command$suffix")
     val result = if (redirect) runCatching { readText(JFile(outFile)) }.getOrDefault("") else ""
     runCatching { platform.posix.unlink(outFile) }
     return result

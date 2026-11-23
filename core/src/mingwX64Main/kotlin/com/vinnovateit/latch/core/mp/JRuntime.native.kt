@@ -197,7 +197,7 @@ actual class JHttpConnection actual constructor(url: JUrl) {
         }
         JFile(bat).outputStream().useOutput { it.write(script.encodeToByteArray()) }
 
-        val exit = system("call \"$bat\" >nul 2>&1")
+        val exit = runHidden("cmd /c call \"$bat\" >nul 2>&1")
         val status = runCatching { readAll(codeFile).trim().toInt() }.getOrDefault(0)
         val headerText = runCatching { readAll(headerFile) }.getOrDefault("")
         val body = runCatching { readAllBytes(bodyFile) }.getOrDefault(ByteArray(0))

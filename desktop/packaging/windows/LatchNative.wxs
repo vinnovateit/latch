@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <!--
     Native (Kotlin/Native + SDL3/Skia) Windows installer. No JVM, no jpackage.
     Built with WiX 5: wix build -dcl high -d Version=... -d SourceDir=... -o LatchSetup.msi
@@ -15,6 +16,9 @@
     <!-- perUser scope above: no UAC prompt, no ALLUSERS property. -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of Latch is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- Clean, minimal install wizard: welcome, install folder, progress, done. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 
     <Icon Id="LatchIcon" SourceFile="$(SourceDir)\latch.ico" />
     <Property Id="ARPPRODUCTICON" Value="LatchIcon" />

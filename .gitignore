@@ -16,6 +16,7 @@ desktop/build/
 core/build/
 cli/build/
 roomstub/build/
+.wix/
 gradle/gradle-daemon-jvm.properties
 .kotlin/
 node_modules/
