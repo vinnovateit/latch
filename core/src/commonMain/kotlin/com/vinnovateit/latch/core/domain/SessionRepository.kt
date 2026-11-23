@@ -373,4 +373,19 @@ class SessionRepository(
     fun close() {
         scope.cancel()
     }
+
+    /**
+     * Waits for the work [close] cancelled to stop. Cancelling does not stop a
+     * query that is already running inside SQLite, and closing the database
+     * under one crashes the process, so the database may only close after this.
+     */
+    suspend fun awaitClosed() {
+        scope.coroutineContext[Job]?.join()
+    }
+
+    /** [close], then [awaitClosed]. */
+    suspend fun closeAndAwait() {
+        close()
+        awaitClosed()
+    }
 }
