@@ -62,6 +62,9 @@ interface HttpTransport {
      * against the publicly reachable account service.
      */
     fun openPublic(url: JUrl): JHttpConnection = open(url, null)
+
+    /** OS-level connectivity check. Credential validation is skipped when false. */
+    fun isOnline(): Boolean = true
 }
 
 // ---------------------------------------------------------------------------

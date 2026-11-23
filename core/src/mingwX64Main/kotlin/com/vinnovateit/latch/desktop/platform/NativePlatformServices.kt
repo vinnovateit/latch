@@ -28,7 +28,10 @@ import com.vinnovateit.latch.core.platform.UserNotifier
 import com.vinnovateit.latch.core.platform.WifiEvent
 import com.vinnovateit.latch.core.platform.WifiPlatform
 import com.vinnovateit.latch.desktop.AppPaths
+import kotlinx.cinterop.UIntVar
+import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
+import kotlinx.cinterop.ptr
 import kotlinx.cinterop.refTo
 import kotlinx.cinterop.toKString
 import kotlinx.coroutines.channels.BufferOverflow
@@ -321,6 +324,11 @@ class NativeNotifier : UserNotifier {
 }
 
 class NativeHttpTransport : HttpTransport {
+    override fun isOnline(): Boolean = kotlinx.cinterop.memScoped {
+        val flags = alloc<UIntVar>()
+        platform.windows.InternetGetConnectedState(flags.ptr, 0u) != 0
+    }
+
     override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection {
         // NetworkHandle.id is the Wi-Fi interface name. Portal credentials must
         // leave on Wi-Fi even when Ethernet owns the default route; JHttpConnection
