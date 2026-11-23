@@ -21,12 +21,12 @@ buildscript {
             }
             // 1.80.2 does not escape values used to build LDAP filters. Reached
             // through both AGP and the Kotlin Gradle plugin; nothing here does LDAP.
-            classpath("org.bouncycastle:bcprov-jdk18on:1.86") {
+            classpath("org.bouncycastle:bcprov-jdk18on:1.87") {
                 because("Security constraint for GHSA-c3fc-8qff-9hwx; see advisory for affected versions")
             }
             // Modules in 1.80.2 still use a broken cryptographic algorithm. Ships
             // alongside bcprov, pulled by AGP and the Kotlin Gradle plugin.
-            classpath("org.bouncycastle:bcpkix-jdk18on:1.86") {
+            classpath("org.bouncycastle:bcpkix-jdk18on:1.87") {
                 because("Security constraint for GHSA-wg6q-6289-32hp; see advisory for affected versions")
             }
             // 3.16.0 recurses without a depth bound on long inputs, so a large
