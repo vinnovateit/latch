@@ -29,9 +29,9 @@
           <File Id="LatchExe" Source="$(SourceDir)\Latch.exe" KeyPath="yes" />
           <!-- Target must point at the exe: without it the shortcut opens INSTALLFOLDER. -->
           <Shortcut Id="StartMenuLatch" Directory="LatchMenuFolder" Name="Latch"
-                    Target="[LatchExe]" Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
+                    Target="[#LatchExe]" Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
           <Shortcut Id="DesktopLatch" Directory="DesktopFolder" Name="Latch"
-                    Target="[LatchExe]" Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
+                    Target="[#LatchExe]" Icon="LatchIcon" WorkingDirectory="INSTALLFOLDER" />
           <RegistryValue Root="HKLM" Key="Software\VinnovateIT\Latch"
                          Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
         </Component>
