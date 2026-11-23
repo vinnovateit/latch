@@ -29,6 +29,7 @@ import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.desktop.platform.NativeNotifier
 import com.vinnovateit.latch.desktop.platform.NativeTray
+import com.vinnovateit.latch.desktop.platform.TrayIconActivation
 import com.vinnovateit.latch.ui.LatchRoot
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
 import com.vinnovateit.latch.ui.chrome.LatchBackHost
@@ -146,8 +147,14 @@ fun main(args: Array<String>) {
                 )
                 // No tray on this host (e.g. missing libappindicator): show the
                 // window instead of leaving an unreachable hidden process.
+                val activation = if (trayReady) {
+                    TrayIconActivation { requestShow() }.also { it.start() }
+                } else null
                 if (!trayReady && startHidden) requestShow()
-                onDispose { tray.destroy() }
+                onDispose {
+                    activation?.stop()
+                    tray.destroy()
+                }
             }
 
             // The window lives for the whole process; closing hides it to the
