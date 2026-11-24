@@ -63,7 +63,7 @@ private const val GITHUB_ORG_URL = "https://github.com/vinnovateit"
 @Composable
 fun AboutScreen(
     platform: PlatformServices,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     updateState: UpdateState = UpdateState.Idle,
     onCheckForUpdates: () -> Unit = {},
     onDownloadUpdate: () -> Unit = {},

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -51,7 +52,7 @@ internal fun LatchBottomSheet(
             targetValue = 0f,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
+                stiffness = Spring.StiffnessHigh,
             ),
         )
     }
@@ -62,7 +63,7 @@ internal fun LatchBottomSheet(
                 targetValue = 1f,
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
+                    stiffness = Spring.StiffnessHigh,
                 ),
             )
             onDismissRequest()
@@ -95,6 +96,7 @@ internal fun LatchBottomSheet(
             tonalElevation = 6.dp,
             shadowElevation = 8.dp,
             modifier = Modifier
+                .widthIn(max = 560.dp)
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .graphicsLayer {

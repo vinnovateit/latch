@@ -285,6 +285,12 @@ class WindowsWifiPlatform(private val logger: Logger) : WifiPlatform {
     override fun activeHandle(): NetworkHandle? =
         snapshot().takeIf { it.adapterUp }?.adapterName?.let { SimpleWindowsNetworkHandle(it) }
 
+    /** Adapter up plus a usable IPv4 address, independent of the portal endpoint. */
+    override fun linkHealthy(handle: NetworkHandle): Boolean {
+        val snap = snapshot()
+        return snap.adapterUp && snap.adapterName == handle.id && wifiLocalAddress() != null
+    }
+
     override fun wifiInterfaceName(): String? = snapshot().adapterName
 
     fun wifiLocalAddress(): java.net.InetAddress? {

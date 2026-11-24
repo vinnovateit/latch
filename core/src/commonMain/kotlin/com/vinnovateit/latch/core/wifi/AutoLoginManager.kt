@@ -4,9 +4,15 @@ import com.vinnovateit.latch.core.platform.BuildInfo
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.NetworkHandle
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
+import com.vinnovateit.latch.core.mp.JUrl
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUnknownHostException
+import com.vinnovateit.latch.core.mp.JSslException
+import com.vinnovateit.latch.core.mp.MPIOException
+import com.vinnovateit.latch.core.mp.urlEncode
+import com.vinnovateit.latch.core.mp.nowMillis
+import com.vinnovateit.latch.core.mp.useReader
+import com.vinnovateit.latch.core.mp.useWriter
 
 sealed interface LoginResult {
     data object Success : LoginResult
@@ -78,8 +84,8 @@ class AutoLoginManager(
         val targetUrlStr = if (useAlternate) SECURE_LOGIN_URL else LOGIN_URL
 
         fun doAttempt(urlStr: String): LoginResult {
-            val start = System.currentTimeMillis()
-            val loginUrl = URL(urlStr)
+            val start = nowMillis()
+            val loginUrl = JUrl(urlStr)
             logDebug("Preparing POST request to: $urlStr (user=$userId)")
 
             val connection = transport.open(loginUrl, handle)
@@ -92,18 +98,18 @@ class AutoLoginManager(
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
 
-            val postData = "userId=${URLEncoder.encode(userId, "UTF-8")}" +
-                "&password=${URLEncoder.encode(password, "UTF-8")}" +
+            val postData = "userId=${urlEncode(userId, )}" +
+                "&password=${urlEncode(password, )}" +
                 "&serviceName=ProntoAuthentication"
 
-            connection.outputStream.bufferedWriter().use { it.write(postData) }
+            connection.outputStream.bufferedWriter().useWriter { it.write(postData) }
 
             logDebug("Awaiting response from portal at $urlStr...")
             val responseCode = connection.responseCode
-            val elapsed = System.currentTimeMillis() - start
+            val elapsed = nowMillis() - start
             return when (responseCode) {
-                HttpURLConnection.HTTP_OK -> {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                JHttpConnection.HTTP_OK -> {
+                    val response = connection.inputStream!!.bufferedReader().useReader { it.readText() }
                     logDebug("Portal responded in ${elapsed}ms: HTTP 200 (Body: ${response.length} chars)")
                     val responseLower = response.lowercase()
                     val hasExplicitError = "invalid" in responseLower ||
@@ -137,7 +143,7 @@ class AutoLoginManager(
                     if (isSuccess) LoginResult.Success else LoginResult.Rejected
                 }
 
-                HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP -> {
+                301, 302 -> {
                     val location = connection.getHeaderField("Location")
                     logWarning("Login resulted in a redirect in ${elapsed}ms (HTTP $responseCode -> $location). Treating as success.")
                     LoginResult.Success
@@ -152,10 +158,10 @@ class AutoLoginManager(
 
         fun attemptOrFailure(urlStr: String): LoginResult = try {
             doAttempt(urlStr)
-        } catch (e: java.net.UnknownHostException) {
+        } catch (e: JUnknownHostException) {
             logError("Login failed with UnknownHostException.", e)
             LoginResult.Failure
-        } catch (e: javax.net.ssl.SSLException) {
+        } catch (e: JSslException) {
             // Some portal deployments serve HTTPS off a cert chain signed with a
             // legacy/weak-hash CA that the platform TLS stack now hard-rejects
             // unconditionally -- this is a permanent portal misconfiguration, not
@@ -195,7 +201,7 @@ class AutoLoginManager(
         val targetUrlStr = if (useAlternate) SECURE_LOGOUT_URL else LOGOUT_URL
 
         fun doAttempt(urlStr: String): LogoutResult {
-            val url = URL(urlStr)
+            val url = JUrl(urlStr)
             val connection = transport.open(url, handle)
             connection.requestMethod = "GET"
             connection.instanceFollowRedirects = false
@@ -211,7 +217,7 @@ class AutoLoginManager(
                 // Read the response body so we can extract logout session metrics
                 val body = try {
                     (if (code >= 400) connection.errorStream else connection.inputStream)
-                        ?.bufferedReader()?.use { it.readText() }
+                        ?.bufferedReader()?.useReader { it.readText() }
                 } catch (e: Exception) {
                     logDebug("Stream read exception (ignored): ${e.message}")
                     null
@@ -226,7 +232,7 @@ class AutoLoginManager(
 
         return try {
             doAttempt(targetUrlStr)
-        } catch (e: java.io.IOException) {
+        } catch (e: MPIOException) {
             // The same unreachable portal host the login falls back on.
             logError("Logout failed with ${e::class.simpleName}.", e)
             if (fallbackIp != null) {

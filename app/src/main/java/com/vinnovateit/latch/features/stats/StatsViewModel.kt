@@ -11,7 +11,9 @@ import com.vinnovateit.latch.core.model.SessionSummary
 import com.vinnovateit.latch.core.model.StatsOverviewMetrics
 import com.vinnovateit.latch.core.stats.StatsInsights
 import com.vinnovateit.latch.core.stats.computeChartItems
-import com.vinnovateit.latch.core.stats.formatDate
+import com.vinnovateit.latch.core.stats.dayKey
+import com.vinnovateit.latch.core.stats.nonZeroSessions
+import com.vinnovateit.latch.core.stats.sessionsForDay
 import com.vinnovateit.latch.platform.LatchAppGraph
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,16 +33,12 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
   val isSyncing: StateFlow<Boolean> = LatchAppGraph.sessions.isSyncing
 
   val nonZeroPortalHistory: StateFlow<List<PortalSessionRecord>> =
-    portalHistory.map { list ->
-      list.filter { it.uploadBytes > 0L || it.downloadBytes > 0L }
-    }.flowOn(Dispatchers.Default)
+    portalHistory.map(::nonZeroSessions).flowOn(Dispatchers.Default)
       .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
   val todaySessions: StateFlow<List<PortalSessionRecord>> =
-    nonZeroPortalHistory.map { list ->
-      val todayKey = formatDate(System.currentTimeMillis(), "yyyy-MM-dd")
-      list.filter { it.loginTime > 0 && formatDate(it.loginTime, "yyyy-MM-dd") == todayKey }
-    }.flowOn(Dispatchers.Default)
+    nonZeroPortalHistory.map { list -> sessionsForDay(list, dayKey(System.currentTimeMillis())) }
+      .flowOn(Dispatchers.Default)
       .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
   val allDayRecords: StateFlow<List<AggregatedDayRecord>> = LatchAppGraph.sessions.aggregatedDayRecords

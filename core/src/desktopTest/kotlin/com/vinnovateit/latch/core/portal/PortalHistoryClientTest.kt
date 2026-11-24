@@ -1,5 +1,7 @@
 package com.vinnovateit.latch.core.portal
 
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.NetworkHandle
 import java.io.ByteArrayInputStream
@@ -29,7 +31,11 @@ class PortalHistoryClientTest {
     }
 
     private class FakeHttpTransport(val mainHtml: String, val loginHtml: String, val historyHtml: String) : HttpTransport {
-        override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
+        override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: NetworkHandle?): HttpURLConnection {
+
             val urlStr = url.toString()
             return when {
                 "Main.jsp" in urlStr -> FakeHttpConnection(url, mainHtml, "JSESSIONID=test-session-id; path=/registration")
@@ -37,7 +43,7 @@ class PortalHistoryClientTest {
                 "customerSessionHistory.do" in urlStr || "CustomerSessionHistory.jsp" in urlStr -> FakeHttpConnection(url, historyHtml)
                 else -> FakeHttpConnection(url, "")
             }
-        }
+            }
     }
 
     @Test

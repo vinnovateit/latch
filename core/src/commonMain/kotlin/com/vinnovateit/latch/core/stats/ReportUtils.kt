@@ -1,22 +1,24 @@
 package com.vinnovateit.latch.core.stats
 
 import com.vinnovateit.latch.core.model.PortalSessionRecord
-import java.io.OutputStream
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
+import com.vinnovateit.latch.core.mp.JOutputStream as OutputStream
+import com.vinnovateit.latch.core.mp.KSimpleDateFormat as SimpleDateFormat
+import com.vinnovateit.latch.core.mp.KCalendar as Calendar
+import com.vinnovateit.latch.core.mp.KDate as Date
+import com.vinnovateit.latch.core.mp.KLocale as Locale
+import com.vinnovateit.latch.core.mp.formatUs
+import com.vinnovateit.latch.core.mp.wrapReportSink
 
 /**
  * Generates a clean light-themed monospace outline HTML report matching Session History layout.
  */
 fun generatePortalHtmlReport(
     sessions: List<PortalSessionRecord>,
-    outputStream: OutputStream,
+    outputStream: Any,
     appVersion: String,
     userId: String? = ""
 ) {
-    val writer = outputStream.bufferedWriter()
+    val writer = wrapReportSink(outputStream)
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
     val dayKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     val dayDisplayFormat = SimpleDateFormat("d MMM, EEE", Locale.US)
@@ -608,9 +610,9 @@ $rowsHtml
 
 private fun formatBytes(bytes: Long): String {
     return when {
-        bytes >= 1024L * 1024L * 1024L -> "%.2f GB".format(Locale.US, bytes / (1024.0 * 1024.0 * 1024.0))
-        bytes >= 1024L * 1024L -> "%.2f MB".format(Locale.US, bytes / (1024.0 * 1024.0))
-        bytes >= 1024L -> "%.2f KB".format(Locale.US, bytes / 1024.0)
+        bytes >= 1024L * 1024L * 1024L -> formatUs("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+        bytes >= 1024L * 1024L -> formatUs("%.2f MB", bytes / (1024.0 * 1024.0))
+        bytes >= 1024L -> formatUs("%.2f KB", bytes / 1024.0)
         else -> "$bytes B"
     }
 }

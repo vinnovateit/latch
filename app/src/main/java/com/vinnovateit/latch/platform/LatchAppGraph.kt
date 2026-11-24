@@ -60,7 +60,7 @@ object LatchAppGraph {
         Platform.install(platform)
         SettingsManager.initialize(platform.settingsStore)
 
-        val log = LatchFileLogger(java.io.File(appContext.filesDir, "latch_verbose.log"))
+        val log = LatchFileLogger(com.vinnovateit.latch.core.mp.JFile(appContext.filesDir.path, "latch_verbose.log"))
         fileLogger = log
         val compositeLogger = CompositeLogger(listOf(platform.logger, log))
 

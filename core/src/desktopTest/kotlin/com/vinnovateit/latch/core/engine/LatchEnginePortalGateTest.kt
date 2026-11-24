@@ -6,6 +6,8 @@ import com.vinnovateit.latch.core.platform.BuildInfo
 import com.vinnovateit.latch.core.platform.ByteCounterSource
 import com.vinnovateit.latch.core.platform.ByteCounts
 import com.vinnovateit.latch.core.platform.CredentialStore
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.InMemoryKeyValueStore
 import com.vinnovateit.latch.core.platform.KeyValueStore
@@ -200,7 +202,11 @@ private class PortalScript(
     /** The portal ends the session, as it does while a laptop sleeps. */
     fun endSession() = loggedIn.set(false)
 
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: NetworkHandle?): HttpURLConnection {
+
         val host = url.host
         val isProbe = url.toString().contains("generate_204")
         val isLogin = url.path.contains("authlogin")
@@ -226,7 +232,7 @@ private class PortalScript(
             private fun respond(): Pair<Int, String> = answer ?: when {
                 isProbe -> when {
                     loggedIn.get() -> 204 to ""
-                    probeDnsBlocked -> throw UnknownHostException("clients3.google.com")
+                    probeDnsBlocked -> throw com.vinnovateit.latch.core.mp.JUnknownHostException("clients3.google.com")
                     else -> {
                         if (logins.size == 1) redirectsBeforeSecondLogin.incrementAndGet()
                         302 to ""
@@ -234,7 +240,7 @@ private class PortalScript(
                 }
                 isGatewayRoot -> 302 to ""
                 isLogin -> {
-                    if (host != GATEWAY && !portalHostResolves) throw UnknownHostException(host)
+                    if (host != GATEWAY && !portalHostResolves) throw com.vinnovateit.latch.core.mp.JUnknownHostException(host)
                     logins += host
                     val reply = if (host == GATEWAY) 200 to "<html>access granted</html>" else portalLogin
                     if (reply.first == 200 && !reply.second.contains("Invalid")) loggedIn.set(true)
@@ -243,7 +249,7 @@ private class PortalScript(
                 else -> 200 to ""
             }.also { answer = it }
         }
-    }
+        }
 }
 
 private object GateHandle : NetworkHandle {

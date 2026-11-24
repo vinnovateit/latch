@@ -3,10 +3,12 @@ package com.vinnovateit.latch.core.wifi
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.Logger
 import com.vinnovateit.latch.core.platform.NetworkHandle
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.UnknownHostException
+import com.vinnovateit.latch.core.mp.JInputStream as InputStream
+import com.vinnovateit.latch.core.mp.JHttpConnection as HttpURLConnection
+import com.vinnovateit.latch.core.mp.JUrl as URL
+import com.vinnovateit.latch.core.mp.JUnknownHostException as UnknownHostException
+import com.vinnovateit.latch.core.mp.useStream
+import com.vinnovateit.latch.core.mp.nowMillis
 
 /** The host VIT's Pronto portal redirects every intercepted request to. */
 const val PRONTO_PORTAL_HOST = "phc.prontonetworks.com"
@@ -63,19 +65,19 @@ class CaptivePortalDetector(
     }
 
     fun probe(handle: NetworkHandle? = null): PortalProbeResult {
-        val start = System.currentTimeMillis()
+        val start = nowMillis()
         logger.d(TAG, "Probing portal endpoint: $PROBE_URL (handle=${handle?.id ?: "default"})")
         return try {
             val result = intercept(URL(PROBE_URL), handle)
-            val elapsed = System.currentTimeMillis() - start
+            val elapsed = nowMillis() - start
             logger.d(TAG, "Portal probe completed in ${elapsed}ms: $result")
             result
         } catch (e: UnknownHostException) {
-            val elapsed = System.currentTimeMillis() - start
+            val elapsed = nowMillis() - start
             logger.e(TAG, "Portal check failed after ${elapsed}ms: DNS resolution failed for $PROBE_URL (${e.message})")
             PortalProbeResult.DnsBlocked
         } catch (e: Exception) {
-            val elapsed = System.currentTimeMillis() - start
+            val elapsed = nowMillis() - start
             logger.e(TAG, "Portal check failed after ${elapsed}ms with exception: ${e::class.simpleName}: ${e.message}")
             PortalProbeResult.Error(e.message)
         }
@@ -126,7 +128,7 @@ class CaptivePortalDetector(
 
     private fun HttpURLConnection.bodySnippet(): String? = try {
         (if (responseCode >= 400) errorStream else inputStream)
-            ?.use { String(it.readUpTo(BODY_SNIPPET_BYTES), Charsets.ISO_8859_1) }
+            ?.useStream { it.readUpTo(BODY_SNIPPET_BYTES).decodeToString() }
     } catch (_: Exception) {
         null
     }

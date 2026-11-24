@@ -6,6 +6,8 @@ import com.vinnovateit.latch.core.platform.BuildInfo
 import com.vinnovateit.latch.core.platform.ByteCounterSource
 import com.vinnovateit.latch.core.platform.ByteCounts
 import com.vinnovateit.latch.core.platform.CredentialStore
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.InMemoryKeyValueStore
 import com.vinnovateit.latch.core.platform.KeyValueStore
@@ -94,11 +96,49 @@ class LatchEngineHealthCheckTest {
         assertTrue(engine.isLatched.value)
     }
 
+    @Test
+    fun `a failed link check does not drop the session until three strikes`() = withEngine(
+        initialProbeResponse = 302,
+        revalidationProbeResponse = 204,
+        healthIntervalMs = 100L,
+        wifiOverride = FailingLinkWifi(failures = 2),
+    ) { engine, _ ->
+        engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+        assertTrue(engine.isLatched.value, "session should be latched after login")
+
+        // Two consecutive failed link reads are below the 3-strike threshold.
+        delay(600)
+        assertTrue(
+            engine.isLatched.value,
+            "two link-check failures must not drop a valid session",
+        )
+    }
+
+    @Test
+    fun `three failed link checks drop the session`() = withEngine(
+        initialProbeResponse = 302,
+        revalidationProbeResponse = 204,
+        healthIntervalMs = 100L,
+        wifiOverride = FailingLinkWifi(failures = 3),
+    ) { engine, _ ->
+        engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+        assertTrue(engine.isLatched.value, "session should be latched after login")
+
+        delay(600)
+        assertEquals(
+            false,
+            engine.isLatched.value,
+            "three consecutive link-check failures should drop the session",
+        )
+    }
+
     private fun withEngine(
         probeResponse: Int = 204,
         loginResponse: Int = 200,
         revalidationProbeResponse: Int = 204,
         initialProbeResponse: Int = probeResponse,
+        healthIntervalMs: Long = 60_000L,
+        wifiOverride: WifiPlatform? = null,
         block: suspend (LatchEngine, Channel<WifiEvent>) -> Unit,
     ) = runBlocking {
         val directory = createTempDirectory("latch-health-").toFile()
@@ -113,10 +153,11 @@ class LatchEngineHealthCheckTest {
             loginResponse = loginResponse,
             revalidationProbeResponse = revalidationProbeResponse,
         )
-        val wifi = HealthEmittingWifi(events)
+        val wifi = wifiOverride ?: HealthEmittingWifi(events)
         val engine = LatchEngine(
             platform = HealthCheckPlatform(wifi, transport),
             sessions = SessionRepository(database.statsDao(), ThroughputMonitor(HealthNoCounters)),
+            healthCheckIntervalMs = healthIntervalMs,
         )
         try {
             engine.start()
@@ -146,6 +187,23 @@ private class HealthEmittingWifi(
     override val events: Flow<WifiEvent> get() = eventChannel.receiveAsFlow()
 }
 
+/** Reports the first [failures] link checks as dead, then healthy. */
+private class FailingLinkWifi(private val failures: Int) : WifiPlatform {
+    private val eventChannel = Channel<WifiEvent>(Channel.UNLIMITED)
+    private var remaining = failures
+    override fun isWifiEnabled(): Boolean = true
+    override fun isConnectedToWifi(): Boolean = true
+    override fun currentSsid(): String = "G-VIT 5"
+    override fun gatewayIp(): String? = null
+    override fun activeHandle(): NetworkHandle = HealthCurrentHandle
+    override fun linkHealthy(handle: NetworkHandle): Boolean {
+        val fail = remaining > 0
+        if (fail) remaining--
+        return !fail
+    }
+    override val events: Flow<WifiEvent> get() = eventChannel.receiveAsFlow()
+}
+
 private class HealthProbeTransport(
     private val initialProbeResponse: Int,
     private val loginResponse: Int,
@@ -153,7 +211,11 @@ private class HealthProbeTransport(
 ) : HttpTransport {
     private val probeCount = AtomicInteger(0)
 
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: NetworkHandle?): HttpURLConnection {
+
         val urlStr = url.toString()
         return object : HttpURLConnection(url) {
             override fun connect() = Unit
@@ -186,7 +248,7 @@ private class HealthProbeTransport(
                 "error".toByteArray()
             )
         }
-    }
+        }
 }
 
 private object HealthNoCounters : ByteCounterSource {

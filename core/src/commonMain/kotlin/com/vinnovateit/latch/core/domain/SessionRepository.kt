@@ -23,6 +23,8 @@ import com.vinnovateit.latch.core.stats.computeChartItems
 import com.vinnovateit.latch.core.stats.computeStatsInsights
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import com.vinnovateit.latch.core.mp.nowMillis
+import com.vinnovateit.latch.core.mp.ioDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "SessionRepository"
 
@@ -52,7 +55,7 @@ class SessionRepository(
     private val statsDao: StatsDao,
     private val throughput: ThroughputMonitor,
     private val portalClient: PortalHistoryClient? = null,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + ioDispatcher),
     private val logger: Logger = Platform.logger,
     /**
      * Resolves the Wi-Fi network the portal lives on. Injected so tests can
@@ -118,6 +121,7 @@ class SessionRepository(
                 _overviewMetrics.value = computeMetrics(nonZero)
                 _statsInsights.value = computeStatsInsights(nonZero)
                 _chartItems.value = computeChartItems(nonZero)
+                logger.d(TAG, "RECOMPUTE stats: portalHistory=${records.size} nonZero=${nonZero.size} days=${_aggregatedDayRecords.value.size} charts=${_chartItems.value.size}")
             }
         }
 
@@ -169,7 +173,7 @@ class SessionRepository(
     fun startSession() {
         if (sessionUpdateJob?.isActive == true || _liveStatus.value != null) return
 
-        val startTime = System.currentTimeMillis()
+        val startTime = nowMillis()
         _liveStatus.value = LiveConnectionStatus(
             startTimeMillis = startTime,
             liveData = listOf(LiveDataPoint(startTime, DataUsage(0, 0))),
@@ -179,7 +183,7 @@ class SessionRepository(
         sessionUpdateJob = scope.launch {
             throughput.dataUsageFlow.collect { usage ->
                 val current = _liveStatus.value ?: return@collect
-                val next = current.liveData + LiveDataPoint(System.currentTimeMillis(), usage)
+                val next = current.liveData + LiveDataPoint(nowMillis(), usage)
                 _liveStatus.value = current.copy(
                     liveData = if (next.size > LIVE_HISTORY_CAP) next.drop(1) else next,
                     totalRxBytes = current.totalRxBytes + usage.rxBytes,
@@ -230,26 +234,43 @@ class SessionRepository(
             return Result.success(Unit)
         }
 
+        // fetchHistory() (curl_easy_perform) and the Room write are blocking.
+        // Callers launch this from rememberCoroutineScope()/Dispatchers.Main, so
+        // offload at the boundary instead of trusting every caller to remember.
+        return withContext(ioDispatcher) {
+            syncPortalHistoryBlocking(client, userId, password, host, force)
+        }
+    }
+
+    private suspend fun syncPortalHistoryBlocking(
+        client: PortalHistoryClient,
+        userId: String,
+        password: String,
+        host: String,
+        force: Boolean,
+    ): Result<Unit> {
         return try {
-            // Bind the request to the Wi-Fi network, and refuse to sync without
-            // one. Falling back to the process default network would ship these
-            // credentials in cleartext over whatever that happens to be, which on
-            // Android stays cellular while a captive portal is unvalidated. See the
-            // "No Cellular Leaks" invariant in AGENTS.md.
+            // The account endpoint (136.233.9.110) is a PUBLIC IP — history
+            // sync works over any internet connection, not just the captive
+            // Wi-Fi. Bind to the Wi-Fi NIC when one is available (PR #146), but
+            // fall back to the default route when there is no Wi-Fi handle
+            // (Ethernet, cellular). This is the account service, not the
+            // captive-portal login, so the no-cellular-leaks invariant for
+            // portal credentials does not apply here.
             val handle = activeHandle()
             if (handle == null) {
-                logger.w(TAG, "No active Wi-Fi network; skipping portal sync rather than leaving the network.")
-                return Result.failure(IllegalStateException("Not connected to Wi-Fi"))
+                logger.d(TAG, "No Wi-Fi handle; using the public route for account history sync.")
             }
 
-            val now = System.currentTimeMillis()
+            val now = nowMillis()
             if (!force && (now - lastSyncTimeMillis < 15 * 60 * 1000L) && _portalHistory.value.isNotEmpty()) {
                 logger.d(TAG, "Skipping portal sync: within 15-minute cooldown and cached data present.")
                 return Result.success(Unit)
             }
             lastSyncTimeMillis = now
-            logger.d(TAG, "syncPortalHistory starting...")
+            logger.d(TAG, "HISTORY_SYNC start force=$force handle=${handle?.id ?: "public"} userIdLen=${userId.length} pwdLen=${password.length} cached=${_portalHistory.value.size}")
             val result = client.fetchHistory(userId, password, handle = handle, host = host)
+            logger.d(TAG, "HISTORY_SYNC fetch done success=${result.isSuccess} error=${result.exceptionOrNull()?.message}")
             if (result.isSuccess) {
                 val incoming = result.getOrThrow().filter {
                     it.loginTime > 0 && (it.uploadBytes > 0L || it.downloadBytes > 0L)
@@ -307,7 +328,9 @@ class SessionRepository(
                 }
                 statsDao.replacePortalSessions(entities)
                 logger.d(TAG, "Persisted ${entities.size} portal session records to database")
+                logger.d(TAG, "HISTORY_SYNC setting portalHistory: ${_portalHistory.value.size} -> ${merged.size}")
                 _portalHistory.value = merged
+                logger.d(TAG, "HISTORY_SYNC complete: portalHistory=${_portalHistory.value.size} days=${_aggregatedDayRecords.value.size} charts=${_chartItems.value.size}")
                 Result.success(Unit)
             } else {
                 val ex = result.exceptionOrNull() ?: Exception("Unknown portal sync error")

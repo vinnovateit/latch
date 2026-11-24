@@ -5,6 +5,8 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.vinnovateit.latch.core.data.LatchDatabase
 import com.vinnovateit.latch.core.platform.ByteCounts
 import com.vinnovateit.latch.core.platform.ByteCounterSource
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.portal.PortalHistoryClient
 import com.vinnovateit.latch.core.stats.ThroughputMonitor
@@ -40,7 +42,11 @@ class PortalSessionRepositoryTest {
     private class FakePortalTransport : HttpTransport {
         val handles = mutableListOf<com.vinnovateit.latch.core.platform.NetworkHandle?>()
 
-        override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+        override fun open(url: JUrl, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+
             handles += handle
             return object : HttpURLConnection(url) {
                 override fun connect() {}
@@ -70,13 +76,17 @@ class PortalSessionRepositoryTest {
                 override fun getOutputStream() = java.io.ByteArrayOutputStream()
                 override fun getResponseCode() = 200
             }
-        }
+            }
     }
 
     private class SlowPortalTransport : HttpTransport {
         val logins = AtomicInteger(0)
 
-        override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+        override fun open(url: JUrl, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+
             val urlStr = url.toString()
             if ("chooseAuth" in urlStr) logins.incrementAndGet()
             return object : HttpURLConnection(url) {
@@ -95,7 +105,7 @@ class PortalSessionRepositoryTest {
                 override fun getOutputStream() = java.io.ByteArrayOutputStream()
                 override fun getResponseCode() = 200
             }
-        }
+            }
     }
 
     @BeforeTest
@@ -150,7 +160,11 @@ class PortalSessionRepositoryTest {
         """.trimIndent()
 
         val dynamicTransport = object : HttpTransport {
-            override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+            override fun open(url: JUrl, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+
                 return object : HttpURLConnection(url) {
                     override fun connect() {}
                     override fun disconnect() {}
@@ -166,7 +180,7 @@ class PortalSessionRepositoryTest {
                     override fun getOutputStream() = java.io.ByteArrayOutputStream()
                     override fun getResponseCode() = 200
                 }
-            }
+                }
         }
 
         val portalClient = PortalHistoryClient(dynamicTransport)
@@ -259,7 +273,7 @@ class PortalSessionRepositoryTest {
     }
 
     @Test
-    fun `portal sync binds every request to the active Wi-Fi handle`() = runBlocking {
+    fun `portal sync uses the public route for the account service`() = runBlocking {
         val transport = FakePortalTransport()
         val repo = SessionRepository(
             statsDao = db.statsDao(),
@@ -273,14 +287,16 @@ class PortalSessionRepositoryTest {
 
         assertTrue(transport.handles.isNotEmpty(), "the portal client should have opened connections")
         transport.handles.forEach { handle ->
-            assertNotNull(handle, "credentials must never be sent on the default network")
-            assertEquals(TestWifiHandle.id, handle.id)
+            // The account endpoint is a public IP — binding to the Wi-Fi NIC
+            // gets connection-refused. Portal LOGIN binds to Wi-Fi; account
+            // history always uses the default/public route.
+            assertEquals(null, handle, "account history must use the public route")
         }
         repo.close()
     }
 
     @Test
-    fun `portal sync is refused when no Wi-Fi network is active`() = runBlocking {
+    fun `portal sync works without Wi-Fi via the public route`() = runBlocking {
         val transport = FakePortalTransport()
         val repo = SessionRepository(
             statsDao = db.statsDao(),
@@ -292,8 +308,8 @@ class PortalSessionRepositoryTest {
 
         val result = repo.syncPortalHistory("24BDS0155", "zero", force = true)
 
-        assertFalse(result.isSuccess, "sync must fail rather than leave the Wi-Fi network")
-        assertTrue(transport.handles.isEmpty(), "no request should have been made at all")
+        assertTrue(result.isSuccess, "account history is public and works over any connection")
+        assertTrue(transport.handles.isNotEmpty(), "requests should have been made on the public route")
         repo.close()
     }
 

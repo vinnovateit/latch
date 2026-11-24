@@ -16,6 +16,8 @@ import com.vinnovateit.latch.core.wifi.probeCampusNetwork
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import com.vinnovateit.latch.core.mp.nowMillis
+import com.vinnovateit.latch.core.mp.ioDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
@@ -36,11 +38,11 @@ enum class LatchCommand { CheckAndLogin, SilentCheck, Logout, Shutdown }
 class LatchEngine(
     private val platform: PlatformServices,
     private val sessions: SessionRepository,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + ioDispatcher),
     /** Overridable so tests can drive the health check without waiting a minute. */
     private val healthCheckIntervalMs: Long = HEALTH_CHECK_INTERVAL_MS,
     /** Wall-clock time, which keeps running while the machine sleeps. Overridable so tests can fake a wake. */
-    private val wallClock: () -> Long = System::currentTimeMillis,
+    private val wallClock: () -> Long = ::nowMillis,
 ) {
 
     private companion object {
@@ -64,7 +66,7 @@ class LatchEngine(
     private val commands = Channel<QueuedCommand>(Channel.UNLIMITED)
     private var healthCheckJob: Job? = null
     private var activeActionJob: Job? = null
-    @Volatile private var currentHandle: NetworkHandle? = null
+    @kotlin.concurrent.Volatile private var currentHandle: NetworkHandle? = null
     private var started = false
 
     /**
@@ -500,6 +502,7 @@ class LatchEngine(
         healthCheckJob = scope.launch {
             var lastTick = wallClock()
             var failCount = 0
+            var linkFailCount = 0
             while (isActive) {
                 delay(healthCheckIntervalMs)
 
@@ -513,6 +516,24 @@ class LatchEngine(
                 if (resumed) {
                     logger.d(TAG, "Detected resume from sleep (drift ${drift}ms); re-checking.")
                 }
+
+                // The portal endpoint is not reliable enough to be the only
+                // health signal. A dead carrier or lost IP is another health
+                // signal, but it gets the same 3-strike debounce as the portal
+                // probe: a flaky link read must not drop a valid session.
+                if (!platform.wifi.linkHealthy(handle)) {
+                    linkFailCount++
+                    logger.w(TAG, "Wi-Fi link check failed ($linkFailCount/$MAX_HEALTH_CHECK_FAILURES).")
+                    if (linkFailCount >= MAX_HEALTH_CHECK_FAILURES) {
+                        logger.w(TAG, "Wi-Fi link down $MAX_HEALTH_CHECK_FAILURES times; dropping session.")
+                        linkFailCount = 0
+                        failCount = 0
+                        unlatch()
+                        return@launch
+                    }
+                    continue
+                }
+                linkFailCount = 0
 
                 val probeResult = withTimeoutOrNull(5000L) {
                     portal.probe(handle)

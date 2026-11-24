@@ -74,6 +74,7 @@ import com.vinnovateit.latch.ui.components.LatchDetailHeader
 import com.vinnovateit.latch.ui.components.LatchIcons
 import com.vinnovateit.latch.ui.components.LeafOverlay
 import com.vinnovateit.latch.ui.theme.modernizFontFamily
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -95,6 +96,8 @@ fun CredentialsScreen(
     initialPassword: String = "",
     onSave: (String, String) -> Unit,
     onCancel: (() -> Unit)?,
+    isBusy: Boolean = false,
+    validationError: String? = null,
 ) {
     var regNo by remember(initialRegNo) { mutableStateOf(initialRegNo.uppercase().trim()) }
     var pass by remember(initialPassword) { mutableStateOf(initialPassword) }
@@ -132,6 +135,10 @@ fun CredentialsScreen(
             snackbarHostState.currentSnackbarData?.dismiss()
             snackbarHostState.showSnackbar(msg)
         }
+    }
+
+    LaunchedEffect(validationError) {
+        if (validationError != null) triggerError(validationError)
     }
 
     val submit = {
@@ -278,14 +285,16 @@ fun CredentialsScreen(
 
                 Button(
                     onClick = submit,
+                    enabled = !isBusy,
                     shape = RoundedCornerShape(100),
                     modifier = Modifier.fillMaxWidth().height(54.dp),
                 ) {
                     Text(
-                        text = stringResource(Res.string.save_credentials),
+                        text = if (isBusy) "Verifying credentials…" else stringResource(Res.string.save_credentials),
                         style = MaterialTheme.typography.titleMedium,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                     )
                 }
 
@@ -312,11 +321,12 @@ fun CredentialsScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.width(12.dp))
+                        val boldFamily = satoshiFontFamily(FontWeight.Bold)
                         Text(
                             text = buildAnnotatedString {
                                 append("Latch does not collect your data. Your credentials are ")
                                 append("encrypted and ")
-                                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                                withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontFamily = boldFamily)) {
                                     append("stored securely on this device.")
                                 }
                             },

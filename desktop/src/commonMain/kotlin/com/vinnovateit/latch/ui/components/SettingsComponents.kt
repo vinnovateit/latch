@@ -72,7 +72,7 @@ internal fun SettingsSection(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontFamily = satoshiFontFamily(),
+                fontFamily = satoshiFontFamily(FontWeight.Bold),
             )
         }
         Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))) {
@@ -157,7 +157,7 @@ internal fun SettingsItem(
                     } else {
                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                     },
-                    fontFamily = satoshiFontFamily(),
+                    fontFamily = satoshiFontFamily(FontWeight.Medium),
                 )
                 if (subtitle != null) {
                     Text(
@@ -209,7 +209,7 @@ internal fun SettingsSelectionDialog(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                fontFamily = satoshiFontFamily(),
+                fontFamily = satoshiFontFamily(FontWeight.Bold),
                 modifier = Modifier.padding(bottom = 8.dp),
             )
             if (description != null) {
@@ -256,7 +256,7 @@ internal fun SettingsSelectionDialog(
                             MaterialTheme.colorScheme.onSurface
                         },
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        fontFamily = satoshiFontFamily(),
+                        fontFamily = satoshiFontFamily(if (isSelected) FontWeight.Bold else FontWeight.Normal),
                         modifier = Modifier.weight(1f),
                     )
                     if (isSelected) {
@@ -278,7 +278,7 @@ internal fun SettingsSelectionDialog(
                 onClick = { dismiss() },
                 modifier = Modifier.align(Alignment.End),
             ) {
-                Text("Cancel", fontFamily = satoshiFontFamily())
+                Text("Cancel", fontFamily = satoshiFontFamily(FontWeight.Medium))
             }
         }
     }
@@ -297,39 +297,38 @@ internal fun SettingsActionDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    LatchBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+    // Confirmations are dialogs on desktop, not bottom sheets (bottom sheets
+    // stay for settings pickers/toggles). AlertDialog appears centered and
+    // inherits the app theme through LatchTheme.
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                fontFamily = satoshiFontFamily(),
-                modifier = Modifier.padding(bottom = 8.dp),
+                fontFamily = satoshiFontFamily(FontWeight.Bold),
             )
+        },
+        text = {
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = satoshiFontFamily(),
-                modifier = Modifier.padding(bottom = 16.dp),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = { dismiss() }) {
-                    Text(cancelText, fontFamily = satoshiFontFamily())
-                }
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = {
-                    onConfirm()
-                    dismiss()
-                }) {
-                    Text(confirmText, color = MaterialTheme.colorScheme.error, fontFamily = satoshiFontFamily())
-                }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(); onDismiss() }) {
+                Text(confirmText, color = MaterialTheme.colorScheme.error, fontFamily = satoshiFontFamily(FontWeight.Medium))
             }
-        }
-    }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(cancelText, fontFamily = satoshiFontFamily(FontWeight.Medium))
+            }
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------

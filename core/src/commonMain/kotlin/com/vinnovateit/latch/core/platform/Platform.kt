@@ -1,8 +1,8 @@
 package com.vinnovateit.latch.core.platform
 
 import kotlinx.coroutines.flow.Flow
-import java.net.HttpURLConnection
-import java.net.URL
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -53,7 +53,18 @@ interface NetworkHandle {
  * both Ethernet and Wi-Fi -- see DesktopHttpTransport.
  */
 interface HttpTransport {
-    fun open(url: URL, handle: NetworkHandle?): HttpURLConnection
+    fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection
+
+    /**
+     * Opens a connection to a PUBLIC endpoint (the account login/history host),
+     * which is reachable from any network. Portal traffic must use [open] with
+     * the Wi-Fi handle instead — this path is only for credential validation
+     * against the publicly reachable account service.
+     */
+    fun openPublic(url: JUrl): JHttpConnection = open(url, null)
+
+    /** OS-level connectivity check. Credential validation is skipped when false. */
+    fun isOnline(): Boolean = true
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +122,14 @@ interface WifiPlatform {
     fun gatewayIp(): String?
 
     fun activeHandle(): NetworkHandle?
+
+    /**
+     * Whether the Wi-Fi link itself is up. This is independent of the portal
+     * endpoint: a dead carrier or a lost IP means the session is gone even if
+     * generate_204 never answers. Default true so platforms without an OS-level
+     * check keep the portal probe as their only health signal.
+     */
+    fun linkHealthy(handle: NetworkHandle): Boolean = true
 
     fun wifiInterfaceName(): String? = activeHandle()?.id
 

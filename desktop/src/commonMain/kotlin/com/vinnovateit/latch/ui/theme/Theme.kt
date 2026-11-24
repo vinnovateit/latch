@@ -11,8 +11,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.materialkolor.PaletteStyle
-import com.materialkolor.dynamicColorScheme
 import com.vinnovateit.latch.core.settings.SettingsManager
 
 val LocalIsDarkTheme = compositionLocalOf { false }
@@ -32,7 +30,7 @@ val LocalIsDarkTheme = compositionLocalOf { false }
  *
  *  3. Accent seeds come from AccentSeeds instead of being inlined here.
  *
- * Everything else -- PaletteStyle.Monochrome, the pure-black AMOLED overlay,
+ * Everything else -- ThemePaletteStyle.Monochrome, the pure-black AMOLED overlay,
  * MaterialExpressiveTheme + MotionScheme.expressive(), LocalIsDarkTheme, and the
  * tooltip colour extensions -- is unchanged. material-kolor is a real KMP
  * library, so scheme generation is identical to Android's.
@@ -56,18 +54,18 @@ fun LatchTheme(
     }
 
     val seedColor = AccentSeeds.forName(accentColor)
-    val currentStyle = runCatching { PaletteStyle.valueOf(paletteStyle) }.getOrDefault(PaletteStyle.TonalSpot)
+    val currentStyle = runCatching { ThemePaletteStyle.valueOf(paletteStyle) }.getOrDefault(ThemePaletteStyle.TonalSpot)
 
     val baseColorScheme = when {
         // Monochrome takes highest priority if enabled.
-        useMonochrome -> dynamicColorScheme(
+        useMonochrome -> seedColorScheme(
             // Seed is irrelevant for monochrome.
             seedColor = Color.Black,
             isDark = darkTheme,
-            style = PaletteStyle.Monochrome,
+            style = ThemePaletteStyle.Monochrome,
         )
 
-        else -> dynamicColorScheme(
+        else -> seedColorScheme(
             seedColor = seedColor,
             isDark = darkTheme,
             style = currentStyle,

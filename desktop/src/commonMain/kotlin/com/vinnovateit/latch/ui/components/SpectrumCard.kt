@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ import com.vinnovateit.latch.ui.theme.ColorGraphDownload
 import com.vinnovateit.latch.ui.theme.ColorGraphUpload
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 import com.vinnovateit.latch.ui.theme.modernizFontFamily
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -75,7 +77,9 @@ internal fun SpectrumCard(
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
 
     Card(
-        modifier = modifier,
+        // Clip before clickable so the press ripple stays inside the rounded
+        // card instead of spreading into the window corners.
+        modifier = modifier.clip(RoundedCornerShape(28.dp)).clickable(onClick = onNavigateToStats),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -90,7 +94,6 @@ internal fun SpectrumCard(
             SpectrumHeader(
                 history = history,
                 speedUnit = speedUnit,
-                onNavigateToStats = onNavigateToStats,
             )
 
             Box(
@@ -126,12 +129,10 @@ internal fun SpectrumCard(
 private fun SpectrumHeader(
     history: List<LiveDataPoint>,
     speedUnit: String,
-    onNavigateToStats: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onNavigateToStats)
             .padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -141,12 +142,6 @@ private fun SpectrumHeader(
                 text = stringResource(Res.string.home_network_statistics),
                 fontFamily = modernizFontFamily(),
                 color = MaterialTheme.colorScheme.primary,
-            )
-            Icon(
-                imageVector = LatchIcons.ArrowOutward,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 2.dp, top = 1.dp).size(14.dp),
             )
         }
 
@@ -182,6 +177,7 @@ private fun SpectrumHeader(
                         text = value,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
@@ -241,7 +237,7 @@ private fun StatusIndicator(connectionStatus: ConnectionStatus) {
                             is ConnectionStatus.Failed -> Icon(
                                 imageVector = LatchIcons.Wifi,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(64.dp),
                             )
 
@@ -272,6 +268,7 @@ private fun StatusIndicator(connectionStatus: ConnectionStatus) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
+                fontFamily = satoshiFontFamily(FontWeight.Medium),
                 textAlign = TextAlign.Center,
             )
         }

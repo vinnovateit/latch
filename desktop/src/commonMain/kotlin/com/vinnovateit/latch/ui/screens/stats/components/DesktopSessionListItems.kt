@@ -31,6 +31,7 @@ import com.vinnovateit.latch.core.stats.formatBytes
 import com.vinnovateit.latch.core.stats.formatDate
 import com.vinnovateit.latch.core.stats.formatDurationDynamic
 import com.vinnovateit.latch.ui.components.LatchIcons
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 
 fun groupedItemShape(index: Int, totalCount: Int, cornerRadius: Dp = 24.dp, innerRadius: Dp = 4.dp): Shape {
     return when {
@@ -72,6 +73,7 @@ fun TodaySessionListItem(
                         text = session.location.ifBlank { "Session" },
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     if (session.isManual) {
@@ -122,6 +124,7 @@ fun TodaySessionListItem(
                     text = "${totalFormatted.first} ${totalFormatted.second}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             },
@@ -153,6 +156,7 @@ fun DayAggregateListItem(
                         text = record.dateFormatted,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                         color = if (record.isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.align(Alignment.CenterStart),
                     )
@@ -198,6 +202,7 @@ fun DayAggregateListItem(
                         text = record.totalFormatted.first,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black,
+                        fontFamily = satoshiFontFamily(FontWeight.Black),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(modifier = Modifier.width(3.dp))
@@ -205,6 +210,7 @@ fun DayAggregateListItem(
                         text = record.totalFormatted.second,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(bottom = 1.dp),
                     )

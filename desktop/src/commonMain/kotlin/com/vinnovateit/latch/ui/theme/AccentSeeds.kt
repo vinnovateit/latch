@@ -1,5 +1,7 @@
 package com.vinnovateit.latch.ui.theme
 
+import com.vinnovateit.latch.core.mp.formatUs
+
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -64,6 +66,6 @@ internal object AccentSeeds {
         val r = (red * 255).toInt().coerceIn(0, 255)
         val g = (green * 255).toInt().coerceIn(0, 255)
         val b = (blue * 255).toInt().coerceIn(0, 255)
-        return "#%02X%02X%02X".format(r, g, b)
+        return formatUs("#%02X%02X%02X", r, g, b)
     }
 }

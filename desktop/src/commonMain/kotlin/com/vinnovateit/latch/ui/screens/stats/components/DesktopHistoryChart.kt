@@ -62,8 +62,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerInput
+import com.vinnovateit.latch.core.mp.formatUs
+import com.vinnovateit.latch.ui.onHoverCompat
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -75,11 +81,14 @@ import com.vinnovateit.latch.core.stats.formatDate
 import com.vinnovateit.latch.core.stats.formatDisplayDate
 import com.vinnovateit.latch.core.stats.formatDurationDynamic
 import com.vinnovateit.latch.ui.components.LatchIcons
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import java.util.Locale
-import java.util.TimeZone
+import com.vinnovateit.latch.core.mp.KCalendar as Calendar
+import com.vinnovateit.latch.core.mp.KSimpleDateFormat as SimpleDateFormat
+import com.vinnovateit.latch.core.mp.KLocale as Locale
+import com.vinnovateit.latch.core.mp.KTimeZone as TimeZone
+import com.vinnovateit.latch.core.mp.nowMillis
 
 @Immutable
 data class DesktopChartDetailState(
@@ -108,7 +117,7 @@ fun HistoryBarChart(
     )
 
     val todayIdx = remember(chartItems) {
-        val todayKey = formatDate(System.currentTimeMillis(), "yyyy-MM-dd")
+        val todayKey = formatDate(nowMillis(), "yyyy-MM-dd")
         val exact = chartItems.indexOfLast {
             it is HistoryChartItem.BarData && formatDate(it.timestamp, "yyyy-MM-dd") == todayKey
         }
@@ -119,6 +128,31 @@ fun HistoryBarChart(
     val lazyListState = rememberLazyListState(initialFirstVisibleItemIndex = todayIdx)
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
+
+    // The chart lives inside a vertical LazyColumn that otherwise swallows wheel
+    // and two-finger scroll. Take it in the ancestor's pre-scroll pass and map
+    // whichever axis dominates onto the chart's horizontal scroll. Gate on a
+    // recent Scroll pointer event so ordinary page drags (same UserInput source)
+    // still belong to the LazyColumn.
+    var lastWheelAt by remember { mutableLongStateOf(0L) }
+    val horizontalScrollConnection = remember(lazyListState, coroutineScope) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if (nowMillis() - lastWheelAt > 100L) return Offset.Zero
+                val delta = if (kotlin.math.abs(available.x) >= kotlin.math.abs(available.y)) {
+                    available.x
+                } else {
+                    available.y
+                }
+                if (delta != 0f) {
+                    coroutineScope.launch { lazyListState.scrollBy(delta) }
+                }
+                // Consume it so the enclosing LazyColumn doesn't scroll as well.
+                return available
+            }
+        }
+    }
 
     val (totalUsageDetail, _) = remember(chartItems) {
         var rx = 0L
@@ -259,11 +293,11 @@ fun HistoryBarChart(
             val timestamp = when (targetItem) {
                 is HistoryChartItem.BarData -> targetItem.timestamp
                 is HistoryChartItem.CollapsedMonth -> targetItem.timestamp
-                else -> System.currentTimeMillis()
+                else -> nowMillis()
             }
             val cal = Calendar.getInstance().apply { timeInMillis = timestamp }
             val calYear = cal.get(Calendar.YEAR)
-            val monthName = java.text.SimpleDateFormat("MMMM", java.util.Locale.US).format(cal.time)
+            val monthName = SimpleDateFormat("MMMM", Locale.US).format(cal.time)
             if (calYear == currentYear) monthName else "$monthName $calYear"
         }
     }
@@ -281,8 +315,8 @@ fun HistoryBarChart(
                 .map { formatDate(it.timestamp, "yyyy-MM-dd") }
                 .toSet()
         }
-        val minTs = remember(dataBars) { dataBars.minOfOrNull { it.timestamp } ?: System.currentTimeMillis() }
-        val maxTs = remember(dataBars) { dataBars.maxOfOrNull { it.timestamp } ?: System.currentTimeMillis() }
+        val minTs = remember(dataBars) { dataBars.minOfOrNull { it.timestamp } ?: nowMillis() }
+        val maxTs = remember(dataBars) { dataBars.maxOfOrNull { it.timestamp } ?: nowMillis() }
 
         val minYear = remember(minTs) {
             Calendar.getInstance().apply { timeInMillis = minTs }.get(Calendar.YEAR)
@@ -324,7 +358,7 @@ fun HistoryBarChart(
                     val y = utcCal.get(Calendar.YEAR)
                     val m = utcCal.get(Calendar.MONTH) + 1
                     val d = utcCal.get(Calendar.DAY_OF_MONTH)
-                    val dateKey = String.format(Locale.US, "%04d-%02d-%02d", y, m, d)
+                    val dateKey = formatUs("%04d-%02d-%02d", y, m, d)
                     return daysWithData.contains(dateKey)
                 }
 
@@ -346,7 +380,7 @@ fun HistoryBarChart(
                         val year = utcCal.get(Calendar.YEAR)
                         val month = utcCal.get(Calendar.MONTH)
                         val day = utcCal.get(Calendar.DAY_OF_MONTH)
-                        val targetDayKey = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day)
+                        val targetDayKey = formatUs("%04d-%02d-%02d", year, month + 1, day)
 
                         val localCal = Calendar.getInstance().apply {
                             set(year, month, day, 12, 0, 0)
@@ -426,6 +460,7 @@ fun HistoryBarChart(
                     text = headerTitle,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Icon(
@@ -439,8 +474,7 @@ fun HistoryBarChart(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .onPointerEvent(PointerEventType.Enter) { isHovered = true }
-                .onPointerEvent(PointerEventType.Exit) { isHovered = false },
+                .onHoverCompat({ isHovered = true }, { isHovered = false }),
         ) {
             val barWidth = if (maxWidth > 700.dp) 18.dp else 14.dp
             val barAreaHeight = if (maxWidth > 700.dp) 180.dp else 160.dp
@@ -495,15 +529,13 @@ fun HistoryBarChart(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(rowHeight)
-                        .onPointerEvent(PointerEventType.Scroll) { event ->
-                            val delta = event.changes.firstOrNull()?.scrollDelta
-                            if (delta != null) {
-                                val scrollAmount = if (delta.x != 0f) delta.x else delta.y
-                                if (scrollAmount != 0f) {
-                                    coroutineScope.launch {
-                                        lazyListState.scrollBy(scrollAmount * 36f)
+                        .nestedScroll(horizontalScrollConnection)
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    if (awaitPointerEvent(PointerEventPass.Initial).type == PointerEventType.Scroll) {
+                                        lastWheelAt = nowMillis()
                                     }
-                                    event.changes.forEach { it.consume() }
                                 }
                             }
                         },
@@ -554,6 +586,7 @@ fun HistoryBarChart(
                                         text = item.monthName,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
+                                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         modifier = Modifier.rotate(-90f),
                                     )
@@ -568,6 +601,7 @@ fun HistoryBarChart(
                                         text = item.monthName,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
+                                        fontFamily = satoshiFontFamily(FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         modifier = Modifier.rotate(-90f),
                                     )
@@ -732,6 +766,7 @@ private fun DesktopStatDetailRow(
             "${totalFmt.first} ${totalFmt.second}",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
+            fontFamily = satoshiFontFamily(FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(

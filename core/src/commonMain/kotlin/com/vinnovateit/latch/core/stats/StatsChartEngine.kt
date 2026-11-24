@@ -3,15 +3,17 @@ package com.vinnovateit.latch.core.stats
 import com.vinnovateit.latch.core.model.DataUsage
 import com.vinnovateit.latch.core.model.HistoryChartItem
 import com.vinnovateit.latch.core.model.PortalSessionRecord
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
+import com.vinnovateit.latch.core.mp.KSimpleDateFormat as SimpleDateFormat
+import com.vinnovateit.latch.core.mp.KDate as Date
+import com.vinnovateit.latch.core.mp.KCalendar as Calendar
+import com.vinnovateit.latch.core.mp.KLocale as Locale
+import com.vinnovateit.latch.core.mp.KThreadLocal
+import com.vinnovateit.latch.core.mp.nowMillis
 
-private val dayKeyFormat = ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
-private val monthKeyFormat = ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM", Locale.US) }
-private val monthNameFormat = ThreadLocal.withInitial { SimpleDateFormat("MMM", Locale.US) }
-private val monthYearNameFormat = ThreadLocal.withInitial { SimpleDateFormat("MMM yyyy", Locale.US) }
+private val dayKeyFormat = KThreadLocal { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
+private val monthKeyFormat = KThreadLocal { SimpleDateFormat("yyyy-MM", Locale.US) }
+private val monthNameFormat = KThreadLocal { SimpleDateFormat("MMM", Locale.US) }
+private val monthYearNameFormat = KThreadLocal { SimpleDateFormat("MMM yyyy", Locale.US) }
 
 /**
  * Pure engine for generating all-time history chart items with monthly separators,
@@ -21,7 +23,7 @@ fun computeChartItems(
     records: List<PortalSessionRecord>,
     liveRxBytes: Long = 0L,
     liveTxBytes: Long = 0L,
-    nowMillis: Long = System.currentTimeMillis()
+    nowMillis: Long = nowMillis()
 ): List<HistoryChartItem> {
     val nonZero = records.filter { it.uploadBytes > 0 || it.downloadBytes > 0 }
     val groupedByDay = mutableMapOf<String, DataUsage>()
@@ -94,7 +96,7 @@ fun computeChartItems(
     val currentYear = now.get(Calendar.YEAR)
     val items = mutableListOf<HistoryChartItem>()
     val maxEnd = if (endCal.after(now)) now else endCal
-    val cursor = startCal.clone() as Calendar
+    val cursor = startCal.clone()
 
     while (!cursor.after(maxEnd)) {
         val cursorDate = Date(cursor.timeInMillis)

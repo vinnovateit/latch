@@ -1,5 +1,7 @@
 package com.vinnovateit.latch.core.runtime
 
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.NetworkHandle
 import com.vinnovateit.latch.core.platform.NoOpLogger
@@ -59,10 +61,14 @@ private class StubTransport(
     private val code: Int,
     private val onOpen: () -> Unit = {},
 ) : HttpTransport {
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: NetworkHandle?): HttpURLConnection {
+
         onOpen()
         return StubConnection(url, code)
-    }
+        }
 }
 
 private class FakeWifi(

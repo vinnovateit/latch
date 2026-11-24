@@ -48,20 +48,19 @@ import com.vinnovateit.latch.core.engine.LatchEngine
 import com.vinnovateit.latch.core.model.LiveDataPoint
 import com.vinnovateit.latch.core.platform.PlatformServices
 import com.vinnovateit.latch.core.settings.SettingsManager
+import com.vinnovateit.latch.core.stats.chartWindow
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
 import com.vinnovateit.latch.ui.components.CircularPowerButton
 import com.vinnovateit.latch.ui.components.LatchHomeTopBar
 import com.vinnovateit.latch.ui.components.LeafOverlay
 import com.vinnovateit.latch.ui.components.MorphingPowerButton
 import com.vinnovateit.latch.ui.components.SpectrumCard
+import com.vinnovateit.latch.ui.platform.openWifiSettings
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.delay
 
 /** Width at which the home screen switches to the Android landscape arrangement. */
 private val WideBreakpoint = 900.dp
-
-/** Only the last 150 samples are drawn, matching the Android home chart. */
-private const val CHART_WINDOW = 150
 
 /**
  * The home screen, laid out as the Android app lays it out.
@@ -83,13 +82,17 @@ fun HomeScreen(
     sessions: SessionRepository,
     platform: PlatformServices,
     onOpenStats: () -> Unit,
+    showStatusBadge: Boolean = true,
 ) {
     val isLatched by controller.isLatched.collectAsStateWithLifecycle()
     val status by controller.status.collectAsStateWithLifecycle()
     val liveStatus by sessions.liveStatus.collectAsStateWithLifecycle()
     val speedUnit by SettingsManager.speedUnits.collectAsStateWithLifecycle()
 
-    val history = liveStatus?.liveData?.takeLast(CHART_WINDOW) ?: emptyList()
+    // liveData identity changes once per sample. Don't reallocate the 150-point
+    // window on unrelated recompositions (theme, speed unit, connection status).
+    val liveData = liveStatus?.liveData
+    val history = remember(liveData) { chartWindow(liveData ?: emptyList()) }
 
     // A failed status fades back to Idle after two seconds. The hint that macOS
     // is hiding the Wi-Fi name stays until a check gives a different answer.
@@ -104,7 +107,9 @@ fun HomeScreen(
     val settingsLink = if (networkNameHidden) {
         SettingsLink("Allow Location access") { platform.systemActions.openLocationSettings() }
     } else {
-        SettingsLink("Open Wi-Fi settings") { platform.systemActions.openWifiSettings() }
+        SettingsLink("Open Wi-Fi settings") {
+            openWifiSettings(fallback = platform.systemActions::openWifiSettings)
+        }
     }
 
     /*
@@ -124,8 +129,10 @@ fun HomeScreen(
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // When the status pill lives in the compact nav row, do not reserve a
+        // second top-app-bar here: it would clip the Home illustration.
         val topBar: @Composable () -> Unit = {
-            LatchHomeTopBar(isLatched = isLatched)
+            if (showStatusBadge) LatchHomeTopBar(isLatched = isLatched)
         }
 
         if (maxWidth >= WideBreakpoint) {
@@ -230,10 +237,10 @@ private fun CompactHome(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(
-                            top = buttonDiameter / 2 + 20.dp,
+                            top = buttonDiameter / 2 + 8.dp,
                             start = 24.dp,
                             end = 24.dp,
-                            bottom = 24.dp,
+                            bottom = 12.dp,
                         ),
                 )
             }
@@ -269,7 +276,7 @@ private fun WideHome(
 
         Row(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.weight(0.45f).fillMaxHeight(),
+                modifier = Modifier.weight(0.35f).fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 topBar()
@@ -295,9 +302,9 @@ private fun WideHome(
 
             Box(
                 modifier = Modifier
-                    .weight(0.55f)
+                    .weight(0.65f)
                     .fillMaxHeight()
-                    .padding(top = 20.dp, bottom = 24.dp, end = 24.dp),
+                    .padding(top = 12.dp, bottom = 16.dp, end = 24.dp),
             ) {
                 SpectrumCard(
                     history = history,

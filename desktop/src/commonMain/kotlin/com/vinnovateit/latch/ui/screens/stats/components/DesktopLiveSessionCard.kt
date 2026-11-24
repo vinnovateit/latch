@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import com.vinnovateit.latch.core.mp.nowMillis
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,7 @@ import com.vinnovateit.latch.core.stats.formatDurationDynamic
 import com.vinnovateit.latch.ui.components.DataUsageDonut
 import com.vinnovateit.latch.ui.components.LatchIcons
 import com.vinnovateit.latch.ui.theme.LocalIsDarkTheme
+import com.vinnovateit.latch.ui.theme.satoshiFontFamily
 import kotlinx.coroutines.delay
 
 @Composable
@@ -52,11 +54,11 @@ fun LiveSessionCard(
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
 
     var duration by remember(startTimeMillis) {
-        mutableLongStateOf(System.currentTimeMillis() - startTimeMillis)
+        mutableLongStateOf(nowMillis() - startTimeMillis)
     }
     LaunchedEffect(startTimeMillis) {
         while (true) {
-            duration = System.currentTimeMillis() - startTimeMillis
+            duration = nowMillis() - startTimeMillis
             delay(1000)
         }
     }
@@ -80,6 +82,7 @@ fun LiveSessionCard(
                     text = "Active Session",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = satoshiFontFamily(FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
@@ -112,6 +115,7 @@ private fun RateChip(icon: ImageVector, text: String, accent: Color) {
             text = text,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
+            fontFamily = satoshiFontFamily(FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface,
         )
     }

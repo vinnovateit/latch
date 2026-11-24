@@ -6,6 +6,8 @@ import com.vinnovateit.latch.core.platform.BuildInfo
 import com.vinnovateit.latch.core.platform.ByteCounterSource
 import com.vinnovateit.latch.core.platform.ByteCounts
 import com.vinnovateit.latch.core.platform.CredentialStore
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.InMemoryKeyValueStore
 import com.vinnovateit.latch.core.platform.KeyValueStore
@@ -113,7 +115,11 @@ private class LoginFailTransport(
     @Volatile var loginAttempts = 0
     private val loggedIn = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: NetworkHandle?): HttpURLConnection {
+
         val urlStr = url.toString()
         return object : HttpURLConnection(url) {
             override fun connect() = Unit
@@ -149,7 +155,7 @@ private class LoginFailTransport(
                 "error".toByteArray()
             )
         }
-    }
+        }
 }
 
 private object LoginFailStaticHandle : NetworkHandle {

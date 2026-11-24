@@ -6,6 +6,8 @@ import com.vinnovateit.latch.core.data.LatchDatabase
 import com.vinnovateit.latch.core.model.PortalSessionRecord
 import com.vinnovateit.latch.core.platform.ByteCounterSource
 import com.vinnovateit.latch.core.platform.ByteCounts
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.portal.PortalHistoryClient
 import com.vinnovateit.latch.core.stats.ThroughputMonitor
@@ -36,7 +38,11 @@ class PortalManualSessionReconciliationTest {
     }
 
     private class FakePortalTransport(var historyHtml: String = "") : HttpTransport {
-        override fun open(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+        override fun open(url: JUrl, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: com.vinnovateit.latch.core.platform.NetworkHandle?): HttpURLConnection {
+
             return object : HttpURLConnection(url) {
                 override fun connect() {}
                 override fun disconnect() {}
@@ -52,7 +58,7 @@ class PortalManualSessionReconciliationTest {
                 override fun getOutputStream() = java.io.ByteArrayOutputStream()
                 override fun getResponseCode() = 200
             }
-        }
+            }
     }
 
     @BeforeTest

@@ -6,6 +6,8 @@ import com.vinnovateit.latch.core.platform.BuildInfo
 import com.vinnovateit.latch.core.platform.ByteCounterSource
 import com.vinnovateit.latch.core.platform.ByteCounts
 import com.vinnovateit.latch.core.platform.CredentialStore
+import com.vinnovateit.latch.core.mp.JHttpConnection
+import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.platform.HttpTransport
 import com.vinnovateit.latch.core.platform.InMemoryKeyValueStore
 import com.vinnovateit.latch.core.platform.KeyValueStore
@@ -168,7 +170,11 @@ private class OnLostEmittingWifi(
 }
 
 private class OnLostProbeTransport(private val probeResponse: Int) : HttpTransport {
-    override fun open(url: URL, handle: NetworkHandle?): HttpURLConnection {
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(openLegacy(URL(url.toString()), handle))
+
+    private fun openLegacy(url: URL, handle: NetworkHandle?): HttpURLConnection {
+
         return object : HttpURLConnection(url) {
             override fun connect() = Unit
             override fun disconnect() = Unit
@@ -176,7 +182,7 @@ private class OnLostProbeTransport(private val probeResponse: Int) : HttpTranspo
             override fun getResponseCode(): Int =
                 if (url.toString().contains("generate_204")) probeResponse else 200
         }
-    }
+        }
 }
 
 private object OnLostNoCounters : ByteCounterSource {
