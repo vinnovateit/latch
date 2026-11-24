@@ -59,7 +59,7 @@ object SettingsManager {
     private const val DEFAULT_CHART_PALETTE = "Material Dynamic"
     private const val DEFAULT_PALETTE_STYLE = "TonalSpot"
     private const val DEFAULT_HAPTICS_ENABLED = true
-    private const val DEFAULT_MINIMIZE_TO_TRAY = false
+    private const val DEFAULT_MINIMIZE_TO_TRAY = true
 
     /**
      * SSID fragments Latch is allowed to authenticate against, matched as

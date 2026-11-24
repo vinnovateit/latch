@@ -69,7 +69,7 @@ private object NativeBuildInfo : BuildInfo {
 }
 
 private object NativeCapabilities : PlatformCapabilities {
-    override val supportsAutostart: Boolean = false
+    override val supportsAutostart: Boolean = true
 }
 
 class NativeKeyValueStore(private val file: JFile, private val logger: Logger) : KeyValueStore {
@@ -274,7 +274,7 @@ class NativeSystemActions(private val logger: Logger) : SystemActions {
         val file = JFile(dir, "latch.desktop")
         if (enabled) {
             JFileWriter(file, false).useOutput {
-                it.write("[Desktop Entry]\nType=Application\nName=Latch\nExec=latch\nNoDisplay=true\n".encodeToByteArray())
+                it.write("[Desktop Entry]\nType=Application\nName=Latch\nExec=latch --hidden\nNoDisplay=true\n".encodeToByteArray())
             }
         } else file.delete()
     }

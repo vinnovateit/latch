@@ -111,14 +111,15 @@ jobs:
       # Runs what was archived rather than the build image: v1.4.0 shipped
       # tarballs whose launchers were not executable while the image was fine.
       # Failing here stops the release before anything is uploaded.
-      - name: Check the native desktop archive
+      - name: Verify the install script against the native desktop archive
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          archive="desktop/build/distributions/latch-native-$VERSION-linux-x64.tar.gz"
+          archive="desktop/build/distributions/latch-$VERSION-linux-x64.tar.gz"
           test -f "$archive"
-          tar -tzf "$archive" | grep -qx "latch-native-$VERSION/bin/Latch"
-          tar -tzf "$archive" | grep -qx "latch-native-$VERSION/bin/data.kres"
+          tar -tzf "$archive" | grep -qx "latch-$VERSION/bin/Latch"
+          tar -tzf "$archive" | grep -qx "latch-$VERSION/bin/data.kres"
+          packaging/test-install-script.sh "$archive"
 
       - name: Smoke-test the CLI tarball
         env:

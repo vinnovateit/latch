@@ -110,18 +110,18 @@ class SettingsManagerTest {
         assertFalse(SettingsManager.hasSeenOnboarding.value)
         assertEquals(setOf("VIT"), SettingsManager.allowedSsids.value)
         assertTrue(SettingsManager.hapticsEnabled.value)
-        assertFalse(SettingsManager.minimizeToTray.value)
+        assertTrue(SettingsManager.minimizeToTray.value)
 
         // And the store, not only the flows.
         assertTrue(store.getBoolean("auto_login", false))
         assertEquals("System Default", store.getString("theme", ""))
         assertEquals("Red", store.getString("accent_color", ""))
-        assertFalse(store.getBoolean("minimize_to_tray", true))
+        assertTrue(store.getBoolean("minimize_to_tray", false))
     }
 
     @Test
-    fun `minimizeToTray is false by default`() {
-        assertFalse(SettingsManager.minimizeToTray.value)
+    fun `minimizeToTray is true by default`() {
+        assertTrue(SettingsManager.minimizeToTray.value)
     }
 
     @Test

@@ -57,6 +57,7 @@ class DesktopEngineRuntime private constructor(
             val platform = NativePlatformServices(echoLogsToStdout, notifier)
             Platform.install(platform)
             SettingsManager.initialize(platform.settingsStore)
+            applyAutostartDefault(platform)
             val database = buildDatabase()
             val portalClient = PortalHistoryClient(platform.httpTransport)
             val sessions = SessionRepository(database.statsDao(), ThroughputMonitor(platform.counters), portalClient = portalClient)
@@ -76,5 +77,15 @@ class DesktopEngineRuntime private constructor(
             }
             return runtime
         }
+    }
+}
+
+/** Turn start-at-login on the first time an installed build runs, never re-enabling it after the user turns it off. */
+private fun applyAutostartDefault(platform: NativePlatformServices) {
+    if (!platform.capabilities.supportsAutostart || SettingsManager.autostartDefaultApplied) return
+    platform.systemActions.setAutostart(true)
+    if (platform.systemActions.isAutostartEnabled()) {
+        SettingsManager.autostartDefaultApplied = true
+        platform.logger.d("DesktopEngineRuntime", "Enabled start-at-login by default.")
     }
 }

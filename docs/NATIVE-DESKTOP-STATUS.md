@@ -8,24 +8,24 @@ The desktop app is a self-contained Kotlin/Native binary for `linuxX64` and `min
 
 | Item | Value |
 |---|---|
-| Release tar | `desktop/build/distributions/latch-native-1.5.1-linux-x64.tar.gz` (~20 MB) |
-| Contents | `bin/Latch` (~55 MB uncompressed) + `bin/data.kres` (~277 KB) |
-| Launcher | `/usr/share/applications/latch.desktop` → `/opt/latch-new/bin/Latch` |
-| Autostart | `~/.config/autostart/latch.desktop` → `.../Latch --hidden` |
+| Release tar | `desktop/build/distributions/latch-1.5.1-linux-x64.tar.gz` (~20 MB) |
+| Contents | `bin/Latch` (~55 MB uncompressed) + `bin/data.kres` (~277 KB) + `lib/Latch.png` (desktop entry icon) |
+| Launcher | `/usr/share/applications/latch.desktop` → `/opt/latch/bin/Latch` |
+| Autostart | `~/.config/autostart/latch.desktop` → `latch --hidden` (on by default, applied once) |
 | CLI | separate branch `feat/native-cli`, ~2.5 MB, no JVM |
 
 ## What works (Linux)
 
-- **Window**: custom title bar, drag-to-move (via SDL window position), compositor resize, minimize, close.
-- **Navigation**: Material 3 Expressive wide nav rail (Home / Stats / Settings / How it works / About) with inline labels, FAB-free branded header, responsive collapse/expand. On narrow windows the rail is hidden and a compact overflow menu plus back arrows take over.
-- **Back navigation**: back arrow shown only when the rail is hidden; `Backspace` and `Alt+Left` shortcuts work on all secondary screens.
+- **Window**: OS window decorations (drag and resize belong to the window manager), minimize, close-to-tray.
+- **Navigation**: Material 3 Expressive wide nav rail (Home / Stats / Settings / How it works / About) with inline labels, FAB-free branded header, responsive collapse/expand. Below 900 dp the rail is replaced by a hamburger drawer that reuses the same rail; secondary screens are reached from the drawer, not back buttons.
+- **Back navigation**: `Backspace` and `Alt+Left` work on all secondary screens; no on-screen back arrow in narrow layouts.
 - **Tray**: SDL3/AppIndicator tray with icon, status tooltip/menu entry, Open / Connect / Exit actions. Manual launch opens the window; `--hidden` (autostart) stays tray-only with no taskbar icon.
 - **Wi-Fi**: nmcli-based SSID/interface/gateway detection, Available/Lost events, 3-strike health checks, disconnect/reconnect handling, weak-signal logging.
 - **Portal security**: captive-portal login/credential traffic is bound to the Wi-Fi NIC; account history uses the public route (the account endpoint is a public IP and refuses Wi-Fi-bound connections). Credentials are validated against the account login endpoint before saving.
 - **History**: full HTML table parse (up to ~3700 rows), ~1767 valid sessions persisted, stats recompute to ~485 day-groups / 843 chart points. Resync available in Stats.
 - **Stats/UX**: live throughput chart, history bar chart with trackpad/wheel horizontal scroll, bottom sheets capped at 560 dp, confirmation dialogs as centered `AlertDialog`s, Material You theming (full upstream MCU port), Satoshi/MODERNIZ fonts with correct weights.
 - **Performance**: startup ~88 ms (blocking nmcli probe removed from init); heavy sync offloaded to a dedicated native IO pool; chart paths/window memoized.
-- **Tests**: `core:desktopTest` (349), `desktop:linuxX64Test`, `app:compileDebugKotlin` all green.
+- **Tests**: `:core:desktopTest`, `:desktop:linuxX64Test` and `:cli:test` all green.
 
 ## Known limitations / what does not work
 
@@ -35,9 +35,9 @@ The desktop app is a self-contained Kotlin/Native binary for `linuxX64` and `min
 - **Window position persistence**: the window does not remember its position/size across restarts.
 - **Notifications**: `notifyTransient` shells out to `notify-send`; silent if no notification daemon is installed.
 - **Noto fonts**: removed (~6 MB saved). Any text without an explicit family falls back to the OS sans-serif; all app text styles set Satoshi/MODERNIZ explicitly.
-- **Android UI tests**: `:desktop` no longer has a JVM `desktopTest` task; core's 346 JVM tests still run.
+- **Orphaned JVM tests**: the old `desktop/src/desktopTest` suite is gone; it used AWT and Compose's JVM test runner, neither of which exists on the native target. Core's JVM `desktopTest` suite still runs.
 
 ## Branch / PRs
 
-- `feat/compose-desktop-native` — main work, pushed at `d8c1182`, no PR.
+- `feat/compose-desktop-native` — main work, PR #254.
 - `feat/native-cli` — native CLI, pushed at `e6fcb83`, no PR.
