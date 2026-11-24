@@ -168,15 +168,15 @@ jobs:
       - name: Check the native desktop archive
         run: |
           version="$(sed -n 's/^latchVersion=//p' gradle.properties)"
-          archive="desktop/build/distributions/latch-native-$version-linux-x64.tar.gz"
+          archive="desktop/build/distributions/latch-$version-linux-x64.tar.gz"
           test -f "$archive"
-          tar -tzf "$archive" | grep -qx "latch-native-$version/bin/Latch"
-          tar -tzf "$archive" | grep -qx "latch-native-$version/bin/data.kres"
+          tar -tzf "$archive" | grep -qx "latch-$version/bin/Latch"
+          tar -tzf "$archive" | grep -qx "latch-$version/bin/data.kres"
 
       - name: Report Linux archive size
         run: |
           version="$(sed -n 's/^latchVersion=//p' gradle.properties)"
-          archive="desktop/build/distributions/latch-native-$version-linux-x64.tar.gz"
+          archive="desktop/build/distributions/latch-$version-linux-x64.tar.gz"
           echo "Linux archive: $archive - $(du -h "$archive" | cut -f1) ($(stat -c%s "$archive") bytes, gzip level 9)"
 
       - name: Test the winget submission logic
