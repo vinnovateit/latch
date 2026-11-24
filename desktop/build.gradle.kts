@@ -128,19 +128,24 @@ compose.desktop {
 tasks.register<Tar>("packageNativeReleaseTarGz") {
     group = "compose desktop"
     description = "Packages the native Linux distributable into a .tar.gz archive"
-    dependsOn("linkReleaseExecutableLinuxX64", "packageReleaseComposeResourcesLinuxX64")
+    dependsOn("linkReleaseExecutableLinuxX64", "packageReleaseComposeResourcesLinuxX64", "generateDesktopIcons")
 
-    archiveFileName.set("latch-native-$latchVersion-linux-x64.tar.gz")
+    archiveFileName.set("latch-$latchVersion-linux-x64.tar.gz")
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
     compression = Compression.GZIP
 
     from(layout.buildDirectory.file("bin/linuxX64/releaseExecutable/desktop.kexe")) {
-        into("latch-native-$latchVersion/bin")
+        into("latch-$latchVersion/bin")
         rename { "Latch" }
         filePermissions { unix(0b111101101) } // 0755
     }
     from(layout.buildDirectory.file("bin/linuxX64/releaseExecutable/data.kres")) {
-        into("latch-native-$latchVersion/bin")
+        into("latch-$latchVersion/bin")
+    }
+    // install.sh writes a desktop entry pointing at lib/Latch.png; ship it.
+    from(generatedIconDir.map { it.file("latch-128.png") }) {
+        into("latch-$latchVersion/lib")
+        rename { "Latch.png" }
     }
 
     // Gradle's Tar always uses the default gzip level. Recompress at the
