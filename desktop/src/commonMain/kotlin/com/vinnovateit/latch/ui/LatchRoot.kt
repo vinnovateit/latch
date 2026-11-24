@@ -207,8 +207,22 @@ fun LatchRoot(
                                     // service before storing. This never uses the
                                     // captive-portal login path.
                                     credentialValidationError = null
-                                    validatingCredentials = true
                                     scope.launch {
+                                        // Offline: save without contacting the portal. Validation is
+                                        // impossible and must not block credential setup.
+                                        if (!platform.httpTransport.isOnline()) {
+                                            platform.credentials.save(userId, password).fold(
+                                                onSuccess = {
+                                                    hasCredentials = true
+                                                    editingCredentials = false
+                                                },
+                                                onFailure = {
+                                                    credentialValidationError = "Unable to save credentials securely."
+                                                },
+                                            )
+                                            return@launch
+                                        }
+                                        validatingCredentials = true
                                         val result = kotlinx.coroutines.withContext(com.vinnovateit.latch.core.mp.ioDispatcher) {
                                             com.vinnovateit.latch.core.portal.PortalHistoryClient(platform.httpTransport)
                                                 .validateCredentials(userId, password)

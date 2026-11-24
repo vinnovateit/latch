@@ -183,9 +183,18 @@ actual class JHttpConnection actual constructor(url: JUrl) {
             JFile(dataFile).outputStream().useOutput { it.write(bytes) }
             args += "--data-binary \"@$dataFile\""
         }
-        // --interface pins portal credentials to Wi-Fi. Never omitted when a
-        // handle exists; Ethernet owning the default route must not matter.
-        if (iface != null) args += "--interface \"$iface\""
+        // --interface pins portal credentials to Wi-Fi. Windows libcurl needs
+        // an IPv4 address here, not the adapter name ("Wi-Fi" fails with
+        // CURLE_INTERFACE_FAILED / exit 45). Resolve the name to its IP first.
+        if (iface != null) {
+            val ip = com.vinnovateit.latch.desktop.platform.runCommand(
+                "netsh interface ipv4 show config name=\"$iface\"",
+            ).lineSequence()
+                .firstOrNull { it.contains("IP Address", ignoreCase = true) }
+                ?.substringAfter(':')?.trim()
+                ?: throw MPIOException("No IPv4 address on Wi-Fi interface $iface; refusing default route")
+            args += "--interface $ip"
+        }
         args += "\"$spec\""
         args += "-w \"%%{http_code}\""
         args += "> \"$codeFile\""
@@ -206,8 +215,12 @@ actual class JHttpConnection actual constructor(url: JUrl) {
         if (exit != 0 || status == 0) throw MPIOException("curl request failed: exit=$exit status=$status iface=${iface ?: "default"}")
 
         val headers = mutableMapOf<String, String>()
-        // The last header block (after a redirect) is the response we want.
-        headerText.replace("\r\n", "\n").split("\n\n").lastOrNull()?.lines()?.forEach { line ->
+        // curl terminates the last header block with a blank line, so splitting
+        // on "\n\n" yields a trailing EMPTY block. Taking lastOrNull() blindly
+        // dropped every header, including Set-Cookie, making credential
+        // validation always return 302. Use the last non-empty block.
+        headerText.replace("\r\n", "\n").split("\n\n")
+            .lastOrNull { it.isNotBlank() }?.lines()?.forEach { line ->
             val i = line.indexOf(':')
             if (i > 0) headers[line.substring(0, i).trim().lowercase()] = line.substring(i + 1).trim()
         }
