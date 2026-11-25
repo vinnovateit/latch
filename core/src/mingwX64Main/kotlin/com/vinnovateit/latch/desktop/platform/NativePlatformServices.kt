@@ -262,6 +262,24 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
 
     private fun wifiInterface(): String? = cachedInterface ?: wifiDetails()?.interfaceName
 
+    override fun signalPercent(): Int? = wifiDetails()?.signal
+
+    /** Reassociate by saved profile; cycle the adapter only when that fails. Never leaves Wi-Fi off. */
+    override fun reconnect(handle: NetworkHandle?): Boolean {
+        val ssid = currentSsid()
+        if (!ssid.isNullOrBlank() && !ssid.contains('"') && !ssid.contains('&') && !ssid.contains('|')) {
+            runCommand("netsh wlan connect name=\"$ssid\"")
+            if (isConnectedToWifi()) return true
+        }
+        val iface = wifiInterface()
+        if (iface != null && !iface.contains('"') && !iface.contains('&') && !iface.contains('|')) {
+            runCommand("netsh interface set interface name=\"$iface\" admin=disabled")
+            runCommand("netsh interface set interface name=\"$iface\" admin=enabled")
+        }
+        if (!isWifiEnabled()) runCommand("netsh interface set interface name=\"Wi-Fi\" admin=enabled")
+        return isConnectedToWifi()
+    }
+
     private fun netshConfig(iface: String): String =
         runCommand("netsh interface ipv4 show config name=\"$iface\"")
 

@@ -50,7 +50,7 @@ import kotlinx.coroutines.runBlocking
 class LatchEngineHealthCheckTest {
 
     @Test
-    fun `re-login after session loss restores the session`() = withEngine(
+    fun `session survives onLost and stays latched`() = withEngine(
         probeResponse = 204,
     ) { engine, events ->
         engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
@@ -60,7 +60,7 @@ class LatchEngineHealthCheckTest {
         events.send(WifiEvent.Lost(HealthCurrentHandle))
         delay(1000)
 
-        assertEquals(false, engine.isLatched.value, "session should be unlatched after onLost")
+        assertEquals(true, engine.isLatched.value, "a Wi-Fi loss must not unlatch the session")
 
         events.send(WifiEvent.Available(HealthCurrentHandle))
         engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
@@ -115,21 +115,27 @@ class LatchEngineHealthCheckTest {
     }
 
     @Test
-    fun `three failed link checks drop the session`() = withEngine(
-        initialProbeResponse = 302,
-        revalidationProbeResponse = 204,
-        healthIntervalMs = 100L,
-        wifiOverride = FailingLinkWifi(failures = 3),
-    ) { engine, _ ->
-        engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
-        assertTrue(engine.isLatched.value, "session should be latched after login")
+    fun `three failed link checks keep the session and repair the link`() {
+        val wifi = FailingLinkWifi(failures = 3)
+        withEngine(
+            initialProbeResponse = 302,
+            revalidationProbeResponse = 204,
+            healthIntervalMs = 100L,
+            wifiOverride = wifi,
+        ) { engine, _ ->
+            engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+            assertTrue(engine.isLatched.value, "session should be latched after login")
 
-        delay(600)
-        assertEquals(
-            false,
-            engine.isLatched.value,
-            "three consecutive link-check failures should drop the session",
-        )
+            delay(600)
+            assertTrue(
+                engine.isLatched.value,
+                "three consecutive link-check failures must not drop the session",
+            )
+            assertTrue(
+                wifi.reconnectCalls.get() > 0,
+                "a sustained link failure should trigger a Wi-Fi reconnect",
+            )
+        }
     }
 
     private fun withEngine(
@@ -191,6 +197,7 @@ private class HealthEmittingWifi(
 private class FailingLinkWifi(private val failures: Int) : WifiPlatform {
     private val eventChannel = Channel<WifiEvent>(Channel.UNLIMITED)
     private var remaining = failures
+    val reconnectCalls = AtomicInteger(0)
     override fun isWifiEnabled(): Boolean = true
     override fun isConnectedToWifi(): Boolean = true
     override fun currentSsid(): String = "G-VIT 5"
@@ -200,6 +207,10 @@ private class FailingLinkWifi(private val failures: Int) : WifiPlatform {
         val fail = remaining > 0
         if (fail) remaining--
         return !fail
+    }
+    override fun reconnect(handle: NetworkHandle?): Boolean {
+        reconnectCalls.incrementAndGet()
+        return true
     }
     override val events: Flow<WifiEvent> get() = eventChannel.receiveAsFlow()
 }

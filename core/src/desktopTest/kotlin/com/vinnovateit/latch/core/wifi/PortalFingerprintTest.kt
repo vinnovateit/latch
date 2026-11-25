@@ -35,4 +35,16 @@ class PortalFingerprintTest {
         assertFalse(pointsAtPronto("/cgi-bin/authlogin", null))
         assertFalse(pointsAtPronto("not a url", null))
     }
+
+    @Test
+    fun `the portal address is also Pronto evidence`() {
+        assertTrue(pointsAtPronto("http://136.233.9.110/cgi-bin/authlogin", null))
+        assertTrue(pointsAtPronto(null, "<a href=\"http://136.233.9.110/Main.jsp\">account</a>"))
+    }
+
+    @Test
+    fun `a lookalike address is not Pronto evidence`() {
+        assertFalse(pointsAtPronto("http://136.233.9.110.example/login", null))
+        assertFalse(pointsAtPronto(null, "<a href=\"http://example.com/?next=136.233.9.110\">x</a>"))
+    }
 }

@@ -131,6 +131,16 @@ interface WifiPlatform {
      */
     fun linkHealthy(handle: NetworkHandle): Boolean = true
 
+    /** Signal readings, when the OS exposes them. Null means "no reading". */
+    fun signalDbm(): Int? = null
+    fun signalPercent(): Int? = null
+
+    /**
+     * Attempt an OS-level Wi-Fi repair. Defaults to a no-op so platforms without
+     * a safe reconnect command (Android, JVM, macOS) keep current behaviour.
+     */
+    fun reconnect(handle: NetworkHandle?): Boolean = false
+
     fun wifiInterfaceName(): String? = activeHandle()?.id
 
     val events: Flow<WifiEvent>

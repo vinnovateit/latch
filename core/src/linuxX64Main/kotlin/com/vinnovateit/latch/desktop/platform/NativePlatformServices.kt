@@ -247,7 +247,24 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
             .lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
 
     /** Active Wi-Fi signal in percent, for weak-signal diagnostics. */
-    fun signalPercent(): Int? = wifiField("signal")?.toIntOrNull()
+    override fun signalPercent(): Int? = wifiField("signal")?.toIntOrNull()
+
+    /** nmcli reports quality percent; approximate dBm over the usual -100..-50 range. */
+    override fun signalDbm(): Int? = signalPercent()?.let { (it / 2) - 100 }
+
+    /** Reassociate by saved profile; cycle the radio only when that fails. Never leaves Wi-Fi off. */
+    override fun reconnect(handle: NetworkHandle?): Boolean {
+        val ssid = currentSsid()
+        val profile = ssid?.takeIf { it.isNotBlank() }?.replace("'", "'\\''")
+        if (profile != null) {
+            runCommand("nmcli connection up '$profile' 2>/dev/null")
+            if (isConnectedToWifi()) return true
+        }
+        runCommand("nmcli radio wifi off 2>/dev/null")
+        runCommand("nmcli radio wifi on 2>/dev/null")
+        if (profile != null) runCommand("nmcli connection up '$profile' 2>/dev/null")
+        return isConnectedToWifi()
+    }
 
     private companion object {
         const val POLL_INTERVAL_MS = 1_500L

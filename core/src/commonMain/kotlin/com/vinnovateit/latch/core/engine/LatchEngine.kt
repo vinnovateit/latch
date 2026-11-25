@@ -51,6 +51,11 @@ class LatchEngine(
         const val MAX_HEALTH_CHECK_FAILURES = 3
         const val REVALIDATE_DELAY_MS = 2000L
         const val MAX_REVALIDATE_RETRIES = 3
+        const val MAX_RECONNECT_ATTEMPTS = 2
+        const val RECONNECT_BACKOFF_MS = 10_000L
+        const val WEAK_SIGNAL_DBM = -70
+        const val WEAK_SIGNAL_PERCENT = 30
+        const val WEAK_SIGNAL_SAMPLES = 2
     }
 
     private val logger = platform.logger
@@ -68,6 +73,9 @@ class LatchEngine(
     private var activeActionJob: Job? = null
     @kotlin.concurrent.Volatile private var currentHandle: NetworkHandle? = null
     private var started = false
+
+    /** Set by an explicit disconnect; cleared when the engine starts or the user connects again. */
+    private var autoConnectSuppressed = false
 
     /**
      * Serialises checkAndAct entry points so two flows -- e.g. the startup
@@ -117,6 +125,7 @@ class LatchEngine(
     fun start() {
         if (started) return
         started = true
+        autoConnectSuppressed = false
 
         scope.launch {
             platform.wifi.events.collect { event -> onWifiEvent(event) }
@@ -147,6 +156,7 @@ class LatchEngine(
         when (event) {
             is WifiEvent.Available -> {
                 currentHandle = event.handle
+                if (autoConnectSuppressed) return
                 if (!platform.wifi.isWifiEnabled()) return
                 logger.d(TAG, "Wi-Fi available: ${event.handle.id}")
                 checkAndActExclusive(
@@ -164,11 +174,12 @@ class LatchEngine(
                     logger.d(TAG, "Ignoring onLost for non-current network handle.")
                     return
                 }
+                // A toggle or a brief association loss is not a user logout.
+                // Keep the latched state and live session; the health check will
+                // repair the link, and the next Available re-validates the portal.
                 currentHandle = null
                 activeActionJob?.cancel()
                 activeActionJob = null
-                healthCheckJob?.cancel()
-                unlatch()
             }
         }
     }
@@ -176,6 +187,7 @@ class LatchEngine(
     private suspend fun handle(command: LatchCommand) {
         when (command) {
             LatchCommand.CheckAndLogin -> {
+                autoConnectSuppressed = false
                 postStatus(
                     ConnectionStatus.Connecting(ConnectionStatus.Step.Initializing)
                 )
@@ -206,6 +218,7 @@ class LatchEngine(
             // concurrently with a fresh login on the Wi-Fi-event coroutine and
             // clobber it -- the two run on separate coroutines sharing this pool.
             LatchCommand.Logout -> {
+                autoConnectSuppressed = true
                 activeActionJob?.cancel()
                 activeActionJob = null
                 healthCheckJob?.cancel()
@@ -497,12 +510,31 @@ class LatchEngine(
         }
     }
 
+    /**
+     * Repairs an unhealthy Wi-Fi link without ending the session. Only platforms
+     * with a safe OS-level reconnect do anything here; others simply re-probe.
+     */
+    private suspend fun repairConnection(handle: NetworkHandle) {
+        if (autoConnectSuppressed) return
+        for (attempt in 1..MAX_RECONNECT_ATTEMPTS) {
+            if (attempt > 1) delay(RECONNECT_BACKOFF_MS * (attempt - 1))
+            currentHandle = null
+            val reconnected = platform.wifi.reconnect(handle)
+            val active = platform.wifi.activeHandle() ?: handle
+            currentHandle = active
+            logger.w(TAG, "Wi-Fi repair attempt $attempt/$MAX_RECONNECT_ATTEMPTS (reconnected=$reconnected).")
+            checkAndActExclusive(active, revalidating = false, silent = false)
+            if (reconnected && platform.wifi.linkHealthy(active)) return
+        }
+    }
+
     private fun startHealthCheck(handle: NetworkHandle) {
         healthCheckJob?.cancel()
         healthCheckJob = scope.launch {
             var lastTick = wallClock()
             var failCount = 0
             var linkFailCount = 0
+            var weakSignalCount = 0
             while (isActive) {
                 delay(healthCheckIntervalMs)
 
@@ -517,6 +549,17 @@ class LatchEngine(
                     logger.d(TAG, "Detected resume from sleep (drift ${drift}ms); re-checking.")
                 }
 
+                val weakSignal =
+                    platform.wifi.signalDbm()?.let { it <= WEAK_SIGNAL_DBM } == true ||
+                        platform.wifi.signalPercent()?.let { it <= WEAK_SIGNAL_PERCENT } == true
+                weakSignalCount = if (weakSignal) weakSignalCount + 1 else 0
+                if (weakSignalCount >= WEAK_SIGNAL_SAMPLES) {
+                    weakSignalCount = 0
+                    logger.w(TAG, "Weak Wi-Fi signal confirmed; repairing the link.")
+                    repairConnection(handle)
+                    continue
+                }
+
                 // The portal endpoint is not reliable enough to be the only
                 // health signal. A dead carrier or lost IP is another health
                 // signal, but it gets the same 3-strike debounce as the portal
@@ -525,11 +568,10 @@ class LatchEngine(
                     linkFailCount++
                     logger.w(TAG, "Wi-Fi link check failed ($linkFailCount/$MAX_HEALTH_CHECK_FAILURES).")
                     if (linkFailCount >= MAX_HEALTH_CHECK_FAILURES) {
-                        logger.w(TAG, "Wi-Fi link down $MAX_HEALTH_CHECK_FAILURES times; dropping session.")
+                        logger.w(TAG, "Wi-Fi link down $MAX_HEALTH_CHECK_FAILURES times; repairing the link.")
                         linkFailCount = 0
                         failCount = 0
-                        unlatch()
-                        return@launch
+                        repairConnection(handle)
                     }
                     continue
                 }
@@ -554,10 +596,9 @@ class LatchEngine(
                     if (failCount >= MAX_HEALTH_CHECK_FAILURES) {
                         logger.w(TAG, "Health check failed $MAX_HEALTH_CHECK_FAILURES consecutive times; session may have expired.")
                         failCount = 0
-                        // Drop the latch first so the re-login starts a fresh
-                        // session rather than stacking one on a live one.
-                        unlatch()
-                        checkAndActExclusive(handle, revalidating = false)
+                        // Keep the latched state and the live session while the
+                        // link is repaired and the portal session is renewed.
+                        repairConnection(handle)
                     }
                 }
             }

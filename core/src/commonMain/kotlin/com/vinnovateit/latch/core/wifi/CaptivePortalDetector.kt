@@ -13,6 +13,9 @@ import com.vinnovateit.latch.core.mp.nowMillis
 /** The host VIT's Pronto portal redirects every intercepted request to. */
 const val PRONTO_PORTAL_HOST = "phc.prontonetworks.com"
 
+/** The same portal's address, used by account management and some redirects. */
+const val PRONTO_PORTAL_IP = "136.233.9.110"
+
 /**
  * Typed outcome of a captive portal probe attempt.
  */
@@ -36,17 +39,21 @@ sealed interface PortalProbeResult {
 
 /**
  * Whether a portal's redirect, or the page it served instead of one, points
- * at [PRONTO_PORTAL_HOST].
+ * at Pronto's host or address.
  *
  * The redirect is matched on its host, never as a substring, so
  * "phc.prontonetworks.com.example" does not qualify. The page is searched
- * for the host as part of a URL, for portals that answer 200 with a
- * meta-refresh or script redirect.
+ * for the destination as part of a URL, for portals that answer 200 with a
+ * meta-refresh or script redirect. Neither form authorises sending credentials
+ * anywhere except a destination the caller has validated.
  */
 internal fun pointsAtPronto(location: String?, body: String?): Boolean {
     val redirectHost = location?.let { runCatching { URL(it).host }.getOrNull() }
     if (redirectHost.equals(PRONTO_PORTAL_HOST, ignoreCase = true)) return true
-    return body?.contains("//$PRONTO_PORTAL_HOST", ignoreCase = true) == true
+    if (redirectHost.equals(PRONTO_PORTAL_IP, ignoreCase = true)) return true
+    val page = body ?: return false
+    return page.contains("//$PRONTO_PORTAL_HOST", ignoreCase = true) ||
+        page.contains("//$PRONTO_PORTAL_IP", ignoreCase = true)
 }
 
 /**
