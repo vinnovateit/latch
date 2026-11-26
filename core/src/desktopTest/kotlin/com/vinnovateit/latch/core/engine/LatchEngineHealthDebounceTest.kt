@@ -28,6 +28,7 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -59,10 +60,15 @@ class LatchEngineHealthDebounceTest {
         SettingsManager.setAutoLogin(true)
         val events = Channel<WifiEvent>(Channel.UNLIMITED)
         val transport = DebounceTransport()
+        // One interval per read: with the real clock, a health check that runs
+        // an interval late on a busy machine looks like a wake from sleep, and
+        // a Pronto redirect after a sleep re-logs in at once.
+        val ticks = AtomicLong(0)
         val engine = LatchEngine(
             platform = DebouncePlatform(DebounceWifi(events), transport),
             sessions = SessionRepository(database.statsDao(), ThroughputMonitor(DebounceNoCounters)),
             healthCheckIntervalMs = intervalMs,
+            wallClock = { ticks.addAndGet(intervalMs) },
         )
         try {
             engine.start()
