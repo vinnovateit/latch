@@ -47,6 +47,12 @@ class MacNativeIntegrationTest {
     }
 
     @Test
+    fun `AppKit answers the messages that show and hide the Dock icon`() {
+        if (!onMac()) return
+        assertTrue(MacDockIcon.isSupported(), "NSApplication lacks setActivationPolicy: or activateIgnoringOtherApps:")
+    }
+
+    @Test
     fun `Location access is readable without prompting`() {
         if (!onMac()) return
         val access = MacLocationServices.access()
