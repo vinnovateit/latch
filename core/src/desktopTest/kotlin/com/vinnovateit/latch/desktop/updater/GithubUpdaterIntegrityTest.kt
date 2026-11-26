@@ -575,6 +575,7 @@ class GithubUpdaterIntegrityTest {
         assertTrue(File(installed, "bin/Latch").isFile)
         repeat(50) { if (!marker.exists()) Thread.sleep(100) }
         assertTrue(marker.exists(), "the updated build should be relaunched")
+        assertFalse(script.exists(), "the update script should remove itself")
     }
 
     private fun run(vararg command: String) {
