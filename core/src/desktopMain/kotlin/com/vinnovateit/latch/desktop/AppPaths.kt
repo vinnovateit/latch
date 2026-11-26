@@ -1,6 +1,8 @@
 package com.vinnovateit.latch.desktop
 
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * Where Latch keeps its data on disk.
@@ -20,12 +22,13 @@ object AppPaths {
 
     val isLinux: Boolean = !isWindows && !isMac
 
+    /** Every file Latch keeps (logs, history, settings, credentials, updates) lives in here; see [ownerOnly]. */
     val dataDir: File
         get() {
             System.getProperty("latch.dataDir")?.takeIf(String::isNotBlank)?.let { override ->
-                return File(override).apply { mkdirs() }
+                return ownerOnly(File(override))
             }
-            if (isWindows) return windowsDataDir.apply { mkdirs() }
+            if (isWindows) return ownerOnly(windowsDataDir)
             val base = when {
                 isMac -> System.getProperty("user.home") + "/Library/Application Support"
 
@@ -33,8 +36,27 @@ object AppPaths {
                 else -> System.getenv("XDG_DATA_HOME")
                     ?: (System.getProperty("user.home") + "/.local/share")
             }
-            return File(base, "Latch").apply { mkdirs() }
+            return ownerOnly(File(base, "Latch"))
         }
+
+    /**
+     * Creates [directory] and limits it to the current user. Its logs name the
+     * user's networks and its history records their usage, so other accounts on
+     * the machine get no access; everything else Latch writes sits inside it.
+     *
+     * - macOS and Linux: POSIX `rwx------`. Best effort, so a filesystem
+     *   without POSIX permissions keeps its defaults.
+     * - Windows: nothing to change. The data lives under %LOCALAPPDATA%, which
+     *   by default admits only the user, SYSTEM and Administrators, and the
+     *   directory inherits that.
+     */
+    internal fun ownerOnly(directory: File): File {
+        directory.mkdirs()
+        if (!isWindows) {
+            runCatching { Files.setPosixFilePermissions(directory.toPath(), PosixFilePermissions.fromString("rwx------")) }
+        }
+        return directory
+    }
 
     private val localAppData: String
         get() = System.getenv("LOCALAPPDATA") ?: (System.getProperty("user.home") + "\\AppData\\Local")

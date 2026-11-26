@@ -8,4 +8,7 @@
 <full-backup-content>
     <exclude domain="sharedpref" path="app_prefs.xml"/>
     <exclude domain="sharedpref" path="latch_encrypted_credentials.xml"/>
+    <exclude domain="database" path="."/>
+    <exclude domain="file" path="latch_verbose.log"/>
+    <exclude domain="file" path="latch_verbose.log.old"/>
 </full-backup-content>
