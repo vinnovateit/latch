@@ -41,6 +41,7 @@ fun ConnectionStatus.displayText(): String = when (this) {
         ConnectionStatus.Reason.NetworkNameHidden -> "Wi-Fi name hidden (allow Location access)"
         ConnectionStatus.Reason.NoCredentials -> stringResource(Res.string.status_login_failed)
         ConnectionStatus.Reason.LoginFailed -> stringResource(Res.string.status_login_failed)
+        ConnectionStatus.Reason.CredentialsRejected -> "Login refused (check your password)"
         ConnectionStatus.Reason.LogoutFailed -> stringResource(Res.string.status_logout_failed)
         ConnectionStatus.Reason.Disconnected ->
             stringResource(Res.string.status_disconnected_message)
