@@ -74,18 +74,18 @@ Latch. Your credentials are kept in your login Keychain.
 `latch-cli` bundles its own trimmed Java runtime, so Java does not need to be
 installed separately.
 
-Package-manager installs become available as each channel is published; until
-then, download the package for your system from the
-[latest release](https://github.com/vinnovateit/latch/releases/latest).
-
-**Windows**, with winget:
+**Windows.** Download `latch-cli-<version>-windows-x64.zip` from the
+[GitHub releases](https://github.com/vinnovateit/latch/releases).
+Extract it and run the executable from PowerShell:
 
 ```powershell
-winget install VinnovateIT.LatchCLI
+.\latch-cli.exe --status
 ```
 
-**Debian and Ubuntu.** Unlike winget, apt needs the repository added once before
-the install works, because Latch is not in the Debian or Ubuntu archives:
+WinGet publication is pending moderator approval. Use the ZIP until the
+package is available in the WinGet catalog.
+
+**Debian and Ubuntu.** Add the repository once before installing:
 
 ```sh
 curl -fsSL https://vinnovateit.github.io/latch/latch.gpg \
@@ -104,14 +104,10 @@ sudo dnf config-manager --add-repo https://vinnovateit.github.io/latch/latch.rep
 sudo dnf install latch-cli
 ```
 
-**Direct download.** The [latest release](https://github.com/vinnovateit/latch/releases/latest)
-carries a `.deb`, an `.rpm`, a portable Linux tarball and a Windows ZIP, with
-`SHA256SUMS` alongside them. On Windows the executable runs straight from the
-extracted folder:
-
-```powershell
-.\latch-cli.exe --status
-```
+**Direct download.** Choose the newest release containing CLI assets from
+[GitHub releases](https://github.com/vinnovateit/latch/releases). Full releases
+carry a `.deb`, an `.rpm`, a portable Linux tarball and a Windows ZIP, with
+`SHA256SUMS` alongside them.
 
 Flatpak is intentionally out of scope: its sandbox and desktop-first
 distribution model do not fit a host-network command-line daemon.

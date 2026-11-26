@@ -1,17 +1,8 @@
 #!/usr/bin/env bash
-# Keeps exactly one pending winget-pkgs submission for VinnovateIT.LatchCLI:
-# the newest released version. Run once per release; safe to re-run.
-#
-#   discover   what upstream has published, which of our fork branches have
-#              open PRs, and any other open PR for this package
-#   classify   decide whether this release needs a submission at all
-#   submit     open the PR for this version, unless one is already open
-#   supersede  close our own older pending PRs, now replaced by this one
-#
-# Expected no-op states (this version, or a newer one, is already pending or
-# published) exit 0. Anything the script cannot prove safe -- an open PR for
-# the package it does not own, an older PR that fails the ownership checks,
-# an unexpected API response -- exits non-zero without creating a competing PR.
+# Submit published VinnovateIT.LatchCLI manifests on request.
+# Preserve every pending submission, even when a newer release is available.
+# Skip published versions and requests that would compete with an open PR.
+# Reject unexpected API responses before creating a submission.
 #
 # Everything goes through the GitHub API rather than a clone: winget-pkgs
 # holds roughly a million files and a submission adds three. `gh api` handles
@@ -24,9 +15,6 @@ FORK="vinnovateit/winget-pkgs"
 FORK_OWNER="vinnovateit"
 PACKAGE_ROOT="manifests/v/VinnovateIT/LatchCLI"
 BRANCH_PREFIX="latch-cli-"
-# The only files a submission from this automation changes, per version
-# (generate-cli-package-metadata.sh writes exactly these).
-MANIFEST_NAMES=("$PACKAGE_ID.yaml" "$PACKAGE_ID.installer.yaml" "$PACKAGE_ID.locale.en-US.yaml")
 
 usage() {
     echo "Usage: $0 [--dry-run] <version> <manifest-dir>" >&2
@@ -201,39 +189,6 @@ discover_foreign() {
     return 0
 }
 
-# --- Ownership --------------------------------------------------------------
-
-# An older PR is closed only when every one of these holds; any doubt leaves it
-# alone and stops the run before a competing PR is opened.
-#
-# The file check does not rely on paging through the file list: GitHub's own
-# changed_files count on the PR must equal the number of manifests we
-# generate, and the listed files must be exactly those manifests. A PR with
-# any further file, even one past the first page, fails the count.
-verify_owned() {
-    local version=$1 number=$2
-    api GET "repos/$UPSTREAM/pulls/$number"
-    expect "Reading PR #$number" 200
-    jq -e \
-        --arg upstream "$UPSTREAM" --arg fork "$FORK" \
-        --arg branch "$BRANCH_PREFIX$version" \
-        --arg title "New version: $PACKAGE_ID version $version" '
-        .state == "open" and .merged != true
-        and .base.repo.full_name == $upstream
-        and .head.repo.full_name == $fork
-        and .head.ref == $branch
-        and .title == $title
-        and .changed_files == $expected_count' \
-        --argjson expected_count "${#MANIFEST_NAMES[@]}" "$API_BODY" >/dev/null ||
-        return 1
-    local expected
-    expected=$(printf '%s\n' "${MANIFEST_NAMES[@]}" | jq -R --arg dir "$PACKAGE_ROOT/$version/" '$dir + .' | jq -s 'sort')
-    api GET "repos/$UPSTREAM/pulls/$number/files?per_page=100"
-    expect "Reading the files of PR #$number" 200
-    jq -e --argjson expected "$expected" '
-        type == "array" and ([.[].filename] | sort) == $expected' "$API_BODY" >/dev/null
-}
-
 # --- Mutations --------------------------------------------------------------
 
 DRY_RUN=0
@@ -261,7 +216,6 @@ submit() {
     done
 
     if ! mutating "open a PR for $version from $FORK:$branch"; then
-        new_pr="(dry-run)"
         return 0
     fi
 
@@ -273,7 +227,7 @@ submit() {
 
     # Branching from a synced default branch keeps the PR to our three files.
     # A token that cannot sync still produces a valid PR, so this only warns.
-    if ! gh repo sync "$FORK" --source "$UPSTREAM" --branch "$default_branch" --force >/dev/null 2>"$WORK/stderr"; then
+    if ! gh repo sync "$FORK" --source "$UPSTREAM" --branch "$default_branch" >/dev/null 2>"$WORK/stderr"; then
         echo "Warning: could not sync $FORK with $UPSTREAM; branching from the fork as it is" >&2
     fi
     api GET "repos/$FORK/git/ref/heads/$default_branch"
@@ -312,52 +266,25 @@ submit() {
         -f "title=New version: $PACKAGE_ID version $version" \
         -f "head=$FORK_OWNER:$branch" \
         -f "base=$default_branch" \
-        -f "body=Automated submission from the [Latch release workflow](https://github.com/vinnovateit/latch/blob/main/.github/workflows/release.yml).
+        -f "body=Manual submission from the [Latch WinGet workflow](https://github.com/vinnovateit/latch/blob/main/.github/workflows/winget.yml).
 
 - Installer: https://github.com/vinnovateit/latch/releases/download/v$version/latch-cli-$version-windows-x64.zip
 - Release: https://github.com/vinnovateit/latch/releases/tag/v$version
 
 Checksums in the manifest are generated from the published release assets."
     if [[ $API_STATUS == 422 ]] && jq -e '(.errors // []) | any(.message? // "" | test("already exists"))' "$API_BODY" >/dev/null 2>&1; then
-        new_pr=$(open_pr_for_branch "$branch")
-        [[ -n $new_pr ]] || die "GitHub reports a PR for $FORK:$branch already exists, but none is open"
-        log "  PR #$new_pr for $version already existed"
+        local number
+        number=$(open_pr_for_branch "$branch")
+        [[ -n $number ]] || die "GitHub reports a PR for $FORK:$branch already exists, but none is open"
+        log "  PR #$number for $version already existed"
         return 0
     fi
     expect "Opening the PR for $version" 201
     require_json "Opening the PR for $version" '(.number | type) == "number"'
-    new_pr=$(jq -r .number "$API_BODY")
     log "  opened $(jq -r '.html_url // empty' "$API_BODY")"
 }
 
-# Closes one of our own older PRs that the current one replaces, then removes
-# its branch. Only called for PRs that passed verify_owned.
-supersede() {
-    local version=$1 number=$2 current=$3 current_pr=$4
-    mutating "comment on and close #$number ($version), then delete $FORK:$BRANCH_PREFIX$version" || return 0
-    api POST "repos/$UPSTREAM/issues/$number/comments" \
-        -f "body=Superseded by $PACKAGE_ID $current (#$current_pr)."
-    expect "Commenting on #$number" 201
-    api PATCH "repos/$UPSTREAM/pulls/$number" -f state=closed
-    expect "Closing #$number" 200
-    require_json "Closing #$number" '.state == "closed"'
-    log "  closed #$number ($version)"
-    delete_branch "$version"
-}
-
-delete_branch() {
-    local branch="$BRANCH_PREFIX$1"
-    api DELETE "repos/$FORK/git/refs/heads/$branch"
-    case $API_STATUS in
-        204) log "  deleted $FORK:$branch" ;;
-        404 | 422) log "  $FORK:$branch was already gone" ;;
-        *) expect "Deleting $FORK:$branch" 204 ;;
-    esac
-}
-
 # --- Main -------------------------------------------------------------------
-
-new_pr=""
 
 main() {
     if [[ ${1:-} == --dry-run ]]; then
@@ -411,58 +338,27 @@ main() {
         fi
     done
     if [[ -n $others ]]; then
-        die "open $PACKAGE_ID PRs not created by this automation: $others. Not opening a competing PR; resolve them manually, then re-run this job."
+        log "  none: keep pending $PACKAGE_ID PRs: $others"
+        return 0
     fi
 
-    # Our own newer or identical submission.
-    local -a older=()
+    # Preserve pending submissions through the moderator review.
     for v in ${owned_versions[@]+"${owned_versions[@]}"}; do
         [[ -n ${owned_pr[$v]:-} ]] || continue
         if version_gt "$v" "$version"; then
             log "  none: $v is already pending as #${owned_pr[$v]}, newer than $version"
             return 0
         fi
-        version_lt "$v" "$version" && older+=("$v")
-    done
-
-    # Prove every older PR is ours before creating anything, so a failed proof
-    # never leaves a second PR open beside it.
-    for v in ${older[@]+"${older[@]}"}; do
-        verify_owned "$v" "${owned_pr[$v]}" ||
-            die "#${owned_pr[$v]} ($v) is on $FORK:$BRANCH_PREFIX$v but does not look like a submission from this automation; not touching it or opening a competing PR."
-    done
-
-    # Our older branches with no open PR: left behind when a PR was closed,
-    # or when a previous run closed one but failed to delete its branch.
-    local -a stale=()
-    for v in ${owned_versions[@]+"${owned_versions[@]}"}; do
-        if [[ -z ${owned_pr[$v]:-} ]] && version_lt "$v" "$version"; then
-            stale+=("$v")
+        if [[ $v == "$version" ]]; then
+            log "  none: $version already has open PR #${owned_pr[$v]}"
+        else
+            log "  none: keep pending $v submission #${owned_pr[$v]} before submitting $version"
         fi
+        return 0
     done
 
-    if [[ -n ${owned_pr[$version]:-} ]]; then
-        new_pr=${owned_pr[$version]}
-        if ((${#older[@]} == 0 && ${#stale[@]} == 0)); then
-            log "  none: $version already has open PR #$new_pr"
-            return 0
-        fi
-        log "  keep #$new_pr for $version"
-    else
-        log "  submit $version"
-        submit "$version" "$manifest_dir"
-    fi
-
-    for v in ${older[@]+"${older[@]}"}; do
-        log "  supersede our $v submission #${owned_pr[$v]}"
-        supersede "$v" "${owned_pr[$v]}" "$version" "$new_pr"
-    done
-
-    for v in ${stale[@]+"${stale[@]}"}; do
-        log "  remove stale branch $FORK:$BRANCH_PREFIX$v (no open PR)"
-        mutating "delete $FORK:$BRANCH_PREFIX$v" && delete_branch "$v"
-    done
-    return 0
+    log "  submit $version"
+    submit "$version" "$manifest_dir"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then

@@ -1,0 +1,47 @@
+name: Submit Latch CLI to WinGet
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published CLI version (for example, 1.5.0)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winget-submission
+  cancel-in-progress: false
+
+jobs:
+  submit-winget:
+    name: Submit published CLI manifests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Test the WinGet submission logic
+        run: packaging/test-submit-winget.sh
+
+      - name: Fetch the published manifests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          source packaging/submit-winget.sh
+          is_version "$VERSION" || { echo "Expected a MAJOR.MINOR.PATCH version" >&2; exit 1; }
+          gh release download "v$VERSION" \
+            --pattern "latch-cli-$VERSION-package-metadata.zip" --dir .
+          unzip -q "latch-cli-$VERSION-package-metadata.zip" -d package-metadata
+
+      # Use the submission token only for the upstream PR and its fork.
+      - name: Submit to WinGet
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          packaging/submit-winget.sh "$VERSION" \
+            "package-metadata/winget/VinnovateIT.LatchCLI/$VERSION"
