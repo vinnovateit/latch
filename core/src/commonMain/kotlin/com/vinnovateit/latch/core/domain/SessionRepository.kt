@@ -295,9 +295,13 @@ class SessionRepository(
                     val date = com.vinnovateit.latch.core.stats.formatDate(it.loginTime, "yyyy-MM-dd")
                     !it.isManual && date != todayKey && date in validatedPastDates
                 }
+                // A locked day keeps the sessions it already has, but a session
+                // that started after the last sync on that day is new, not a
+                // rewrite of a stored one. Dropping the whole day lost them.
+                val lockedLoginTimes = existingLockedRecords.map { it.loginTime }.toSet()
                 val newAcceptedRecords = incoming.filter {
                     val date = com.vinnovateit.latch.core.stats.formatDate(it.loginTime, "yyyy-MM-dd")
-                    date == todayKey || date !in validatedPastDates
+                    date == todayKey || date !in validatedPastDates || it.loginTime !in lockedLoginTimes
                 }
 
                 // Reconcile manual records: match against incoming server records
