@@ -71,9 +71,11 @@ actual class JBufferedWriter internal constructor(val delegate: java.io.Buffered
     actual fun close() = delegate.close()
 }
 
-actual class JFile actual constructor(actual val path: String, child: String?) {
-    actual constructor(parent: JFile, child: String) : this("${parent.path}/$child", null)
-    private val delegate: java.io.File get() = java.io.File(path)
+actual class JFile actual constructor(path: String, child: String?) {
+    private val delegate: java.io.File =
+        if (child.isNullOrEmpty()) java.io.File(path) else java.io.File(path, child)
+    actual val path: String get() = delegate.path
+    actual constructor(parent: JFile, child: String) : this(parent.path, child)
     actual val name: String get() = delegate.name
     actual val parentFile: JFile? get() = delegate.parentFile?.let { JFile(it.path) }
     actual fun exists(): Boolean = delegate.exists()

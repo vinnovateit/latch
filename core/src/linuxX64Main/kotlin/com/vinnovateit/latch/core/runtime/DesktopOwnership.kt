@@ -28,8 +28,12 @@ suspend fun claimDesktopOwnership(
             is AcquireResult.Existing -> when (acquired.metadata.ownerKind) {
                 OwnerKind.DESKTOP -> {
                     val response = acquired.client.send(RuntimeCommand.ACTIVATE_UI)
-                    return if (response.ok) DesktopOwnership.ActivatedExisting
-                    else DesktopOwnership.Failure(response.message.ifBlank { response.code })
+                    if (response.ok) return DesktopOwnership.ActivatedExisting
+                    val detail = response.message.ifBlank { response.code }
+                    if (response.code != "OWNER_UNAVAILABLE") {
+                        return DesktopOwnership.Failure(detail)
+                    }
+                    lastFailure = detail
                 }
                 OwnerKind.CLI_DAEMON -> if (!takeoverRequested) {
                     val response = acquired.client.send(RuntimeCommand.TAKE_OVER)

@@ -89,70 +89,76 @@ class AutoLoginManager(
             logDebug("Preparing POST request to: $urlStr (user=$userId)")
 
             val connection = transport.open(loginUrl, handle)
-            connection.requestMethod = "POST"
-            connection.doOutput = true
-            connection.instanceFollowRedirects = false
+            return try {
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.instanceFollowRedirects = false
 
-            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
+                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)")
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
 
-            val postData = "userId=${urlEncode(userId, )}" +
-                "&password=${urlEncode(password, )}" +
-                "&serviceName=ProntoAuthentication"
+                val postData = "userId=${urlEncode(userId, )}" +
+                    "&password=${urlEncode(password, )}" +
+                    "&serviceName=ProntoAuthentication"
 
-            connection.outputStream.bufferedWriter().useWriter { it.write(postData) }
+                connection.outputStream.bufferedWriter().useWriter { it.write(postData) }
 
-            logDebug("Awaiting response from portal at $urlStr...")
-            val responseCode = connection.responseCode
-            val elapsed = nowMillis() - start
-            return when (responseCode) {
-                JHttpConnection.HTTP_OK -> {
-                    val response = connection.inputStream!!.bufferedReader().useReader { it.readText() }
-                    logDebug("Portal responded in ${elapsed}ms: HTTP 200 (Body: ${response.length} chars)")
-                    val responseLower = response.lowercase()
-                    val hasExplicitError = "invalid" in responseLower ||
-                        "incorrect" in responseLower ||
-                        "wrong password" in responseLower ||
-                        "authentication failed" in responseLower ||
-                        "user not found" in responseLower ||
-                        "account expired" in responseLower ||
-                        "session limit" in responseLower ||
-                        "max session" in responseLower ||
-                        "login failed" in responseLower
+                logDebug("Awaiting response from portal at $urlStr...")
+                val responseCode = connection.responseCode
+                val elapsed = nowMillis() - start
+                when (responseCode) {
+                    JHttpConnection.HTTP_OK -> {
+                        val response = connection.inputStream!!.bufferedReader().useReader { it.readText() }
+                        logDebug("Portal responded in ${elapsed}ms: HTTP 200 (Body: ${response.length} chars)")
+                        val responseLower = response.lowercase()
+                        val hasExplicitError = "invalid" in responseLower ||
+                            "incorrect" in responseLower ||
+                            "wrong password" in responseLower ||
+                            "authentication failed" in responseLower ||
+                            "user not found" in responseLower ||
+                            "account expired" in responseLower ||
+                            "session limit" in responseLower ||
+                            "max session" in responseLower ||
+                            "login failed" in responseLower
 
-                    val hasSuccessToken = "access granted" in responseLower ||
-                        "successfully" in responseLower ||
-                        "logged in" in responseLower ||
-                        "already logged in" in responseLower ||
-                        "welcome" in responseLower ||
-                        "success" in responseLower ||
-                        "http-equiv=\"refresh\"" in responseLower ||
-                        "location.href" in responseLower ||
-                        "window.location" in responseLower ||
-                        "http://example.com" in responseLower ||
-                        !hasExplicitError
+                        val hasSuccessToken = "access granted" in responseLower ||
+                            "successfully" in responseLower ||
+                            "logged in" in responseLower ||
+                            "already logged in" in responseLower ||
+                            "welcome" in responseLower ||
+                            "success" in responseLower ||
+                            "http-equiv=\"refresh\"" in responseLower ||
+                            "location.href" in responseLower ||
+                            "window.location" in responseLower ||
+                            "http://example.com" in responseLower ||
+                            !hasExplicitError
 
-                    val isSuccess = !hasExplicitError && hasSuccessToken
-                    logDebug("Login evaluation: isSuccess=$isSuccess (hasExplicitError=$hasExplicitError)")
-                    if (!isSuccess) {
-                        logWarning("Login response indicated failure in ${elapsed}ms. Snippet: ${response.take(300).replace("\n", " ")}")
+                        val isSuccess = !hasExplicitError && hasSuccessToken
+                        logDebug("Login evaluation: isSuccess=$isSuccess (hasExplicitError=$hasExplicitError)")
+                        if (!isSuccess) {
+                            logWarning("Login response indicated failure in ${elapsed}ms. Snippet: ${response.take(300).replace("\n", " ")}")
+                        }
+
+                        if (isSuccess) LoginResult.Success else LoginResult.Rejected
                     }
 
-                    if (isSuccess) LoginResult.Success else LoginResult.Rejected
-                }
+                    301, 302 -> {
+                        val location = connection.getHeaderField("Location")
+                        logWarning("Login resulted in a redirect in ${elapsed}ms (HTTP $responseCode -> $location). Treating as success.")
+                        LoginResult.Success
+                    }
 
-                301, 302 -> {
-                    val location = connection.getHeaderField("Location")
-                    logWarning("Login resulted in a redirect in ${elapsed}ms (HTTP $responseCode -> $location). Treating as success.")
-                    LoginResult.Success
+                    else -> {
+                        logWarning("Login failed in ${elapsed}ms with unexpected HTTP code: $responseCode")
+                        LoginResult.Failure
+                    }
                 }
-
-                else -> {
-                    logWarning("Login failed in ${elapsed}ms with unexpected HTTP code: $responseCode")
-                    LoginResult.Failure
-                }
+            } finally {
+                try {
+                    connection.disconnect()
+                } catch (_: Throwable) {}
             }
         }
 

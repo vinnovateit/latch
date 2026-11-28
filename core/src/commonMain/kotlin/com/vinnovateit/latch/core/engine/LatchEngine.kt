@@ -18,6 +18,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import com.vinnovateit.latch.core.mp.nowMillis
 import com.vinnovateit.latch.core.mp.ioDispatcher
+import com.vinnovateit.latch.core.mp.withLock
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
@@ -65,17 +67,21 @@ class LatchEngine(
     /** Wraps a command with an optional per-invocation completion signal for [submitAndAwait]. */
     private data class QueuedCommand(
         val command: LatchCommand,
+        val seq: Long,
         val done: CompletableDeferred<Unit>? = null,
     )
 
     private val commands = Channel<QueuedCommand>(Channel.UNLIMITED)
-    private var healthCheckJob: Job? = null
-    private var activeActionJob: Job? = null
+    private val seqLock = Any()
+    private var commandSeq: Long = 0L
+    @kotlin.concurrent.Volatile private var latestLogoutSeq: Long = 0L
+    @kotlin.concurrent.Volatile private var healthCheckJob: Job? = null
+    @kotlin.concurrent.Volatile private var activeActionJob: Job? = null
     @kotlin.concurrent.Volatile private var currentHandle: NetworkHandle? = null
     private var started = false
 
     /** Set by an explicit disconnect; cleared when the engine starts or the user connects again. */
-    private var autoConnectSuppressed = false
+    @kotlin.concurrent.Volatile private var autoConnectSuppressed = false
 
     /**
      * Serialises checkAndAct entry points so two flows -- e.g. the startup
@@ -111,13 +117,37 @@ class LatchEngine(
         sessions.stopSession()
     }
 
+    private fun isSuperseded(actionSeq: Long): Boolean = latestLogoutSeq > actionSeq
+
+    private fun enqueue(command: LatchCommand, done: CompletableDeferred<Unit>? = null): Boolean {
+        val seq = withLock(seqLock) {
+            val next = ++commandSeq
+            when (command) {
+                LatchCommand.Logout,
+                LatchCommand.Shutdown,
+                -> {
+                    latestLogoutSeq = next
+                    autoConnectSuppressed = true
+                }
+                LatchCommand.CheckAndLogin -> autoConnectSuppressed = false
+                LatchCommand.SilentCheck -> Unit
+            }
+            next
+        }
+        if (command == LatchCommand.Logout || command == LatchCommand.Shutdown) {
+            activeActionJob?.cancel()
+            healthCheckJob?.cancel()
+        }
+        return commands.trySend(QueuedCommand(command, seq, done)).isSuccess
+    }
+
     fun submit(command: LatchCommand) {
-        commands.trySend(QueuedCommand(command))
+        enqueue(command)
     }
 
     suspend fun submitAndAwait(command: LatchCommand, timeoutMs: Long = 10_000L): Boolean {
         val done = CompletableDeferred<Unit>()
-        if (commands.trySend(QueuedCommand(command, done)).isFailure) return false
+        if (!enqueue(command, done)) return false
         return withTimeoutOrNull(timeoutMs) { done.await() } != null
     }
 
@@ -133,7 +163,7 @@ class LatchEngine(
         scope.launch {
             for (queued in commands) {
                 try {
-                    handle(queued.command)
+                    handle(queued.command, queued.seq)
                 } finally {
                     queued.done?.complete(Unit)
                 }
@@ -156,13 +186,15 @@ class LatchEngine(
         when (event) {
             is WifiEvent.Available -> {
                 currentHandle = event.handle
-                if (autoConnectSuppressed) return
+                val actionSeq = withLock(seqLock) { commandSeq }
+                if (autoConnectSuppressed || isSuperseded(actionSeq)) return
                 if (!platform.wifi.isWifiEnabled()) return
                 logger.d(TAG, "Wi-Fi available: ${event.handle.id}")
                 checkAndActExclusive(
                     handle = event.handle,
                     revalidating = false,
                     silent = !SettingsManager.autoLogin.value,
+                    actionSeq = actionSeq,
                 )
             }
 
@@ -184,9 +216,10 @@ class LatchEngine(
         }
     }
 
-    private suspend fun handle(command: LatchCommand) {
+    private suspend fun handle(command: LatchCommand, seq: Long) {
         when (command) {
             LatchCommand.CheckAndLogin -> {
+                if (isSuperseded(seq)) return
                 autoConnectSuppressed = false
                 postStatus(
                     ConnectionStatus.Connecting(ConnectionStatus.Step.Initializing)
@@ -206,12 +239,13 @@ class LatchEngine(
                     )
                     return
                 }
-                checkAndActExclusive(handle, revalidating = false, silent = false)
+                checkAndActExclusive(handle, revalidating = false, silent = false, actionSeq = seq)
             }
 
             LatchCommand.SilentCheck -> {
+                if (isSuperseded(seq)) return
                 val handle = resolveHandle() ?: return
-                checkAndActExclusive(handle, revalidating = false, silent = true)
+                checkAndActExclusive(handle, revalidating = false, silent = true, actionSeq = seq)
             }
 
             // Serialized against checkAndActExclusive so a logout can't run
@@ -249,11 +283,12 @@ class LatchEngine(
         revalidating: Boolean,
         retry: Int = 0,
         silent: Boolean = false,
+        actionSeq: Long = withLock(seqLock) { commandSeq },
     ) {
         val job = scope.launch {
             loginGate.withLock {
-                if (!isActive) return@withLock
-                checkAndAct(handle, revalidating, retry, silent)
+                if (!isActive || isSuperseded(actionSeq)) return@withLock
+                checkAndAct(handle, revalidating, retry, silent, actionSeq)
             }
         }
         activeActionJob = job
@@ -265,7 +300,9 @@ class LatchEngine(
         revalidating: Boolean,
         retry: Int = 0,
         silent: Boolean = false,
+        actionSeq: Long = withLock(seqLock) { commandSeq },
     ) {
+        if (!coroutineContext.isActive || isSuperseded(actionSeq)) return
         val currentSsid = platform.wifi.currentSsid()
         val currentGateway = platform.wifi.gatewayIp()
         logger.d(TAG, "[ConnectAnalysis] === Connection Probe Started (revalidating=$revalidating, retry=$retry) ===")
@@ -279,6 +316,10 @@ class LatchEngine(
             portal.probe(handle)
         } ?: PortalProbeResult.Error("Timeout")
         logger.d(TAG, "[ConnectAnalysis] Step 2/4: Portal Probe Result: $probeResult")
+        if (!coroutineContext.isActive || isSuperseded(actionSeq)) {
+            logger.d(TAG, "[ConnectAnalysis] Connection check superseded by Logout/Shutdown; aborting.")
+            return
+        }
 
         if (probeResult is PortalProbeResult.Online) {
             val ssid = platform.wifi.currentSsid()
@@ -304,7 +345,8 @@ class LatchEngine(
             if (retry < MAX_REVALIDATE_RETRIES) {
                 logger.d(TAG, "[ConnectAnalysis] Waiting for network gates to open (attempt ${retry + 1}/$MAX_REVALIDATE_RETRIES)")
                 delay(REVALIDATE_DELAY_MS)
-                checkAndAct(handle, revalidating = true, retry = retry + 1, silent = silent)
+                if (!coroutineContext.isActive || isSuperseded(actionSeq)) return
+                checkAndAct(handle, revalidating = true, retry = retry + 1, silent = silent, actionSeq = actionSeq)
             } else {
                 logger.w(TAG, "[ConnectAnalysis] Network never granted internet after successful login.")
                 unlatch()
@@ -316,6 +358,7 @@ class LatchEngine(
         }
 
         val portalSeen = portalEvidence(probeResult, handle)
+        if (!coroutineContext.isActive || isSuperseded(actionSeq)) return
 
         // DNS resolution failing outright (as opposed to resolving but the
         // portal not answering) usually means Private DNS is blocking
@@ -341,6 +384,21 @@ class LatchEngine(
             return
         }
 
+        if (probeResult is PortalProbeResult.Error && portalSeen == null) {
+            val reason = when {
+                !platform.wifi.isWifiEnabled() -> ConnectionStatus.Reason.WifiOff
+                !platform.wifi.isConnectedToWifi() -> ConnectionStatus.Reason.NotOnWifi
+                else -> ssidRefusal(platform.wifi.currentSsid()) ?: ConnectionStatus.Reason.LoginFailed
+            }
+            logger.w(
+                TAG,
+                "[ConnectAnalysis] Portal probe and gateway check failed without a captive portal response (${probeResult.message}); reporting $reason.",
+            )
+            unlatch()
+            postStatus(ConnectionStatus.Failed(reason))
+            return
+        }
+
         val refusal = targetNetworkRefusal(portalSeen)
         if (refusal != null) {
             logger.w(TAG, "[ConnectAnalysis] Captive portal present but network target verification failed.")
@@ -350,7 +408,7 @@ class LatchEngine(
         }
 
         logger.d(TAG, "[ConnectAnalysis] Captive portal detected on a verified network. Proceeding to login.")
-        handleCaptivePortal(handle)
+        handleCaptivePortal(handle, actionSeq)
     }
 
     /** The campus-SSID test, judging an unreadable SSID the way this platform requires. */
@@ -405,7 +463,8 @@ class LatchEngine(
         return null
     }
 
-    private suspend fun handleCaptivePortal(handle: NetworkHandle) {
+    private suspend fun handleCaptivePortal(handle: NetworkHandle, actionSeq: Long) {
+        if (!coroutineContext.isActive || isSuperseded(actionSeq)) return
         logger.d(TAG, "[ConnectAnalysis] Step 4/4: Authenticating with Captive Portal...")
         postStatus(
             ConnectionStatus.Connecting(ConnectionStatus.Step.Authenticating)
@@ -432,6 +491,10 @@ class LatchEngine(
                 useAlternate = false,
                 fallbackIp = platform.wifi.gatewayIp(),
             )
+            if (!coroutineContext.isActive || isSuperseded(actionSeq)) {
+                logger.d(TAG, "[ConnectAnalysis] Portal login superseded by Logout/Shutdown; skipping revalidation.")
+                return
+            }
 
             if (result != LoginResult.Success) {
                 if (result == LoginResult.Rejected) {
@@ -446,8 +509,9 @@ class LatchEngine(
             }
 
             logger.d(TAG, "[ConnectAnalysis] Login successful. Revalidating network access...")
-            checkAndAct(handle, revalidating = true)
+            checkAndAct(handle, revalidating = true, actionSeq = actionSeq)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             logger.e(TAG, "[ConnectAnalysis] Exception during handleCaptivePortal: ${e.message}", e)
             unlatch()
             postStatus(

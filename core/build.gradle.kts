@@ -28,6 +28,12 @@ kotlin {
     // Kotlin/Native desktop targets for the SDL/Skia build. Kept alongside the
     // JVM target so the CLI and JVM reference build continue to work.
     linuxX64 {
+        binaries.all {
+            // platform.posix asks for libcrypt.so.1, which test/runtime binaries never
+            // call. --as-needed drops the DT_NEEDED so it starts on hosts with
+            // only libcrypt.so.2.
+            freeCompilerArgs += listOf("-linker-option", "--as-needed")
+        }
         compilations.getByName("main") {
             cinterops {
                 create("curl")
@@ -76,6 +82,11 @@ kotlin {
         linuxX64Main.dependencies {
             // Bundled SQLite ships a linuxX64 klib, so Room needs no JNI here.
             api(libs.sqlite.bundled)
+        }
+
+        val linuxX64Test by getting
+        linuxX64Test.dependencies {
+            implementation(kotlin("test"))
         }
 
         // Neither Room nor bundled SQLite ships a mingwX64 klib.

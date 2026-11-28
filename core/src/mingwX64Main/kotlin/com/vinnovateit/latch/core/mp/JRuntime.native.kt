@@ -108,6 +108,8 @@ actual class JBufferedWriter internal constructor(private val target: NativeSink
     actual fun close() = target.close()
 }
 
+private val winHttpCounter = kotlin.concurrent.AtomicInt(0)
+
 private data class CurlResult(val status: Int, val body: ByteArray, val headers: Map<String, String>)
 
 /**
@@ -161,7 +163,7 @@ actual class JHttpConnection actual constructor(url: JUrl) {
         }
 
         val tmp = winTempDir()
-        val stem = "latch-http-${getpid()}-${kotlin.concurrent.AtomicInt(0).addAndGet(1)}"
+        val stem = "latch-http-${getpid()}-${winHttpCounter.addAndGet(1)}"
         val bat = "$tmp\\$stem.bat"
         val bodyFile = "$tmp\\$stem.body"
         val headerFile = "$tmp\\$stem.head"
@@ -254,8 +256,16 @@ private fun readAllBytes(path: String): ByteArray {
 
 private val separatorRegex = Regex("[/\\\\]")
 
-actual class JFile actual constructor(actual val path: String, child: String?) {
-    actual constructor(parent: JFile, child: String) : this(parent.path.trimEnd('/', '\\') + "\\" + child, null)
+private fun joinWindowsPath(parent: String, child: String?): String {
+    if (child.isNullOrEmpty()) return parent
+    val trimmedChild = child.trimStart('/', '\\')
+    if (parent.isEmpty()) return trimmedChild
+    return "${parent.trimEnd('/', '\\')}\\$trimmedChild"
+}
+
+actual class JFile actual constructor(path: String, child: String?) {
+    actual val path: String = joinWindowsPath(path, child)
+    actual constructor(parent: JFile, child: String) : this(parent.path, child)
     actual val name: String get() = path.split(separatorRegex).last { it.isNotEmpty() }
     actual val parentFile: JFile? get() {
         val parts = path.split(separatorRegex)
@@ -270,7 +280,26 @@ actual class JFile actual constructor(actual val path: String, child: String?) {
         val st = alloc<platform.posix.stat>()
         if (platform.posix.stat(path, st.ptr) != 0) 0L else st.st_size.toLong()
     }
-    actual fun mkdirs(): Boolean { mkdir(path); return true }
+    actual fun mkdirs(): Boolean {
+        if (isDirectory) return true
+        val normalized = path.replace('/', '\\').trimEnd('\\')
+        if (normalized.isEmpty()) return false
+        val parts = normalized.split('\\').filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return false
+        var current = ""
+        for ((index, segment) in parts.withIndex()) {
+            current = when {
+                index == 0 && segment.length == 2 && segment[1] == ':' -> segment
+                current.isEmpty() -> if (normalized.startsWith("\\\\")) "\\\\$segment" else segment
+                else -> "$current\\$segment"
+            }
+            if (index == 0 && segment.length == 2 && segment[1] == ':') continue
+            if (access(current, 0) != 0) {
+                mkdir(current)
+            }
+        }
+        return isDirectory
+    }
     actual fun delete(): Boolean = unlink(path) == 0
     actual fun renameTo(target: JFile): Boolean = rename(path, target.path) == 0
     actual fun outputStream(): JOutputStream = JOutputStream(NativeFileSink(path, false))

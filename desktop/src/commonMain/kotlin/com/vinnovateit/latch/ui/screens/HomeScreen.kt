@@ -248,6 +248,7 @@ private fun CompactHome(
 
         CircularPowerButton(
             isConnected = isLatched,
+            isConnecting = connectionStatus is ConnectionStatus.Connecting,
             onClick = onPowerClick,
             diameter = buttonDiameter,
             modifier = Modifier.align(Alignment.Center),
@@ -292,6 +293,7 @@ private fun WideHome(
                     // this large.
                     MorphingPowerButton(
                         isConnected = isLatched,
+                        isConnecting = connectionStatus is ConnectionStatus.Connecting,
                         onClick = onPowerClick,
                         modifier = Modifier.sizeIn(maxWidth = 340.dp, maxHeight = 340.dp),
                     )

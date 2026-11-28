@@ -38,6 +38,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.concurrent.AtomicInt
 import kotlin.concurrent.Volatile
@@ -142,7 +143,7 @@ class NativeCredentialStore(private val file: JFile, private val logger: Logger)
     }
 }
 
-private class NativeHandle(override val id: String) : NetworkHandle
+internal data class NativeHandle(override val id: String) : NetworkHandle
 
 /**
  * Windows Wi-Fi platform for the native build.
@@ -168,7 +169,7 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
         scope.launch {
             var lastKey: String? = null
             var lastSignalLog = 0L
-            while (true) {
+            while (isActive) {
                 val details = wifiDetails()
                 val iface = details?.interfaceName
                 val ssid = details?.ssid
@@ -196,6 +197,10 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
                 delay(POLL_INTERVAL_MS)
             }
         }
+    }
+
+    fun close() {
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
     private data class Details(val interfaceName: String, val ssid: String?, val signal: Int?, val state: String?)
@@ -372,6 +377,10 @@ class NativePlatformServices(
     override val counters: ByteCounterSource = NativeByteCounters(wifi)
     override val systemActions: SystemActions = NativeSystemActions(logger)
     override val httpTransport: HttpTransport = NativeHttpTransport()
+
+    fun close() {
+        (wifi as? NativeWifiPlatform)?.close()
+    }
 }
 
 private val cmdCounter = AtomicInt(0)

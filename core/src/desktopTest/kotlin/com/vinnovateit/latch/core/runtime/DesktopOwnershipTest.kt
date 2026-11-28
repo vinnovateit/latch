@@ -78,5 +78,34 @@ class DesktopOwnershipTest {
         }
     }
 
+    @Test
+    fun `second desktop retries transient OWNER_UNAVAILABLE on ACTIVATE_UI`() = runBlocking {
+        val directory = createTempDirectory("latch-desktop-retry-activate-").toFile()
+        var attempts = 0
+        val owner = assertIs<AcquireResult.Owner>(
+            InstanceCoordinator.tryAcquire(directory, OwnerKind.DESKTOP) { request ->
+                if (request.command == RuntimeCommand.ACTIVATE_UI) {
+                    attempts++
+                    if (attempts == 1) {
+                        InstanceResponse(request.requestId, false, "OWNER_UNAVAILABLE", "starting UI")
+                    } else {
+                        InstanceResponse(request.requestId, true, "OK")
+                    }
+                } else {
+                    echo(request)
+                }
+            },
+        )
+        try {
+            val claim = claimDesktopOwnership(directory, timeoutMillis = 1_000, retryDelayMillis = 10) { echo(it) }
+
+            assertIs<DesktopOwnership.ActivatedExisting>(claim)
+            assertEquals(2, attempts)
+        } finally {
+            owner.coordinator.close()
+            directory.deleteRecursively()
+        }
+    }
+
     private fun echo(request: InstanceRequest) = InstanceResponse(request.requestId, true, "OK")
 }

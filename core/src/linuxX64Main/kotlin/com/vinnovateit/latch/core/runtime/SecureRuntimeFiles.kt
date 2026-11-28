@@ -3,18 +3,57 @@
 package com.vinnovateit.latch.core.runtime
 
 import com.vinnovateit.latch.core.mp.JFile
-import kotlinx.cinterop.allocArray
-import kotlinx.cinterop.get
+import com.vinnovateit.latch.core.mp.nowMillis
+import kotlin.concurrent.AtomicInt
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.refTo
-import kotlinx.cinterop.toKString
+import kotlinx.cinterop.usePinned
 import kotlinx.serialization.json.Json
+import platform.posix.EINTR
 import platform.posix.O_CREAT
 import platform.posix.O_TRUNC
 import platform.posix.O_WRONLY
 import platform.posix.chmod
 import platform.posix.close
+import platform.posix.errno
+import platform.posix.fclose
+import platform.posix.fopen
+import platform.posix.fread
+import platform.posix.getpid
 import platform.posix.open
+import platform.posix.rand
+import platform.posix.rename
+import platform.posix.srand
+import platform.posix.unlink
 import platform.posix.write
+
+private val writeSeq = AtomicInt(0)
+private val fallbackRngSeeded = AtomicInt(0)
+
+internal fun secureRandomBytes(count: Int): ByteArray {
+    val bytes = ByteArray(count)
+    val urandom = fopen("/dev/urandom", "rb")
+    if (urandom != null) {
+        try {
+            var offset = 0
+            while (offset < count) {
+                val n = bytes.usePinned { pinned ->
+                    fread(pinned.addressOf(offset), 1u, (count - offset).toULong(), urandom).toInt()
+                }
+                if (n <= 0) break
+                offset += n
+            }
+            if (offset == count) return bytes
+        } finally {
+            fclose(urandom)
+        }
+    }
+    if (fallbackRngSeeded.compareAndSet(0, 1)) {
+        srand((nowMillis() xor getpid().toLong()).toUInt())
+    }
+    for (i in 0 until count) bytes[i] = rand().toByte()
+    return bytes
+}
 
 /** Runtime owner lock/metadata/token, stored as small JSON/text files. */
 class SecureRuntimeFiles internal constructor(private val dataDir: JFile) {
@@ -27,8 +66,8 @@ class SecureRuntimeFiles internal constructor(private val dataDir: JFile) {
     private val json = Json { ignoreUnknownKeys = false }
 
     fun createToken(): String {
-        val bytes = ByteArray(32) { platform.posix.rand().toByte() }
-        val token = bytes.joinToString("") { ((it.toInt() and 0xFF) or 0x80).toString(16).padStart(2, '0') }
+        val bytes = secureRandomBytes(32)
+        val token = bytes.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
         writeToken(token)
         return token
     }
@@ -51,13 +90,37 @@ class SecureRuntimeFiles internal constructor(private val dataDir: JFile) {
     }
 
     private fun atomicWrite(destination: JFile, content: String) {
-        val fd = open(destination.path, O_WRONLY or O_CREAT or O_TRUNC, 0x180u)
-        if (fd < 0) error("Cannot write ${destination.path}")
+        dataDir.mkdirs()
+        val tmpPath = "${destination.path}.tmp.${getpid()}.${writeSeq.addAndGet(1)}"
+        val fd = open(tmpPath, O_WRONLY or O_CREAT or O_TRUNC, 0x180u)
+        if (fd < 0) error("Cannot write $tmpPath (errno=$errno)")
+        var fdClosed = false
+        var renamed = false
         try {
             val bytes = content.encodeToByteArray()
-            if (bytes.isNotEmpty()) write(fd, bytes.refTo(0), bytes.size.toULong())
-        } finally { close(fd) }
-        chmod(destination.path, 0x180u)
+            var offset = 0
+            bytes.usePinned { pinned ->
+                while (offset < bytes.size) {
+                    val written = write(fd, pinned.addressOf(offset), (bytes.size - offset).toULong()).toInt()
+                    if (written < 0) {
+                        if (errno == EINTR) continue
+                        error("Failed writing $tmpPath (errno=$errno)")
+                    }
+                    if (written == 0) error("Short write to $tmpPath")
+                    offset += written
+                }
+            }
+            chmod(tmpPath, 0x180u)
+            close(fd)
+            fdClosed = true
+            if (rename(tmpPath, destination.path) != 0) {
+                error("Cannot rename $tmpPath to ${destination.path} (errno=$errno)")
+            }
+            renamed = true
+        } finally {
+            if (!fdClosed) close(fd)
+            if (!renamed) unlink(tmpPath)
+        }
     }
 }
 

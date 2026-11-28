@@ -18,15 +18,17 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableIntStateOf
 import com.compose.sdl.Window
 import com.compose.sdl.nativeComposeApp
-import com.vinnovateit.latch.core.mp.JFile
 import com.vinnovateit.latch.core.engine.LatchCommand
-import com.vinnovateit.latch.core.runtime.AcquireResult
+import com.vinnovateit.latch.core.mp.JFile
 import com.vinnovateit.latch.core.runtime.DesktopEngineRuntime
-import com.vinnovateit.latch.core.runtime.InstanceCoordinator
+import com.vinnovateit.latch.core.runtime.DesktopOwnership
 import com.vinnovateit.latch.core.runtime.OwnerKind
 import com.vinnovateit.latch.core.runtime.RuntimeCommandService
+import com.vinnovateit.latch.core.runtime.claimDesktopOwnership
+import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
+import com.vinnovateit.latch.desktop.platform.NativeLogger
 import com.vinnovateit.latch.desktop.platform.NativeNotifier
 import com.vinnovateit.latch.desktop.platform.NativeTray
 import com.vinnovateit.latch.desktop.platform.TrayIconActivation
@@ -35,29 +37,34 @@ import com.vinnovateit.latch.ui.chrome.AppMenuHost
 import com.vinnovateit.latch.ui.chrome.LatchBackHost
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import platform.posix.exit
 
 private const val START_WIDTH = 420
 private const val START_HEIGHT = 700
 
 fun main(args: Array<String>) {
+    val startHidden = "--hidden" in args
+    val startupLogger = NativeLogger(echoToStdout = !startHidden)
     val serviceReady = CompletableDeferred<RuntimeCommandService>()
     var requestShow: (() -> Unit)? = null
     val handler: suspend (com.vinnovateit.latch.core.runtime.InstanceRequest) -> com.vinnovateit.latch.core.runtime.InstanceResponse =
         { request -> serviceReady.await().execute(request) }
 
     val ownership = runBlocking {
-        InstanceCoordinator.tryAcquire(JFile(AppPaths.dataDir.path), OwnerKind.DESKTOP, handler)
+        claimDesktopOwnership(JFile(AppPaths.dataDir.path), handler = handler)
     }
 
-    val (runtime, coordinator) = when (ownership) {
-        is AcquireResult.Owner -> ownership.coordinator to ownership.coordinator
-        is AcquireResult.Existing -> {
-            // Another Latch instance owns the runtime; ask it to show its window.
-            runBlocking { ownership.client.send(com.vinnovateit.latch.core.runtime.RuntimeCommand.ACTIVATE_UI) }
+    val coordinator = when (ownership) {
+        is DesktopOwnership.Owner -> ownership.coordinator
+        is DesktopOwnership.ActivatedExisting -> {
+            startupLogger.d("Main", "Activated existing Latch desktop instance.")
             return
         }
-        is AcquireResult.Failure -> {
-            println("Unable to start Latch: ${ownership.message}")
+        is DesktopOwnership.Failure -> {
+            val message = "Unable to start Latch: ${ownership.message}"
+            startupLogger.e("Main", message)
+            println(message)
+            exit(1)
             return
         }
     }
@@ -65,16 +72,21 @@ fun main(args: Array<String>) {
     val notifier = NativeNotifier()
     val app = try {
         runBlocking {
-            val created = DesktopEngineRuntime.create(notifier, echoLogsToStdout = true, syncHistoryOnStart = true)
+            val created = DesktopEngineRuntime.create(notifier, echoLogsToStdout = !startHidden, syncHistoryOnStart = true)
             created.start()
+            created.engine.submit(
+                if (SettingsManager.autoLogin.value) LatchCommand.CheckAndLogin else LatchCommand.SilentCheck,
+            )
             serviceReady.complete(
                 RuntimeCommandService(OwnerKind.DESKTOP, created, onActivateUi = { requestShow?.invoke() }),
             )
             created
         }
     } catch (error: Throwable) {
+        startupLogger.e("Main", "Failed to start Latch runtime: ${error.message}", error)
         serviceReady.completeExceptionally(error)
         coordinator.close()
+        exit(1)
         throw error
     }
 
@@ -84,7 +96,6 @@ fun main(args: Array<String>) {
             // Manual launch (desktop entry / terminal) opens the window.
             // Only autostart / launch-at-login passes --hidden to stay in the
             // tray with no taskbar icon.
-            val startHidden = "--hidden" in args
             val showRequest = remember { mutableIntStateOf(0) }
             val appMenu = remember { AppMenuHost() }
             val backHost = remember { LatchBackHost() }
@@ -196,4 +207,5 @@ fun main(args: Array<String>) {
         runBlocking { app.close() }
         coordinator.close()
     }
+    exit(0)
 }
