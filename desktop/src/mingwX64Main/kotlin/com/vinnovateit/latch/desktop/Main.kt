@@ -110,7 +110,7 @@ fun main(args: Array<String>) {
 
             val status by app.engine.status.collectAsState()
             val isLatched by app.engine.isLatched.collectAsState()
-            val shouldDisconnect = isLatched || status is ConnectionStatus.Connecting
+            val shouldDisconnect = isLatched
             val latestShouldDisconnect = rememberUpdatedState(shouldDisconnect)
 
             val ongoingTooltip = remember { mutableStateOf<String?>(null) }
@@ -151,8 +151,13 @@ fun main(args: Array<String>) {
                     statusText = statusText,
                     onOpen = { requestShow() },
                     onToggleConnect = {
-                        if (latestShouldDisconnect.value) app.engine.submit(LatchCommand.Logout)
-                        else app.engine.submit(LatchCommand.CheckAndLogin)
+                        if (latestShouldDisconnect.value) {
+                            SettingsManager.setAutoLogin(false)
+                            app.engine.submit(LatchCommand.Logout)
+                        } else {
+                            SettingsManager.setAutoLogin(true)
+                            app.engine.submit(LatchCommand.CheckAndLogin)
+                        }
                     },
                     onExit = { appScope.exitApplication() },
                 )

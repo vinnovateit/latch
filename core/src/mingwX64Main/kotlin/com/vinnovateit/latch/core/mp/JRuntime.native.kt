@@ -19,7 +19,10 @@ import platform.posix.S_IFDIR
 import platform.posix.system
 import platform.posix.unlink
 import platform.posix.getenv
+import kotlin.concurrent.AtomicLong
 import kotlinx.cinterop.toKString
+import platform.windows.GetCurrentThreadId
+import platform.windows.Sleep
 
 actual open class MPIOException actual constructor(message: String?) : Exception(message)
 actual class JUnknownHostException actual constructor(message: String?) : MPIOException(message)
@@ -45,10 +48,34 @@ actual fun urlEncode(value: String): String = buildString {
     }
 }
 
-private val compatLock = kotlin.concurrent.AtomicInt(0)
+private const val LOCK_STRIPES = 64
+private val stripeOwners = Array(LOCK_STRIPES) { AtomicLong(0L) }
+private val stripeDepths = IntArray(LOCK_STRIPES)
+
 actual fun <R> withLock(lock: Any, block: () -> R): R {
-    while (!compatLock.compareAndSet(0, 1)) {}
-    try { return block() } finally { compatLock.value = 0 }
+    val stripe = (lock.hashCode() and (LOCK_STRIPES - 1))
+    val tid = GetCurrentThreadId().toLong().let { if (it == 0L) 1L else it }
+    val owner = stripeOwners[stripe]
+    if (owner.value == tid) {
+        stripeDepths[stripe]++
+        return try {
+            block()
+        } finally {
+            stripeDepths[stripe]--
+        }
+    }
+    while (!owner.compareAndSet(0L, tid)) {
+        Sleep(0u)
+    }
+    stripeDepths[stripe] = 1
+    return try {
+        block()
+    } finally {
+        val remaining = --stripeDepths[stripe]
+        if (remaining == 0) {
+            owner.value = 0L
+        }
+    }
 }
 
 class NativeInputStream(private val data: ByteArray) {

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -46,42 +44,27 @@ private data class PowerButtonStyle(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun powerButtonStyle(isConnected: Boolean, isConnecting: Boolean): PowerButtonStyle {
+private fun powerButtonStyle(isConnected: Boolean): PowerButtonStyle {
     val usePureBlack by SettingsManager.usePureBlack.collectAsStateWithLifecycle()
     val isAmoled = usePureBlack && LocalIsDarkTheme.current
     val colorScheme = MaterialTheme.colorScheme
 
-    val containerTarget = when {
-        isAmoled -> Color.Black
-        isConnected -> colorScheme.primary
-        isConnecting -> colorScheme.secondaryContainer
-        else -> colorScheme.primaryContainer
-    }
-    val contentTarget = when {
-        isAmoled && isConnected -> colorScheme.primary
-        isAmoled && isConnecting -> colorScheme.secondary
-        isAmoled -> colorScheme.onSurface
-        isConnected -> colorScheme.onPrimary
-        isConnecting -> colorScheme.onSecondaryContainer
-        else -> colorScheme.onPrimaryContainer
-    }
-
     val container by animateColorAsState(
-        targetValue = containerTarget,
+        targetValue = if (isAmoled) Color.Black else if (isConnected) colorScheme.primary else colorScheme.primaryContainer,
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "btnContainer",
     )
     val content by animateColorAsState(
-        targetValue = contentTarget,
+        targetValue = if (isAmoled) {
+            if (isConnected) colorScheme.primary else colorScheme.onSurface
+        } else {
+            if (isConnected) colorScheme.onPrimary else colorScheme.onPrimaryContainer
+        },
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "btnContent",
     )
     val iconScale by animateFloatAsState(
-        targetValue = when {
-            isConnected -> 1.08f
-            isConnecting -> 0.88f
-            else -> 0.92f
-        },
+        targetValue = if (isConnected) 1.08f else 0.92f,
         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
         label = "btnIconScale",
     )
@@ -89,15 +72,7 @@ private fun powerButtonStyle(isConnected: Boolean, isConnecting: Boolean): Power
     return PowerButtonStyle(
         container = container,
         content = content,
-        border = if (isAmoled) {
-            when {
-                isConnected -> colorScheme.primary
-                isConnecting -> colorScheme.secondary
-                else -> colorScheme.outline
-            }
-        } else {
-            null
-        },
+        border = if (isAmoled) (if (isConnected) colorScheme.primary else colorScheme.outline) else null,
         iconScale = iconScale,
     )
 }
@@ -113,9 +88,8 @@ internal fun CircularPowerButton(
     onClick: () -> Unit,
     diameter: Dp,
     modifier: Modifier = Modifier,
-    isConnecting: Boolean = false,
 ) {
-    val style = powerButtonStyle(isConnected, isConnecting)
+    val style = powerButtonStyle(isConnected)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -140,21 +114,9 @@ internal fun CircularPowerButton(
         interactionSource = interactionSource,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (isConnecting && !isConnected) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(diameter * 0.72f),
-                    color = style.content.copy(alpha = 0.7f),
-                    strokeWidth = 3.dp,
-                    strokeCap = StrokeCap.Round,
-                )
-            }
             Icon(
                 imageVector = LatchIcons.PowerSettingsNew,
-                contentDescription = when {
-                    isConnected -> "Disconnect"
-                    isConnecting -> "Cancel connection"
-                    else -> "Connect"
-                },
+                contentDescription = if (isConnected) "Disconnect" else "Connect",
                 tint = style.content,
                 modifier = Modifier
                     .size(diameter * 0.45f)
@@ -192,9 +154,8 @@ internal fun MorphingPowerButton(
     isConnected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isConnecting: Boolean = false,
 ) {
-    val style = powerButtonStyle(isConnected, isConnecting)
+    val style = powerButtonStyle(isConnected)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -237,21 +198,9 @@ internal fun MorphingPowerButton(
             interactionSource = interactionSource,
         ) {
             Box(contentAlignment = Alignment.Center) {
-                if (isConnecting && !isConnected) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(side * 0.72f),
-                        color = style.content.copy(alpha = 0.7f),
-                        strokeWidth = 3.5.dp,
-                        strokeCap = StrokeCap.Round,
-                    )
-                }
                 Icon(
                     imageVector = LatchIcons.PowerSettingsNew,
-                    contentDescription = when {
-                        isConnected -> "Disconnect"
-                        isConnecting -> "Cancel connection"
-                        else -> "Connect"
-                    },
+                    contentDescription = if (isConnected) "Disconnect" else "Connect",
                     tint = style.content,
                     modifier = Modifier
                         .fillMaxSize(0.45f)

@@ -105,17 +105,18 @@ fun main(args: Array<String>) {
             }
 
             val toggleConnect: () -> Unit = {
-                val currentStatus = app.engine.status.value
                 val latched = app.engine.isLatched.value
-                if (latched || currentStatus is com.vinnovateit.latch.core.wifi.ConnectionStatus.Connecting) {
+                if (latched) {
+                    com.vinnovateit.latch.core.settings.SettingsManager.setAutoLogin(false)
                     app.engine.submit(LatchCommand.Logout)
                 } else {
+                    com.vinnovateit.latch.core.settings.SettingsManager.setAutoLogin(true)
                     app.engine.submit(LatchCommand.CheckAndLogin)
                 }
             }
 
             LaunchedEffect(isLatched, status) {
-                val shouldShowDisconnect = isLatched || status is com.vinnovateit.latch.core.wifi.ConnectionStatus.Connecting
+                val shouldShowDisconnect = isLatched
                 if (useLinuxTray) {
                     com.vinnovateit.latch.desktop.platform.linux.LinuxAppIndicatorTray.init(
                         isLatched = isLatched,
@@ -144,7 +145,7 @@ fun main(args: Array<String>) {
                     menu = {
                         Item("Open Latch", onClick = openLatch)
                         Separator()
-                        if (isLatched || status is com.vinnovateit.latch.core.wifi.ConnectionStatus.Connecting) {
+                        if (isLatched) {
                             Item("Disconnect", onClick = toggleConnect)
                         } else {
                             Item("Connect", onClick = toggleConnect)

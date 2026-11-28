@@ -25,7 +25,10 @@ actual fun nanoTime(): Long = monotonic.markNow().elapsedNow().inWholeNanosecond
 // pool that also runs the stats recompute and UI state collection, so give
 // blocking curl/DB work its own fixed Worker pool instead of starving it.
 @OptIn(DelicateCoroutinesApi::class)
-actual val ioDispatcher: CoroutineDispatcher = newFixedThreadPoolContext(4, "latch-io")
+actual val ioDispatcher: CoroutineDispatcher = newFixedThreadPoolContext(8, "latch-io")
+
+@OptIn(DelicateCoroutinesApi::class)
+actual val httpDispatcher: CoroutineDispatcher = newFixedThreadPoolContext(12, "latch-http")
 
 /** Minimal `String.format(Locale.US, …)` covering the patterns used by Latch. */
 actual fun formatUs(format: String, vararg args: Any?): String {

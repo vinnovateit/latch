@@ -24,13 +24,17 @@ import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.stats.ThroughputMonitor
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -90,6 +94,79 @@ class LatchEngineRecoveryTest {
         }
     }
 
+    @Test
+    fun `CheckAndLogin preempts a stalled background login and latches`() {
+        val transport = RecoveryTransport(
+            redirect = "http://phc.prontonetworks.com/cgi-bin/authlogin",
+            stallFirstLoginUntilDisconnect = true,
+        )
+        withEngine(
+            wifi = RecoveryWifi("KvIT"),
+            transport = transport,
+        ) { engine, events, _ ->
+            events.send(WifiEvent.Available(RecoveryHandle))
+            assertTrue(transport.firstLoginStarted.await(3, TimeUnit.SECONDS), "background login should start")
+
+            val ok = engine.submitAndAwait(LatchCommand.CheckAndLogin, 5_000)
+            assertTrue(ok, "CheckAndLogin should preempt stalled background login promptly")
+            assertTrue(transport.firstLoginDisconnected.get(), "stalled login connection must be closed on cancel")
+            assertTrue(engine.isLatched.value, "engine should latch after preempting stalled check")
+        }
+    }
+
+    @Test
+    fun `WifiEvent Available followed by Lost aborts stalled login without blocking events`() {
+        val transport = RecoveryTransport(
+            redirect = "http://phc.prontonetworks.com/cgi-bin/authlogin",
+            stallFirstLoginUntilDisconnect = true,
+        )
+        withEngine(
+            wifi = RecoveryWifi("KvIT"),
+            transport = transport,
+        ) { engine, events, _ ->
+            events.send(WifiEvent.Available(RecoveryHandle))
+            assertTrue(transport.firstLoginStarted.await(3, TimeUnit.SECONDS), "background login should start")
+
+            events.send(WifiEvent.Lost(RecoveryHandle))
+            delay(200)
+            assertTrue(transport.firstLoginDisconnected.get(), "WifiEvent.Lost must cancel in-flight login")
+            assertTrue(!engine.isLatched.value)
+
+            events.send(WifiEvent.Available(RecoveryHandle))
+            val ok = engine.submitAndAwait(LatchCommand.CheckAndLogin, 5_000)
+            assertTrue(ok)
+            assertTrue(engine.isLatched.value)
+        }
+    }
+
+    @Test
+    fun `repairConnection retries second attempt when first reconnect leaves portal offline`() {
+        val wifi = RecoveryWifi("KvIT")
+        val transport = RecoveryTransport(
+            redirect = "http://phc.prontonetworks.com/cgi-bin/authlogin",
+            probeSucceedsAfterReconnectCount = 2,
+            reconnectCountProvider = { wifi.reconnectCalls.get() },
+        )
+        withEngine(
+            wifi = wifi,
+            transport = transport,
+            healthIntervalMs = 80L,
+        ) { engine, _, _ ->
+            assertTrue(engine.submitAndAwait(LatchCommand.CheckAndLogin, 5_000))
+            assertTrue(engine.isLatched.value)
+            transport.failProbes = true
+
+            val deadline = System.currentTimeMillis() + 15_000L
+            while (wifi.reconnectCalls.get() < 2 && System.currentTimeMillis() < deadline) {
+                assertTrue(engine.isLatched.value, "session must stay latched while intermediate repair retries")
+                delay(100)
+            }
+            assertTrue(wifi.reconnectCalls.get() >= 2, "expected 2 reconnect attempts, saw ${wifi.reconnectCalls.get()}")
+            delay(300)
+            assertTrue(engine.isLatched.value, "session should recover cleanly on attempt 2")
+        }
+    }
+
     private fun withEngine(
         wifi: RecoveryWifi,
         transport: RecoveryTransport,
@@ -142,9 +219,18 @@ private class RecoveryWifi(private val ssid: String) : WifiPlatform {
     override val events: Flow<WifiEvent> get() = eventChannel.receiveAsFlow()
 }
 
-private class RecoveryTransport(private val redirect: String) : HttpTransport {
+private class RecoveryTransport(
+    private val redirect: String,
+    private val stallFirstLoginUntilDisconnect: Boolean = false,
+    private val probeSucceedsAfterReconnectCount: Int = 0,
+    private val reconnectCountProvider: () -> Int = { 0 },
+) : HttpTransport {
     val logins = mutableListOf<String>()
+    val firstLoginStarted = CountDownLatch(1)
+    val firstLoginDisconnected = AtomicBoolean(false)
+    @Volatile var failProbes: Boolean = false
     private val loggedIn = AtomicBoolean(false)
+    private val loginCallSeq = AtomicInteger(0)
 
     override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
         JHttpConnection(openLegacy(URL(url.toString()), handle))
@@ -154,14 +240,30 @@ private class RecoveryTransport(private val redirect: String) : HttpTransport {
         val isLogin = url.path.contains("authlogin") || url.path.contains("login")
         return object : HttpURLConnection(url) {
             private val answered = AtomicBoolean(false)
+            private val disconnectLatch = CountDownLatch(1)
+            private val stalledLogin = isLogin && stallFirstLoginUntilDisconnect && loginCallSeq.incrementAndGet() == 1
 
             override fun connect() = Unit
-            override fun disconnect() = Unit
+            override fun disconnect() {
+                if (stalledLogin) firstLoginDisconnected.set(true)
+                disconnectLatch.countDown()
+            }
             override fun usingProxy(): Boolean = false
             override fun getResponseCode(): Int {
+                if (stalledLogin) {
+                    firstLoginStarted.countDown()
+                    if (disconnectLatch.await(15, TimeUnit.SECONDS)) {
+                        throw IOException("aborted by disconnect")
+                    }
+                }
                 if (isLogin && answered.compareAndSet(false, true)) {
                     logins += url.host
                     loggedIn.set(true)
+                }
+                if (isProbe && failProbes &&
+                    reconnectCountProvider() < probeSucceedsAfterReconnectCount
+                ) {
+                    return 503
                 }
                 return when {
                     isProbe && !loggedIn.get() -> 302

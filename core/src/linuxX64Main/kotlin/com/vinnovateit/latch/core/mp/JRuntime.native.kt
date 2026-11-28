@@ -76,6 +76,7 @@ import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
 import kotlin.concurrent.AtomicInt
+import kotlin.concurrent.AtomicLong
 import kotlin.concurrent.Volatile
 import platform.posix.EEXIST
 import platform.posix.FILE
@@ -86,6 +87,7 @@ import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
 import platform.posix.mkdir
+import platform.posix.pthread_self
 import platform.posix.rename
 import platform.posix.stat
 import platform.posix.unlink
@@ -116,10 +118,34 @@ actual fun urlEncode(value: String): String = buildString {
     }
 }
 
-private val compatLock = AtomicInt(0)
+private const val LOCK_STRIPES = 64
+private val stripeOwners = Array(LOCK_STRIPES) { AtomicLong(0L) }
+private val stripeDepths = IntArray(LOCK_STRIPES)
+
 actual fun <R> withLock(lock: Any, block: () -> R): R {
-    while (!compatLock.compareAndSet(0, 1)) {}
-    try { return block() } finally { compatLock.value = 0 }
+    val stripe = (lock.hashCode() and (LOCK_STRIPES - 1))
+    val tid = pthread_self().toLong().let { if (it == 0L) 1L else it }
+    val owner = stripeOwners[stripe]
+    if (owner.value == tid) {
+        stripeDepths[stripe]++
+        return try {
+            block()
+        } finally {
+            stripeDepths[stripe]--
+        }
+    }
+    while (!owner.compareAndSet(0L, tid)) {
+        usleep(50u)
+    }
+    stripeDepths[stripe] = 1
+    return try {
+        block()
+    } finally {
+        val remaining = --stripeDepths[stripe]
+        if (remaining == 0) {
+            owner.value = 0L
+        }
+    }
 }
 
 private val curlInitState = AtomicInt(0)
@@ -244,7 +270,9 @@ actual class JHttpConnection actual constructor(url: JUrl) {
     }
 
     private inline fun <R> withMultiLock(block: () -> R): R {
-        while (!multiLock.compareAndSet(0, 1)) {}
+        while (!multiLock.compareAndSet(0, 1)) {
+            usleep(10u)
+        }
         return try { block() } finally { multiLock.value = 0 }
     }
 

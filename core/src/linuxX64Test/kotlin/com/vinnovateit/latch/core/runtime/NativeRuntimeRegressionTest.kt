@@ -6,9 +6,13 @@ import com.vinnovateit.latch.core.mp.JFile
 import com.vinnovateit.latch.core.mp.JHttpConnection
 import com.vinnovateit.latch.core.mp.JUrl
 import com.vinnovateit.latch.core.mp.MPIOException
+import com.vinnovateit.latch.core.mp.httpDispatcher
 import com.vinnovateit.latch.core.mp.nanoTime
 import com.vinnovateit.latch.core.mp.nowMillis
+import com.vinnovateit.latch.core.mp.withLock
+import com.vinnovateit.latch.core.platform.NoOpLogger
 import com.vinnovateit.latch.desktop.platform.NativeHandle
+import com.vinnovateit.latch.desktop.platform.NativeKeyValueStore
 import com.vinnovateit.latch.desktop.platform.parseNmcliTerseLine
 import kotlin.concurrent.AtomicInt
 import kotlin.test.Test
@@ -54,6 +58,52 @@ import platform.posix.unlink
 private val testSeq = AtomicInt(0)
 
 class NativeRuntimeRegressionTest {
+
+    @Test
+    fun `withLock is reentrant and preserves mutual exclusion under contention`() = runBlocking {
+        val lock = Any()
+        var counter = 0
+        withLock(lock) {
+            withLock(lock) {
+                counter += 1
+            }
+        }
+        assertEquals(1, counter)
+
+        (1..8).map {
+            async(httpDispatcher) {
+                repeat(100) {
+                    withLock(lock) {
+                        withLock(lock) {
+                            counter += 1
+                        }
+                    }
+                }
+            }
+        }.awaitAll()
+        assertEquals(801, counter)
+    }
+
+    @Test
+    fun `NativeKeyValueStore persists concurrent writes atomically`() = runBlocking {
+        withTempDir { dir ->
+            val file = JFile(dir, "settings.json")
+            val store = NativeKeyValueStore(file, NoOpLogger)
+            (1..8).map { worker ->
+                async(Dispatchers.Default) {
+                    repeat(20) { iter ->
+                        store.putString("k-$worker", "v-$iter")
+                        store.putBoolean("flag", iter % 2 == 0)
+                    }
+                }
+            }.awaitAll()
+
+            val reloaded = NativeKeyValueStore(file, NoOpLogger)
+            for (worker in 1..8) {
+                assertEquals("v-19", reloaded.getString("k-$worker", ""))
+            }
+        }
+    }
 
     @Test
     fun `flock allows acquiring over stale metadata and rejects active second owner`() = runBlocking {

@@ -80,34 +80,50 @@ private object NativeCapabilities : PlatformCapabilities {
 
 class NativeKeyValueStore(private val file: JFile, private val logger: Logger) : KeyValueStore {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private val lock = Any()
     private val values = mutableMapOf<String, String>()
 
     init {
         runCatching {
             if (!file.exists()) return@runCatching
             val root = json.parseToJsonElement(readText(file)) as? kotlinx.serialization.json.JsonObject ?: return@runCatching
-            root.forEach { (key, element) ->
-                if (element is kotlinx.serialization.json.JsonPrimitive) values[key] = element.content
+            com.vinnovateit.latch.core.mp.withLock(lock) {
+                root.forEach { (key, element) ->
+                    if (element is kotlinx.serialization.json.JsonPrimitive) values[key] = element.content
+                }
             }
         }.onFailure { logger.e(TAG, "Settings file unreadable; using defaults", it) }
     }
 
-    override fun getString(key: String, default: String): String = values[key] ?: default
-    override fun getBoolean(key: String, default: Boolean): Boolean = values[key]?.toBooleanStrictOrNull() ?: default
+    override fun getString(key: String, default: String): String =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] ?: default }
+    override fun getBoolean(key: String, default: Boolean): Boolean =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key]?.toBooleanStrictOrNull() ?: default }
     override fun getStringSet(key: String, default: Set<String>): Set<String> =
-        values[key]?.split(',')?.filter(String::isNotBlank)?.toSet() ?: default
+        com.vinnovateit.latch.core.mp.withLock(lock) {
+            values[key]?.split(',')?.filter(String::isNotBlank)?.toSet() ?: default
+        }
 
-    override fun putString(key: String, value: String) { values[key] = value; persist() }
-    override fun putBoolean(key: String, value: Boolean) { values[key] = value.toString(); persist() }
-    override fun putStringSet(key: String, value: Set<String>) { values[key] = value.joinToString(","); persist() }
+    override fun putString(key: String, value: String) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value; persistLocked() }
+    override fun putBoolean(key: String, value: Boolean) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value.toString(); persistLocked() }
+    override fun putStringSet(key: String, value: Set<String>) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value.joinToString(","); persistLocked() }
 
-    private fun persist() {
+    private fun persistLocked() {
         val obj = kotlinx.serialization.json.buildJsonObject {
             values.forEach { (k, v) -> put(k, kotlinx.serialization.json.JsonPrimitive(v)) }
         }
+        val bytes = json.encodeToString(obj).encodeToByteArray()
         val parent = file.parentFile
         parent?.mkdirs()
-        JFileWriter(file, false).useOutput { it.write(json.encodeToString(obj).encodeToByteArray()) }
+        val tmp = JFile("${file.path}.tmp")
+        JFileWriter(tmp, false).useOutput { it.write(bytes) }
+        if (!tmp.renameTo(file)) {
+            tmp.delete()
+            JFileWriter(file, false).useOutput { it.write(bytes) }
+        }
     }
 }
 
@@ -263,15 +279,15 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
      * unusual interface is not marked down by a read failure.
      */
     override fun linkHealthy(handle: NetworkHandle): Boolean {
+        val carrier = runCatching { readText(JFile("/sys/class/net/${handle.id}/carrier")).trim() }.getOrNull()
+        if (carrier == "0") return false
+        val operState = runCatching { readText(JFile("/sys/class/net/${handle.id}/operstate")).trim() }.getOrNull()
+        if (operState != null && operState != "up") return false
         val iface = wifiInterface() ?: return false
         if (iface != handle.id) return false
         val state = runCommand("nmcli -t -f GENERAL.STATE device show $iface 2>/dev/null")
             .lineSequence().firstOrNull()?.substringAfterLast(':')?.trim().orEmpty()
         if (!state.startsWith("100")) return false
-        val carrier = runCatching { readText(JFile("/sys/class/net/$iface/carrier")).trim() }.getOrNull()
-        if (carrier == "0") return false
-        val operState = runCatching { readText(JFile("/sys/class/net/$iface/operstate")).trim() }.getOrNull()
-        if (operState != null && operState != "up") return false
         return runCommand("nmcli -g IP4.ADDRESS device show $iface 2>/dev/null")
             .lineSequence().map(String::trim).any { it.isNotBlank() && it != "--" }
     }
@@ -299,18 +315,54 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
     /** nmcli reports quality percent; approximate dBm over the usual -100..-50 range. */
     override fun signalDbm(): Int? = signalPercent()?.let { (it / 2) - 100 }
 
-    /** Reassociate by saved profile; cycle the radio only when that fails. Never leaves Wi-Fi off. */
+    private fun activeProfileName(iface: String?): String? {
+        if (iface.isNullOrBlank()) return null
+        return runCommand("nmcli -g GENERAL.CONNECTION device show ${shellEscape(iface)} 2>/dev/null")
+            .lineSequence()
+            .map(String::trim)
+            .firstOrNull { it.isNotBlank() && it != "--" }
+    }
+
+    private fun shellEscape(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
+    private fun awaitConnected(iface: String?, attempts: Int = 12): Boolean {
+        repeat(attempts) {
+            val active = readActiveWifi()
+            if (active != null && (iface == null || active.iface == iface)) {
+                if (linkHealthy(NativeHandle(active.iface))) return true
+            }
+            platform.posix.usleep(250_000u)
+        }
+        return isConnectedToWifi()
+    }
+
+    /** Bounce the wedged association first; cycle the radio when that fails. Never leaves Wi-Fi off. */
     override fun reconnect(handle: NetworkHandle?): Boolean {
-        val ssid = currentSsid()
-        val profile = ssid?.takeIf { it.isNotBlank() }?.replace("'", "'\\''")
+        val iface = handle?.id ?: wifiInterface()
+        val profile = (activeProfileName(iface) ?: currentSsid())?.takeIf { it.isNotBlank() }
         if (profile != null) {
-            runCommand("nmcli connection up '$profile' 2>/dev/null")
-            if (isConnectedToWifi()) return true
+            val escapedProfile = shellEscape(profile)
+            runCommand("nmcli connection down $escapedProfile 2>/dev/null")
+            platform.posix.usleep(250_000u)
+            runCommand("nmcli connection up $escapedProfile 2>/dev/null")
+            if (awaitConnected(iface)) return true
+        } else if (iface != null) {
+            val escapedIface = shellEscape(iface)
+            runCommand("nmcli device disconnect $escapedIface 2>/dev/null")
+            platform.posix.usleep(250_000u)
+            runCommand("nmcli device connect $escapedIface 2>/dev/null")
+            if (awaitConnected(iface)) return true
         }
         runCommand("nmcli radio wifi off 2>/dev/null")
+        platform.posix.usleep(500_000u)
         runCommand("nmcli radio wifi on 2>/dev/null")
-        if (profile != null) runCommand("nmcli connection up '$profile' 2>/dev/null")
-        return isConnectedToWifi()
+        platform.posix.usleep(1_000_000u)
+        if (profile != null) {
+            runCommand("nmcli connection up ${shellEscape(profile)} 2>/dev/null")
+        } else if (iface != null) {
+            runCommand("nmcli device connect ${shellEscape(iface)} 2>/dev/null")
+        }
+        return awaitConnected(iface)
     }
 
     private companion object {
@@ -320,7 +372,7 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
 
 class NativeByteCounters(private val wifi: WifiPlatform) : ByteCounterSource {
     override fun sample(): ByteCounts? {
-        val iface = wifi.wifiInterfaceName() ?: return null
+        val iface = (wifi.activeHandle()?.id ?: wifi.wifiInterfaceName()) ?: return null
         fun read(name: String): Long? =
             runCatching { readText(JFile("/sys/class/net/$iface/statistics/$name")).trim().toLongOrNull() }.getOrNull()
         val rx = read("rx_bytes") ?: return null

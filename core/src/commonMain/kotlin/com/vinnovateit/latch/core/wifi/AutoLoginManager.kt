@@ -10,9 +10,18 @@ import com.vinnovateit.latch.core.mp.JUnknownHostException
 import com.vinnovateit.latch.core.mp.JSslException
 import com.vinnovateit.latch.core.mp.MPIOException
 import com.vinnovateit.latch.core.mp.urlEncode
+import com.vinnovateit.latch.core.mp.httpDispatcher
 import com.vinnovateit.latch.core.mp.nowMillis
 import com.vinnovateit.latch.core.mp.useReader
 import com.vinnovateit.latch.core.mp.useWriter
+import com.vinnovateit.latch.core.mp.withLock
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 sealed interface LoginResult {
     data object Success : LoginResult
@@ -62,6 +71,66 @@ class AutoLoginManager(
         const val TAG = "AutoLoginManager"
     }
 
+    private val httpScope = CoroutineScope(SupervisorJob() + httpDispatcher)
+
+    private class ConnHolder {
+        private val lock = Any()
+        private var cancelled = false
+        private var conn: JHttpConnection? = null
+
+        fun attach(connection: JHttpConnection): Boolean = withLock(lock) {
+            if (cancelled) return@withLock false
+            conn = connection
+            true
+        }
+
+        fun cancel() {
+            val toDisconnect = withLock(lock) {
+                cancelled = true
+                val current = conn
+                conn = null
+                current
+            }
+            if (toDisconnect != null) {
+                try {
+                    toDisconnect.disconnect()
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
+    private suspend fun <T> runCancellable(
+        url: JUrl,
+        handle: NetworkHandle?,
+        execute: (JHttpConnection) -> T,
+    ): T = suspendCancellableCoroutine { cont ->
+        val holder = ConnHolder()
+        cont.invokeOnCancellation {
+            holder.cancel()
+        }
+        httpScope.launch {
+            var opened: JHttpConnection? = null
+            try {
+                val connection = transport.open(url, handle)
+                opened = connection
+                if (!holder.attach(connection)) {
+                    try {
+                        connection.disconnect()
+                    } catch (_: Throwable) {}
+                    return@launch
+                }
+                val value = execute(connection)
+                if (cont.isActive) cont.resume(value)
+            } catch (e: Throwable) {
+                if (cont.isActive) cont.resumeWithException(e)
+            } finally {
+                try {
+                    opened?.disconnect()
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
     private fun logDebug(message: String) {
         if (buildInfo.isDebug) logger.d(TAG, message)
     }
@@ -73,7 +142,7 @@ class AutoLoginManager(
     private fun logError(message: String, throwable: Throwable? = null) =
         logger.e(TAG, message, throwable)
 
-    fun attemptLogin(
+    suspend fun attemptLogin(
         userId: String,
         password: String,
         handle: NetworkHandle? = null,
@@ -83,13 +152,12 @@ class AutoLoginManager(
         logDebug("Initiating login attempt for user: $userId (useAlternate=$useAlternate)")
         val targetUrlStr = if (useAlternate) SECURE_LOGIN_URL else LOGIN_URL
 
-        fun doAttempt(urlStr: String): LoginResult {
+        suspend fun doAttempt(urlStr: String): LoginResult {
             val start = nowMillis()
             val loginUrl = JUrl(urlStr)
             logDebug("Preparing POST request to: $urlStr (user=$userId)")
 
-            val connection = transport.open(loginUrl, handle)
-            return try {
+            return runCancellable(loginUrl, handle) { connection ->
                 connection.requestMethod = "POST"
                 connection.doOutput = true
                 connection.instanceFollowRedirects = false
@@ -155,15 +223,13 @@ class AutoLoginManager(
                         LoginResult.Failure
                     }
                 }
-            } finally {
-                try {
-                    connection.disconnect()
-                } catch (_: Throwable) {}
             }
         }
 
-        fun attemptOrFailure(urlStr: String): LoginResult = try {
+        suspend fun attemptOrFailure(urlStr: String): LoginResult = try {
             doAttempt(urlStr)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: JUnknownHostException) {
             logError("Login failed with UnknownHostException.", e)
             LoginResult.Failure
@@ -192,13 +258,13 @@ class AutoLoginManager(
         val responseHtml: String? = null,
     )
 
-    fun attemptLogout(
+    suspend fun attemptLogout(
         handle: NetworkHandle? = null,
         useAlternate: Boolean = false,
         fallbackIp: String? = null,
     ): Boolean = attemptLogoutWithResponse(handle, useAlternate, fallbackIp).success
 
-    fun attemptLogoutWithResponse(
+    suspend fun attemptLogoutWithResponse(
         handle: NetworkHandle? = null,
         useAlternate: Boolean = false,
         fallbackIp: String? = null,
@@ -206,15 +272,14 @@ class AutoLoginManager(
         logDebug("Initiating logout attempt (useAlternate=$useAlternate)")
         val targetUrlStr = if (useAlternate) SECURE_LOGOUT_URL else LOGOUT_URL
 
-        fun doAttempt(urlStr: String): LogoutResult {
+        suspend fun doAttempt(urlStr: String): LogoutResult {
             val url = JUrl(urlStr)
-            val connection = transport.open(url, handle)
-            connection.requestMethod = "GET"
-            connection.instanceFollowRedirects = false
-            connection.connectTimeout = 3000
-            connection.readTimeout = 3000
+            return runCancellable(url, handle) { connection ->
+                connection.requestMethod = "GET"
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
 
-            return try {
                 connection.connect()
 
                 val code = connection.responseCode
@@ -229,15 +294,13 @@ class AutoLoginManager(
                     null
                 }
                 LogoutResult(success = code in 200..399, responseHtml = body)
-            } finally {
-                try {
-                    connection.disconnect()
-                } catch (_: Throwable) {}
             }
         }
 
         return try {
             doAttempt(targetUrlStr)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: MPIOException) {
             // The same unreachable portal host the login falls back on.
             logError("Logout failed with ${e::class.simpleName}.", e)
@@ -245,6 +308,8 @@ class AutoLoginManager(
                 val fallbackTargetUrlStr = targetUrlStr.replace(PORTAL_HOST, fallbackIp)
                 try {
                     doAttempt(fallbackTargetUrlStr)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (fallbackE: Exception) {
                     logError("Fallback logout failed: ${fallbackE.message}", fallbackE)
                     LogoutResult(false)

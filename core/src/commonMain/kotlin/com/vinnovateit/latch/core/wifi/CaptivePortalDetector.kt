@@ -4,7 +4,7 @@ import com.vinnovateit.latch.core.mp.JHttpConnection as HttpURLConnection
 import com.vinnovateit.latch.core.mp.JInputStream as InputStream
 import com.vinnovateit.latch.core.mp.JUnknownHostException as UnknownHostException
 import com.vinnovateit.latch.core.mp.JUrl as URL
-import com.vinnovateit.latch.core.mp.ioDispatcher
+import com.vinnovateit.latch.core.mp.httpDispatcher
 import com.vinnovateit.latch.core.mp.nowMillis
 import com.vinnovateit.latch.core.mp.useStream
 import com.vinnovateit.latch.core.mp.withLock
@@ -123,7 +123,7 @@ class CaptivePortalDetector(
         }
     }
 
-    private val probeScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val probeScope = CoroutineScope(SupervisorJob() + httpDispatcher)
 
     private class ConnHolder {
         private val lock = Any()
