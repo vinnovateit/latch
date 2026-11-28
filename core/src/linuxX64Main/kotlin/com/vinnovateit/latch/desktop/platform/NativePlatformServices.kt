@@ -27,15 +27,21 @@ import com.vinnovateit.latch.core.platform.UserNotifier
 import com.vinnovateit.latch.core.platform.WifiEvent
 import com.vinnovateit.latch.core.platform.WifiPlatform
 import com.vinnovateit.latch.desktop.AppPaths
+import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.refTo
+import kotlinx.cinterop.set
 import kotlinx.cinterop.toKString
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import platform.posix.readlink
 import platform.posix.system
 
 private const val TAG = "NativePlatform"
@@ -74,34 +80,50 @@ private object NativeCapabilities : PlatformCapabilities {
 
 class NativeKeyValueStore(private val file: JFile, private val logger: Logger) : KeyValueStore {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private val lock = Any()
     private val values = mutableMapOf<String, String>()
 
     init {
         runCatching {
             if (!file.exists()) return@runCatching
             val root = json.parseToJsonElement(readText(file)) as? kotlinx.serialization.json.JsonObject ?: return@runCatching
-            root.forEach { (key, element) ->
-                if (element is kotlinx.serialization.json.JsonPrimitive) values[key] = element.content
+            com.vinnovateit.latch.core.mp.withLock(lock) {
+                root.forEach { (key, element) ->
+                    if (element is kotlinx.serialization.json.JsonPrimitive) values[key] = element.content
+                }
             }
         }.onFailure { logger.e(TAG, "Settings file unreadable; using defaults", it) }
     }
 
-    override fun getString(key: String, default: String): String = values[key] ?: default
-    override fun getBoolean(key: String, default: Boolean): Boolean = values[key]?.toBooleanStrictOrNull() ?: default
+    override fun getString(key: String, default: String): String =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] ?: default }
+    override fun getBoolean(key: String, default: Boolean): Boolean =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key]?.toBooleanStrictOrNull() ?: default }
     override fun getStringSet(key: String, default: Set<String>): Set<String> =
-        values[key]?.split(',')?.filter(String::isNotBlank)?.toSet() ?: default
+        com.vinnovateit.latch.core.mp.withLock(lock) {
+            values[key]?.split(',')?.filter(String::isNotBlank)?.toSet() ?: default
+        }
 
-    override fun putString(key: String, value: String) { values[key] = value; persist() }
-    override fun putBoolean(key: String, value: Boolean) { values[key] = value.toString(); persist() }
-    override fun putStringSet(key: String, value: Set<String>) { values[key] = value.joinToString(","); persist() }
+    override fun putString(key: String, value: String) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value; persistLocked() }
+    override fun putBoolean(key: String, value: Boolean) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value.toString(); persistLocked() }
+    override fun putStringSet(key: String, value: Set<String>) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value.joinToString(","); persistLocked() }
 
-    private fun persist() {
+    private fun persistLocked() {
         val obj = kotlinx.serialization.json.buildJsonObject {
             values.forEach { (k, v) -> put(k, kotlinx.serialization.json.JsonPrimitive(v)) }
         }
+        val bytes = json.encodeToString(obj).encodeToByteArray()
         val parent = file.parentFile
         parent?.mkdirs()
-        JFileWriter(file, false).useOutput { it.write(json.encodeToString(obj).encodeToByteArray()) }
+        val tmp = JFile("${file.path}.tmp")
+        JFileWriter(tmp, false).useOutput { it.write(bytes) }
+        if (!tmp.renameTo(file)) {
+            tmp.delete()
+            JFileWriter(file, false).useOutput { it.write(bytes) }
+        }
     }
 }
 
@@ -131,7 +153,32 @@ class NativeCredentialStore(private val file: JFile, private val logger: Logger)
     }
 }
 
-private class NativeHandle(override val id: String) : NetworkHandle
+internal data class NativeHandle(override val id: String) : NetworkHandle
+
+/**
+ * Splits one line of terse tabular `nmcli -t` output into its fields. nmcli
+ * separates fields with `:` and escapes a literal `:` or `\` inside a value with
+ * a backslash, so a Wi-Fi name may contain either.
+ */
+internal fun parseNmcliTerseLine(line: String): List<String> {
+    val fields = mutableListOf<String>()
+    val field = StringBuilder()
+    var i = 0
+    while (i < line.length) {
+        val c = line[i]
+        when {
+            c == '\\' && i + 1 < line.length -> field.append(line[++i])
+            c == ':' -> {
+                fields += field.toString()
+                field.clear()
+            }
+            else -> field.append(c)
+        }
+        i++
+    }
+    fields += field.toString()
+    return fields
+}
 
 /**
  * Linux Wi-Fi platform for the native build.
@@ -153,6 +200,8 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
         kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default
     )
 
+    private data class ActiveWifiInfo(val iface: String, val ssid: String?, val signal: Int?)
+
     init {
         // Do NOT shell out to nmcli here: the first call can block ~800ms on
         // D-Bus/Wi-Fi scan, delaying app startup. The poller below resolves the
@@ -161,10 +210,11 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
         scope.launch {
             var lastKey: String? = null
             var lastSignalLog = 0L
-            while (true) {
-                val iface = wifiInterface()
-                val ssid = currentSsid()
-                val signal = signalPercent()
+            while (isActive) {
+                val info = readActiveWifi()
+                val iface = info?.iface
+                val ssid = info?.ssid
+                val signal = info?.signal
                 val now = nowMillis()
                 // Log weak signal at most once a minute — useful for diagnosing
                 // portal flaps without emitting a WifiEvent for every RSSI change.
@@ -192,12 +242,16 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
         }
     }
 
+    fun close() {
+        scope.cancel()
+    }
+
     override fun isWifiEnabled(): Boolean =
         runCommand("nmcli -t -f WIFI general").contains("enabled", ignoreCase = true) ||
         runCommand("nmcli -t -f RUNNING general").contains("running", ignoreCase = true)
 
-    override fun isConnectedToWifi(): Boolean = wifiInterface() != null
-    override fun currentSsid(): String? = wifiField("ssid")
+    override fun isConnectedToWifi(): Boolean = readActiveWifi() != null
+    override fun currentSsid(): String? = readActiveWifi()?.ssid
     // The default route may be Ethernet or USB tethering. Portal traffic is
     // still pinned to the Wi-Fi interface (see NativeHttpTransport), so the
     // gateway fallback must come from that interface too — never the default
@@ -225,29 +279,91 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
      * unusual interface is not marked down by a read failure.
      */
     override fun linkHealthy(handle: NetworkHandle): Boolean {
+        val carrier = runCatching { readText(JFile("/sys/class/net/${handle.id}/carrier")).trim() }.getOrNull()
+        if (carrier == "0") return false
+        val operState = runCatching { readText(JFile("/sys/class/net/${handle.id}/operstate")).trim() }.getOrNull()
+        if (operState != null && operState != "up") return false
         val iface = wifiInterface() ?: return false
         if (iface != handle.id) return false
         val state = runCommand("nmcli -t -f GENERAL.STATE device show $iface 2>/dev/null")
             .lineSequence().firstOrNull()?.substringAfterLast(':')?.trim().orEmpty()
         if (!state.startsWith("100")) return false
-        val carrier = runCatching { readText(JFile("/sys/class/net/$iface/carrier")).trim() }.getOrNull()
-        if (carrier == "0") return false
-        val operState = runCatching { readText(JFile("/sys/class/net/$iface/operstate")).trim() }.getOrNull()
-        if (operState != null && operState != "up") return false
         return runCommand("nmcli -g IP4.ADDRESS device show $iface 2>/dev/null")
             .lineSequence().map(String::trim).any { it.isNotBlank() && it != "--" }
     }
 
-    private fun wifiInterface(): String? =
-        runCommand("nmcli -t -f active,device dev wifi 2>/dev/null | grep '^yes' | head -1 | cut -d: -f2")
-            .lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
+    private fun readActiveWifi(): ActiveWifiInfo? {
+        val output = runCommand("nmcli -t -f active,device,signal,ssid dev wifi list --rescan no 2>/dev/null")
+        for (rawLine in output.lineSequence()) {
+            if (rawLine.isBlank()) continue
+            val parts = parseNmcliTerseLine(rawLine)
+            if (parts.firstOrNull() == "yes" && parts.size >= 4) {
+                val iface = parts[1].trim().takeIf { it.isNotEmpty() } ?: continue
+                val signal = parts[2].trim().toIntOrNull()
+                val ssid = parts[3].trim().takeIf { it.isNotEmpty() }
+                return ActiveWifiInfo(iface, ssid, signal)
+            }
+        }
+        return null
+    }
 
-    private fun wifiField(field: String): String? =
-        runCommand("nmcli -t -f active,$field dev wifi 2>/dev/null | grep '^yes' | head -1 | cut -d: -f2")
-            .lineSequence().firstOrNull()?.takeIf(String::isNotBlank)
+    private fun wifiInterface(): String? = readActiveWifi()?.iface
 
     /** Active Wi-Fi signal in percent, for weak-signal diagnostics. */
-    fun signalPercent(): Int? = wifiField("signal")?.toIntOrNull()
+    override fun signalPercent(): Int? = readActiveWifi()?.signal
+
+    /** nmcli reports quality percent; approximate dBm over the usual -100..-50 range. */
+    override fun signalDbm(): Int? = signalPercent()?.let { (it / 2) - 100 }
+
+    private fun activeProfileName(iface: String?): String? {
+        if (iface.isNullOrBlank()) return null
+        return runCommand("nmcli -g GENERAL.CONNECTION device show ${shellEscape(iface)} 2>/dev/null")
+            .lineSequence()
+            .map(String::trim)
+            .firstOrNull { it.isNotBlank() && it != "--" }
+    }
+
+    private fun shellEscape(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
+    private fun awaitConnected(iface: String?, attempts: Int = 12): Boolean {
+        repeat(attempts) {
+            val active = readActiveWifi()
+            if (active != null && (iface == null || active.iface == iface)) {
+                if (linkHealthy(NativeHandle(active.iface))) return true
+            }
+            platform.posix.usleep(250_000u)
+        }
+        return isConnectedToWifi()
+    }
+
+    /** Bounce the wedged association first; cycle the radio when that fails. Never leaves Wi-Fi off. */
+    override fun reconnect(handle: NetworkHandle?): Boolean {
+        val iface = handle?.id ?: wifiInterface()
+        val profile = (activeProfileName(iface) ?: currentSsid())?.takeIf { it.isNotBlank() }
+        if (profile != null) {
+            val escapedProfile = shellEscape(profile)
+            runCommand("nmcli connection down $escapedProfile 2>/dev/null")
+            platform.posix.usleep(250_000u)
+            runCommand("nmcli connection up $escapedProfile 2>/dev/null")
+            if (awaitConnected(iface)) return true
+        } else if (iface != null) {
+            val escapedIface = shellEscape(iface)
+            runCommand("nmcli device disconnect $escapedIface 2>/dev/null")
+            platform.posix.usleep(250_000u)
+            runCommand("nmcli device connect $escapedIface 2>/dev/null")
+            if (awaitConnected(iface)) return true
+        }
+        runCommand("nmcli radio wifi off 2>/dev/null")
+        platform.posix.usleep(500_000u)
+        runCommand("nmcli radio wifi on 2>/dev/null")
+        platform.posix.usleep(1_000_000u)
+        if (profile != null) {
+            runCommand("nmcli connection up ${shellEscape(profile)} 2>/dev/null")
+        } else if (iface != null) {
+            runCommand("nmcli device connect ${shellEscape(iface)} 2>/dev/null")
+        }
+        return awaitConnected(iface)
+    }
 
     private companion object {
         const val POLL_INTERVAL_MS = 1_500L
@@ -256,7 +372,7 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
 
 class NativeByteCounters(private val wifi: WifiPlatform) : ByteCounterSource {
     override fun sample(): ByteCounts? {
-        val iface = wifi.wifiInterfaceName() ?: return null
+        val iface = (wifi.activeHandle()?.id ?: wifi.wifiInterfaceName()) ?: return null
         fun read(name: String): Long? =
             runCatching { readText(JFile("/sys/class/net/$iface/statistics/$name")).trim().toLongOrNull() }.getOrNull()
         val rx = read("rx_bytes") ?: return null
@@ -265,18 +381,39 @@ class NativeByteCounters(private val wifi: WifiPlatform) : ByteCounterSource {
     }
 }
 
+private fun currentExecutable(): String = kotlinx.cinterop.memScoped {
+    val buf = allocArray<ByteVar>(4096)
+    val n = readlink("/proc/self/exe", buf, 4095u)
+    if (n > 0) {
+        buf[n.toInt()] = 0
+        val exe = buf.toKString()
+        if (exe.isNotBlank() && JFile(exe).exists()) return@memScoped exe
+    }
+    if (JFile("/opt/latch/bin/Latch").exists()) "/opt/latch/bin/Latch" else "latch"
+}
+
 class NativeSystemActions(private val logger: Logger) : SystemActions {
     override fun openWifiSettings() { runCommand("nm-connection-editor >/dev/null 2>&1 &") }
     override fun openUrl(url: String) { runCommand("xdg-open '$url' >/dev/null 2>&1 &") }
     override fun setAutostart(enabled: Boolean) {
         val dir = JFile(userHome(), ".config/autostart")
-        dir.mkdirs()
         val file = JFile(dir, "latch.desktop")
         if (enabled) {
-            JFileWriter(file, false).useOutput {
-                it.write("[Desktop Entry]\nType=Application\nName=Latch\nExec=latch --hidden\nNoDisplay=true\n".encodeToByteArray())
+            if (!dir.mkdirs() && !dir.isDirectory) {
+                logger.w(TAG, "Unable to create autostart directory: ${dir.path}")
+                return
             }
-        } else file.delete()
+            val exe = currentExecutable()
+            val quotedExe = "\"$exe\""
+            JFileWriter(file, false).useOutput {
+                it.write(
+                    "[Desktop Entry]\nType=Application\nName=Latch\nComment=Auto-login for VIT hostel Wi-Fi\nExec=$quotedExe --hidden\nTerminal=false\nX-GNOME-Autostart-enabled=true\nCategories=Network;\nNoDisplay=true\n"
+                        .encodeToByteArray(),
+                )
+            }
+        } else {
+            file.delete()
+        }
     }
     override fun isAutostartEnabled(): Boolean = JFile(userHome(), ".config/autostart/latch.desktop").exists()
 }
@@ -338,6 +475,10 @@ class NativePlatformServices(
     override val counters: ByteCounterSource = NativeByteCounters(wifi)
     override val systemActions: SystemActions = NativeSystemActions(logger)
     override val httpTransport: HttpTransport = NativeHttpTransport()
+
+    fun close() {
+        (wifi as? NativeWifiPlatform)?.close()
+    }
 }
 
 private val cmdCounter = kotlin.concurrent.AtomicInt(0)

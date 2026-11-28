@@ -117,6 +117,31 @@ class LatchEnginePortalGateTest {
     fun `without a sleep a Pronto redirect still waits for three failed health checks`() =
         assertProbesBeforeRelogin(sleep = false, expected = 4)
 
+    @Test
+    fun `probe timeout without gateway answer reports LoginFailed on campus Wi-Fi`() =
+        withEngine(
+            PortalScript(probeNetworkError = true, gatewayNetworkError = true),
+            ssid = "VIT-Hostel",
+        ) { engine, portal ->
+            engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+
+            assertEquals(emptyList(), portal.logins)
+            assertFailed(engine, ConnectionStatus.Reason.LoginFailed)
+        }
+
+    @Test
+    fun `probe error without gateway answer reports NotOnWifi when Wi-Fi disconnects`() =
+        withEngine(
+            PortalScript(probeNetworkError = true, gatewayNetworkError = true),
+            ssid = null,
+            wifiConnected = false,
+        ) { engine, portal ->
+            engine.submitAndAwait(LatchCommand.CheckAndLogin, 10_000)
+
+            assertEquals(emptyList(), portal.logins)
+            assertFailed(engine, ConnectionStatus.Reason.NotOnWifi)
+        }
+
     /**
      * Latches, ends the session at the portal, then counts the redirected
      * probes until the next login: the health checks plus the probe of the
@@ -154,6 +179,7 @@ class LatchEnginePortalGateTest {
     private fun withEngine(
         script: PortalScript,
         ssid: String? = "VIT-Hostel",
+        wifiConnected: Boolean = true,
         healthCheckIntervalMs: Long = 60_000,
         wallClock: () -> Long = System::currentTimeMillis,
         block: suspend (LatchEngine, PortalScript) -> Unit,
@@ -165,7 +191,7 @@ class LatchEnginePortalGateTest {
         SettingsManager.initialize(InMemoryKeyValueStore())
         SettingsManager.setAutoLogin(true)
         val engine = LatchEngine(
-            platform = GatePlatform(GateWifi(ssid), script),
+            platform = GatePlatform(GateWifi(ssid, wifiConnected), script),
             sessions = SessionRepository(database.statsDao(), ThroughputMonitor(GateNoCounters)),
             healthCheckIntervalMs = healthCheckIntervalMs,
             wallClock = wallClock,
@@ -191,7 +217,9 @@ class LatchEnginePortalGateTest {
 private class PortalScript(
     private val probeRedirect: String = PRONTO_REDIRECT,
     private val probeDnsBlocked: Boolean = false,
+    private val probeNetworkError: Boolean = false,
     private val gatewayRedirect: String = PRONTO_REDIRECT,
+    private val gatewayNetworkError: Boolean = false,
     private val portalHostResolves: Boolean = true,
     private val portalLogin: Pair<Int, String> = 200 to "<html>access granted</html>",
 ) : HttpTransport {
@@ -233,12 +261,16 @@ private class PortalScript(
                 isProbe -> when {
                     loggedIn.get() -> 204 to ""
                     probeDnsBlocked -> throw com.vinnovateit.latch.core.mp.JUnknownHostException("clients3.google.com")
+                    probeNetworkError -> throw com.vinnovateit.latch.core.mp.MPIOException("probe timed out")
                     else -> {
                         if (logins.size == 1) redirectsBeforeSecondLogin.incrementAndGet()
                         302 to ""
                     }
                 }
-                isGatewayRoot -> 302 to ""
+                isGatewayRoot -> {
+                    if (gatewayNetworkError) throw com.vinnovateit.latch.core.mp.MPIOException("gateway timed out")
+                    302 to ""
+                }
                 isLogin -> {
                     if (host != GATEWAY && !portalHostResolves) throw com.vinnovateit.latch.core.mp.JUnknownHostException(host)
                     logins += host
@@ -256,9 +288,12 @@ private object GateHandle : NetworkHandle {
     override val id: String = "wlan0"
 }
 
-private class GateWifi(private val ssid: String?) : WifiPlatform {
+private class GateWifi(
+    private val ssid: String?,
+    private val connected: Boolean = true,
+) : WifiPlatform {
     override fun isWifiEnabled(): Boolean = true
-    override fun isConnectedToWifi(): Boolean = true
+    override fun isConnectedToWifi(): Boolean = connected
     override fun currentSsid(): String? = ssid
     override fun gatewayIp(): String = GATEWAY
     override fun activeHandle(): NetworkHandle = GateHandle

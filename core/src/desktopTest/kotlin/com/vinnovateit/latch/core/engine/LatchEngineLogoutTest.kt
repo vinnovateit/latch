@@ -65,6 +65,38 @@ class LatchEngineLogoutTest {
         )
     }
 
+    @Test
+    fun `logout cancels and supersedes an in-flight CheckAndLogin`() = runBlocking {
+        val directory = createTempDirectory("latch-logout-supersede-").toFile()
+        val previous = System.getProperty("latch.dataDir")
+        System.setProperty("latch.dataDir", directory.absolutePath)
+        val database = buildDatabase()
+        val probeStarted = java.util.concurrent.CountDownLatch(1)
+        val releaseProbe = java.util.concurrent.CountDownLatch(1)
+        val transport = BlockingProbeTransport(probeStarted, releaseProbe)
+        val engine = LatchEngine(
+            platform = FakePlatform(FakeWifi, transport),
+            sessions = SessionRepository(database.statsDao(), ThroughputMonitor(NoCounters)),
+        )
+        try {
+            engine.start()
+            engine.submit(LatchCommand.CheckAndLogin)
+            assertTrue(probeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS), "probe did not start")
+
+            assertTrue(engine.submitAndAwait(LatchCommand.Logout, 5_000))
+            releaseProbe.countDown()
+            kotlinx.coroutines.delay(150)
+
+            assertEquals(false, engine.isLatched.value)
+        } finally {
+            releaseProbe.countDown()
+            engine.submitAndAwait(LatchCommand.Shutdown, 5_000)
+            database.close()
+            if (previous == null) System.clearProperty("latch.dataDir") else System.setProperty("latch.dataDir", previous)
+            directory.deleteRecursively()
+        }
+    }
+
     private fun withEngine(
         probeResponse: Int,
         block: suspend (LatchEngine, RecordingTransport) -> Unit,
@@ -88,6 +120,28 @@ class LatchEngineLogoutTest {
             directory.deleteRecursively()
         }
     }
+}
+
+private class BlockingProbeTransport(
+    private val probeStarted: java.util.concurrent.CountDownLatch,
+    private val releaseProbe: java.util.concurrent.CountDownLatch,
+) : HttpTransport {
+    override fun open(url: JUrl, handle: NetworkHandle?): JHttpConnection =
+        JHttpConnection(object : HttpURLConnection(URL(url.toString())) {
+            override fun connect() = Unit
+            override fun disconnect() {
+                releaseProbe.countDown()
+            }
+            override fun usingProxy(): Boolean = false
+            override fun getResponseCode(): Int {
+                if (url.toString().contains("generate_204")) {
+                    probeStarted.countDown()
+                    releaseProbe.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                    return 204
+                }
+                return 200
+            }
+        })
 }
 
 /** Answers the portal probe without a socket, and records what was asked for. */

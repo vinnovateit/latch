@@ -119,7 +119,7 @@ fun HomeScreen(
      * network event.
      */
     val onPowerClick: () -> Unit = {
-        if (isLatched || status is ConnectionStatus.Connecting) {
+        if (isLatched) {
             controller.submit(LatchCommand.Logout)
             SettingsManager.setAutoLogin(false)
         } else {

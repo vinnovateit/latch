@@ -2,53 +2,96 @@
 
 package com.vinnovateit.latch.core.mp
 
+import curl.CURLE_ABORTED_BY_CALLBACK
+import curl.CURLE_COULDNT_RESOLVE_HOST
+import curl.CURLE_COULDNT_RESOLVE_PROXY
 import curl.CURLE_OK
+import curl.CURLE_PEER_FAILED_VERIFICATION
+import curl.CURLE_SSL_CACERT_BADFILE
+import curl.CURLE_SSL_CERTPROBLEM
+import curl.CURLE_SSL_CIPHER
+import curl.CURLE_SSL_CLIENTCERT
+import curl.CURLE_SSL_CONNECT_ERROR
+import curl.CURLE_SSL_CRL_BADFILE
+import curl.CURLE_SSL_ENGINE_INITFAILED
+import curl.CURLE_SSL_ENGINE_NOTFOUND
+import curl.CURLE_SSL_ENGINE_SETFAILED
+import curl.CURLE_SSL_INVALIDCERTSTATUS
+import curl.CURLE_SSL_ISSUER_ERROR
+import curl.CURLE_SSL_PINNEDPUBKEYNOTMATCH
+import curl.CURLE_SSL_SHUTDOWN_FAILED
+import curl.CURLINFO_RESPONSE_CODE
+import curl.CURLMSG
+import curl.CURLMcode
+import curl.CURLM_OK
 import curl.CURLOPT_CONNECTTIMEOUT_MS
+import curl.CURLOPT_COPYPOSTFIELDS
 import curl.CURLOPT_CUSTOMREQUEST
 import curl.CURLOPT_FOLLOWLOCATION
 import curl.CURLOPT_HEADERDATA
 import curl.CURLOPT_HEADERFUNCTION
 import curl.CURLOPT_HTTPHEADER
 import curl.CURLOPT_INTERFACE
-import curl.CURLOPT_COPYPOSTFIELDS
+import curl.CURLOPT_NOSIGNAL
+import curl.CURLOPT_POSTFIELDSIZE
 import curl.CURLOPT_TIMEOUT_MS
 import curl.CURLOPT_URL
 import curl.CURLOPT_WRITEDATA
 import curl.CURLOPT_WRITEFUNCTION
-import curl.CURLINFO_RESPONSE_CODE
+import curl.CURL_GLOBAL_ALL
+import curl.CURLcode
 import curl.curl_easy_cleanup
-import curl.curl_easy_getinfo
 import curl.curl_easy_init
-import curl.curl_easy_perform
+import curl.curl_easy_getinfo
 import curl.curl_easy_setopt
 import curl.curl_easy_strerror
+import curl.curl_global_init
+import curl.curl_multi_add_handle
+import curl.curl_multi_cleanup
+import curl.curl_multi_info_read
+import curl.curl_multi_init
+import curl.curl_multi_perform
+import curl.curl_multi_poll
+import curl.curl_multi_remove_handle
+import curl.curl_multi_strerror
+import curl.curl_multi_wakeup
 import curl.curl_slist
 import curl.curl_slist_append
 import curl.curl_slist_free_all
 import kotlinx.cinterop.ByteVar
-import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.CPointed
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.LongVar
 import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.asStableRef
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.refTo
 import kotlinx.cinterop.readBytes
-import kotlinx.cinterop.value
-import kotlinx.cinterop.toKString
+import kotlinx.cinterop.refTo
 import kotlinx.cinterop.staticCFunction
+import kotlinx.cinterop.toKString
+import kotlinx.cinterop.value
+import kotlin.concurrent.AtomicInt
+import kotlin.concurrent.AtomicLong
+import kotlin.concurrent.Volatile
+import platform.posix.EEXIST
 import platform.posix.FILE
 import platform.posix.S_IFDIR
 import platform.posix.access
+import platform.posix.errno
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
 import platform.posix.mkdir
+import platform.posix.pthread_self
 import platform.posix.rename
 import platform.posix.stat
 import platform.posix.unlink
+import platform.posix.usleep
 
 
 actual open class MPIOException actual constructor(message: String?) : Exception(message)
@@ -75,10 +118,47 @@ actual fun urlEncode(value: String): String = buildString {
     }
 }
 
-private val compatLock = kotlin.concurrent.AtomicInt(0)
+private const val LOCK_STRIPES = 64
+private val stripeOwners = Array(LOCK_STRIPES) { AtomicLong(0L) }
+private val stripeDepths = IntArray(LOCK_STRIPES)
+
 actual fun <R> withLock(lock: Any, block: () -> R): R {
-    while (!compatLock.compareAndSet(0, 1)) {}
-    try { return block() } finally { compatLock.value = 0 }
+    val stripe = (lock.hashCode() and (LOCK_STRIPES - 1))
+    val tid = pthread_self().toLong().let { if (it == 0L) 1L else it }
+    val owner = stripeOwners[stripe]
+    if (owner.value == tid) {
+        stripeDepths[stripe]++
+        return try {
+            block()
+        } finally {
+            stripeDepths[stripe]--
+        }
+    }
+    while (!owner.compareAndSet(0L, tid)) {
+        usleep(50u)
+    }
+    stripeDepths[stripe] = 1
+    return try {
+        block()
+    } finally {
+        val remaining = --stripeDepths[stripe]
+        if (remaining == 0) {
+            owner.value = 0L
+        }
+    }
+}
+
+private val curlInitState = AtomicInt(0)
+private fun ensureCurlInitialized() {
+    if (curlInitState.value == 2) return
+    if (curlInitState.compareAndSet(0, 1)) {
+        curl_global_init(CURL_GLOBAL_ALL.toLong())
+        curlInitState.value = 2
+    } else {
+        while (curlInitState.value != 2) {
+            usleep(100u)
+        }
+    }
 }
 
 class NativeInputStream(private val data: ByteArray) {
@@ -113,6 +193,7 @@ internal open class NativeSink {
 internal class NativeOutputStream : NativeSink() {
     val data = mutableListOf<Byte>()
     override fun write(bytes: ByteArray) { data.addAll(bytes.asList()) }
+    fun toByteArray(): ByteArray = data.toByteArray()
     fun text(): String = data.toByteArray().decodeToString()
 }
 
@@ -160,6 +241,9 @@ actual class JHttpConnection actual constructor(url: JUrl) {
     private var cached: CurlResult? = null
     private var boundInterface: String? = null
     private var publicEndpoint = false
+    @Volatile private var aborted = false
+    private val multiLock = AtomicInt(0)
+    private var activeMulti: COpaquePointer? = null
 
     actual val outputStream: JOutputStream get() = JOutputStream(requestBody)
 
@@ -176,82 +260,207 @@ actual class JHttpConnection actual constructor(url: JUrl) {
         get() = result().let { if (it.status in 200..399) JInputStream(NativeInputStream(it.body)) else null }
     actual val errorStream: JInputStream?
         get() = result().let { if (it.status !in 200..399) JInputStream(NativeInputStream(it.body)) else null }
-    actual fun disconnect() { cached = null }
+
+    actual fun disconnect() {
+        aborted = true
+        cached = null
+        withMultiLock {
+            activeMulti?.let { curl_multi_wakeup(it) }
+        }
+    }
+
+    private inline fun <R> withMultiLock(block: () -> R): R {
+        while (!multiLock.compareAndSet(0, 1)) {
+            usleep(10u)
+        }
+        return try { block() } finally { multiLock.value = 0 }
+    }
 
     private fun result(): CurlResult {
         cached?.let { return it }
-        val body = StringBuilder()
-        val headers = StringBuilder()
+        if (aborted) throw MPIOException("curl request aborted")
+        ensureCurlInitialized()
+
+        val bodyBuffer = NativeOutputStream()
+        val headerBuffer = NativeOutputStream()
         val writeCb = staticCFunction { ptr: CPointer<ByteVar>?, size: ULong, nmemb: ULong, userdata: CPointer<CPointed>? ->
             val n = (size * nmemb).toInt()
-            userdata?.asStableRef<StringBuilder>()?.get()?.append(ptr?.readBytes(n)?.decodeToString().orEmpty())
+            if (n > 0 && ptr != null && userdata != null) {
+                userdata.asStableRef<NativeOutputStream>().get().write(ptr.readBytes(n))
+            }
             size * nmemb
         }
         val headerCb = staticCFunction { ptr: CPointer<ByteVar>?, size: ULong, nmemb: ULong, userdata: CPointer<CPointed>? ->
             val n = (size * nmemb).toInt()
-            userdata?.asStableRef<StringBuilder>()?.get()?.append(ptr?.readBytes(n)?.decodeToString().orEmpty())
+            if (n > 0 && ptr != null && userdata != null) {
+                userdata.asStableRef<NativeOutputStream>().get().write(ptr.readBytes(n))
+            }
             size * nmemb
         }
+
         val handle = curl_easy_init() ?: throw MPIOException("curl init failed")
+        val multi = curl_multi_init()
+        if (multi == null) {
+            curl_easy_cleanup(handle)
+            throw MPIOException("curl multi init failed")
+        }
+        var addedToMulti = false
         try {
             memScoped {
-                val bodyRef = StableRef.create(body)
-                val headerRef = StableRef.create(headers)
+                val bodyRef = StableRef.create(bodyBuffer)
+                val headerRef = StableRef.create(headerBuffer)
                 var slist: CPointer<curl_slist>? = null
                 try {
-                    curl_easy_setopt(handle, CURLOPT_URL, spec)
-                    // Pin to Wi-Fi. Never silently fall back to the default route:
-                    // with Ethernet plugged in that would send portal credentials
-                    // off-network in plaintext (the captive portal only answers on
-                    // the Wi-Fi interface).
                     val iface = boundInterface
                     if (iface == null && !publicEndpoint) {
                         throw MPIOException("No Wi-Fi handle: refusing to send portal traffic on the default route")
                     }
+
+                    curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L)
+                    curl_easy_setopt(handle, CURLOPT_URL, spec)
                     if (iface != null) curl_easy_setopt(handle, CURLOPT_INTERFACE, iface)
                     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, if (instanceFollowRedirects) 1L else 0L)
                     if (connectTimeout > 0) curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT_MS, connectTimeout.toLong())
                     if (readTimeout > 0) curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, readTimeout.toLong())
                     if (requestMethod != "GET") curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, requestMethod)
-                    val bytes = requestBody.data.toByteArray()
-                    // COPYPOSTFIELDS makes libcurl copy the bytes immediately.
-                    // Plain POSTFIELDS keeps only the pointer, and the temporary
-                    // Kotlin string buffer can be collected before curl_easy_perform
-                    // — silently corrupting the credential POST body.
-                    if (doOutput || bytes.isNotEmpty()) curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, bytes.toKString())
+
+                    val bytes = requestBody.toByteArray()
+                    if (doOutput || bytes.isNotEmpty()) {
+                        curl_easy_setopt(handle, CURLOPT_POSTFIELDSIZE, bytes.size.toLong())
+                        if (bytes.isEmpty()) {
+                            curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, "")
+                        } else {
+                            curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, bytes.refTo(0))
+                        }
+                    }
+
                     for ((k, v) in properties) slist = curl_slist_append(slist, "$k: $v")
                     if (slist != null) curl_easy_setopt(handle, CURLOPT_HTTPHEADER, slist)
                     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, writeCb)
                     curl_easy_setopt(handle, CURLOPT_WRITEDATA, bodyRef.asCPointer())
                     curl_easy_setopt(handle, CURLOPT_HEADERFUNCTION, headerCb)
                     curl_easy_setopt(handle, CURLOPT_HEADERDATA, headerRef.asCPointer())
-                    val curlCode = curl_easy_perform(handle)
-                    if (curlCode != CURLE_OK) {
-                        val detail = curl_easy_strerror(curlCode)?.toKString().orEmpty()
-                        throw MPIOException("curl request failed: code=$curlCode $detail iface=${boundInterface ?: "default"}")
+
+                    val addCode = curl_multi_add_handle(multi, handle)
+                    if (addCode != CURLM_OK) {
+                        val detail = curl_multi_strerror(addCode)?.toKString().orEmpty()
+                        throw MPIOException("curl multi add failed: code=$addCode $detail")
                     }
+                    addedToMulti = true
+                    withMultiLock { activeMulti = multi }
+
+                    val configuredTimeoutMs = maxOf(readTimeout.toLong(), connectTimeout.toLong())
+                    val hardDeadlineNs = if (configuredTimeoutMs > 0L) {
+                        nanoTime() + (configuredTimeoutMs + 500L) * 1_000_000L
+                    } else {
+                        Long.MAX_VALUE
+                    }
+
+                    val stillRunning = alloc<IntVar>()
+                    var transferResult: CURLcode? = null
+                    while (true) {
+                        if (aborted) {
+                            throw mapCurlFailure(CURLE_ABORTED_BY_CALLBACK, boundInterface)
+                        }
+                        if (nanoTime() > hardDeadlineNs) {
+                            throw MPIOException(
+                                "curl request timed out after ${configuredTimeoutMs}ms iface=${boundInterface ?: "default"}",
+                            )
+                        }
+                        val multiCode: CURLMcode = curl_multi_perform(multi, stillRunning.ptr)
+                        if (multiCode != CURLM_OK) {
+                            val detail = curl_multi_strerror(multiCode)?.toKString().orEmpty()
+                            throw MPIOException("curl multi perform failed: code=$multiCode $detail")
+                        }
+
+                        val msgsLeft = alloc<IntVar>()
+                        while (true) {
+                            val msg = curl_multi_info_read(multi, msgsLeft.ptr) ?: break
+                            if (msg.pointed.msg == CURLMSG.CURLMSG_DONE) {
+                                transferResult = msg.pointed.data.result
+                            }
+                        }
+
+                        if (stillRunning.value == 0 || transferResult != null) break
+
+                        val remainingMs = if (hardDeadlineNs == Long.MAX_VALUE) {
+                            100
+                        } else {
+                            ((hardDeadlineNs - nanoTime()) / 1_000_000L).coerceIn(10L, 100L).toInt()
+                        }
+                        curl_multi_poll(multi, null, 0u, remainingMs, null)
+                    }
+
+                    val curlCode = transferResult ?: CURLE_OK
+                    if (curlCode != CURLE_OK) {
+                        throw mapCurlFailure(curlCode, boundInterface)
+                    }
+
                     val status = alloc<LongVar>()
                     curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, status.ptr)
                     val parsed = mutableMapOf<String, String>()
-                    headers.toString().lines().forEach { line ->
-                        val i = line.indexOf(':')
-                        if (i > 0) parsed[line.substring(0, i).trim().lowercase()] = line.substring(i + 1).trim()
-                    }
-                    cached = CurlResult(status.value.toInt(), body.toString().encodeToByteArray(), parsed)
+                    headerBuffer.text()
+                        .replace("\r\n", "\n")
+                        .split("\n\n")
+                        .lastOrNull { it.isNotBlank() }
+                        ?.lines()
+                        ?.forEach { line ->
+                            val i = line.indexOf(':')
+                            if (i > 0) parsed[line.substring(0, i).trim().lowercase()] = line.substring(i + 1).trim()
+                        }
+                    cached = CurlResult(status.value.toInt(), bodyBuffer.toByteArray(), parsed)
                 } finally {
+                    withMultiLock { activeMulti = null }
+                    if (addedToMulti) curl_multi_remove_handle(multi, handle)
                     slist?.let { curl_slist_free_all(it) }
                     bodyRef.dispose(); headerRef.dispose()
                 }
             }
         } finally {
+            curl_multi_cleanup(multi)
             curl_easy_cleanup(handle)
         }
         return cached!!
     }
 }
 
-actual class JFile actual constructor(actual val path: String, child: String?) {
-    actual constructor(parent: JFile, child: String) : this("${parent.path}/$child", null)
+private fun mapCurlFailure(curlCode: CURLcode, boundInterface: String?): MPIOException {
+    val detail = curl_easy_strerror(curlCode)?.toKString().orEmpty()
+    val summary = "curl request failed: code=$curlCode $detail iface=${boundInterface ?: "default"}"
+    return when (curlCode) {
+        CURLE_COULDNT_RESOLVE_HOST,
+        CURLE_COULDNT_RESOLVE_PROXY,
+        -> JUnknownHostException(summary)
+        CURLE_SSL_CONNECT_ERROR,
+        CURLE_PEER_FAILED_VERIFICATION,
+        CURLE_SSL_ENGINE_NOTFOUND,
+        CURLE_SSL_ENGINE_SETFAILED,
+        CURLE_SSL_CERTPROBLEM,
+        CURLE_SSL_CIPHER,
+        CURLE_SSL_ENGINE_INITFAILED,
+        CURLE_SSL_CACERT_BADFILE,
+        CURLE_SSL_SHUTDOWN_FAILED,
+        CURLE_SSL_CRL_BADFILE,
+        CURLE_SSL_ISSUER_ERROR,
+        CURLE_SSL_PINNEDPUBKEYNOTMATCH,
+        CURLE_SSL_INVALIDCERTSTATUS,
+        CURLE_SSL_CLIENTCERT,
+        -> JSslException(summary)
+        else -> MPIOException(summary)
+    }
+}
+
+private fun joinPosixPath(parent: String, child: String?): String {
+    if (child.isNullOrEmpty()) return parent
+    val trimmedChild = child.trimStart('/')
+    if (parent.isEmpty()) return trimmedChild
+    val trimmedParent = parent.trimEnd('/')
+    return if (trimmedParent.isEmpty()) "/$trimmedChild" else "$trimmedParent/$trimmedChild"
+}
+
+actual class JFile actual constructor(path: String, child: String?) {
+    actual val path: String = joinPosixPath(path, child)
+    actual constructor(parent: JFile, child: String) : this(parent.path, child)
     actual val name: String get() = path.substringAfterLast('/')
     actual val parentFile: JFile? get() {
         val i = path.lastIndexOf('/')
@@ -266,7 +475,22 @@ actual class JFile actual constructor(actual val path: String, child: String?) {
         val st = alloc<stat>()
         if (stat(path, st.ptr) != 0) 0L else st.st_size.toLong()
     }
-    actual fun mkdirs(): Boolean { mkdir(path, 0x1FFu); return true }
+    actual fun mkdirs(): Boolean {
+        if (isDirectory) return true
+        val normalized = path.trimEnd('/')
+        if (normalized.isEmpty()) return false
+        var current = if (normalized.startsWith('/')) "/" else ""
+        for (segment in normalized.split('/')) {
+            if (segment.isEmpty()) continue
+            current = if (current.isEmpty()) segment else if (current == "/") "/$segment" else "$current/$segment"
+            if (access(current, 0) != 0) {
+                if (mkdir(current, 0x1FFu) != 0 && errno != EEXIST) {
+                    return false
+                }
+            }
+        }
+        return isDirectory
+    }
     actual fun delete(): Boolean = unlink(path) == 0
     actual fun renameTo(target: JFile): Boolean = rename(path, target.path) == 0
     actual fun outputStream(): JOutputStream = JOutputStream(NativeFileSink(path, false))

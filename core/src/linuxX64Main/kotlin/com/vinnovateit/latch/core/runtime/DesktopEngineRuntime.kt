@@ -43,6 +43,7 @@ class DesktopEngineRuntime private constructor(
         if (!closed.compareAndSet(0, 1)) return
         if (started.value == 1) engine.submitAndAwait(LatchCommand.Shutdown, ENGINE_SHUTDOWN_TIMEOUT_MS)
         backgroundScope.cancel()
+        platform.close()
         sessions.close()
         platform.settingsStore.flush()
         database.close()

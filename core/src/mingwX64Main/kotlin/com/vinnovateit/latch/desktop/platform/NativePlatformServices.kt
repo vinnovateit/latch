@@ -38,6 +38,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.concurrent.AtomicInt
 import kotlin.concurrent.Volatile
@@ -83,33 +84,50 @@ private object NativeCapabilities : PlatformCapabilities {
 
 class NativeKeyValueStore(private val file: JFile, private val logger: Logger) : KeyValueStore {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private val lock = Any()
     private val values = mutableMapOf<String, String>()
 
     init {
         runCatching {
             if (!file.exists()) return@runCatching
             val root = json.parseToJsonElement(readText(file)) as? kotlinx.serialization.json.JsonObject ?: return@runCatching
-            root.forEach { (key, element) ->
-                if (element is kotlinx.serialization.json.JsonPrimitive) values[key] = element.content
+            com.vinnovateit.latch.core.mp.withLock(lock) {
+                root.forEach { (key, element) ->
+                    if (element is kotlinx.serialization.json.JsonPrimitive) values[key] = element.content
+                }
             }
         }.onFailure { logger.e(TAG, "Settings file unreadable; using defaults", it) }
     }
 
-    override fun getString(key: String, default: String): String = values[key] ?: default
-    override fun getBoolean(key: String, default: Boolean): Boolean = values[key]?.toBooleanStrictOrNull() ?: default
+    override fun getString(key: String, default: String): String =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] ?: default }
+    override fun getBoolean(key: String, default: Boolean): Boolean =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key]?.toBooleanStrictOrNull() ?: default }
     override fun getStringSet(key: String, default: Set<String>): Set<String> =
-        values[key]?.split(',')?.filter(String::isNotBlank)?.toSet() ?: default
+        com.vinnovateit.latch.core.mp.withLock(lock) {
+            values[key]?.split(',')?.filter(String::isNotBlank)?.toSet() ?: default
+        }
 
-    override fun putString(key: String, value: String) { values[key] = value; persist() }
-    override fun putBoolean(key: String, value: Boolean) { values[key] = value.toString(); persist() }
-    override fun putStringSet(key: String, value: Set<String>) { values[key] = value.joinToString(","); persist() }
+    override fun putString(key: String, value: String) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value; persistLocked() }
+    override fun putBoolean(key: String, value: Boolean) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value.toString(); persistLocked() }
+    override fun putStringSet(key: String, value: Set<String>) =
+        com.vinnovateit.latch.core.mp.withLock(lock) { values[key] = value.joinToString(","); persistLocked() }
 
-    private fun persist() {
+    private fun persistLocked() {
         val obj = kotlinx.serialization.json.buildJsonObject {
             values.forEach { (k, v) -> put(k, kotlinx.serialization.json.JsonPrimitive(v)) }
         }
+        val bytes = json.encodeToString(obj).encodeToByteArray()
         file.parentFile?.mkdirs()
-        JFileWriter(file, false).useOutput { it.write(json.encodeToString(obj).encodeToByteArray()) }
+        val tmp = JFile("${file.path}.tmp")
+        JFileWriter(tmp, false).useOutput { it.write(bytes) }
+        file.delete()
+        if (!tmp.renameTo(file)) {
+            tmp.delete()
+            JFileWriter(file, false).useOutput { it.write(bytes) }
+        }
     }
 }
 
@@ -142,7 +160,7 @@ class NativeCredentialStore(private val file: JFile, private val logger: Logger)
     }
 }
 
-private class NativeHandle(override val id: String) : NetworkHandle
+internal data class NativeHandle(override val id: String) : NetworkHandle
 
 /**
  * Windows Wi-Fi platform for the native build.
@@ -168,7 +186,7 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
         scope.launch {
             var lastKey: String? = null
             var lastSignalLog = 0L
-            while (true) {
+            while (isActive) {
                 val details = wifiDetails()
                 val iface = details?.interfaceName
                 val ssid = details?.ssid
@@ -196,6 +214,10 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
                 delay(POLL_INTERVAL_MS)
             }
         }
+    }
+
+    fun close() {
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
     private data class Details(val interfaceName: String, val ssid: String?, val signal: Int?, val state: String?)
@@ -262,6 +284,33 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
 
     private fun wifiInterface(): String? = cachedInterface ?: wifiDetails()?.interfaceName
 
+    override fun signalPercent(): Int? = wifiDetails()?.signal
+
+    /** Bounce wedged association first; cycle the adapter only when that fails. Never leaves Wi-Fi off. */
+    override fun reconnect(handle: NetworkHandle?): Boolean {
+        val ssid = currentSsid()
+        val iface = handle?.id ?: wifiInterface()
+        if (!ssid.isNullOrBlank() && !ssid.contains('"') && !ssid.contains('&') && !ssid.contains('|')) {
+            if (iface != null && !iface.contains('"') && !iface.contains('&') && !iface.contains('|')) {
+                runCommand("netsh wlan disconnect interface=\"$iface\"")
+                platform.windows.Sleep(250u)
+                runCommand("netsh wlan connect name=\"$ssid\" interface=\"$iface\"")
+            } else {
+                runCommand("netsh wlan disconnect")
+                platform.windows.Sleep(250u)
+                runCommand("netsh wlan connect name=\"$ssid\"")
+            }
+            if (isConnectedToWifi()) return true
+        }
+        if (iface != null && !iface.contains('"') && !iface.contains('&') && !iface.contains('|')) {
+            runCommand("netsh interface set interface name=\"$iface\" admin=disabled")
+            platform.windows.Sleep(500u)
+            runCommand("netsh interface set interface name=\"$iface\" admin=enabled")
+        }
+        if (!isWifiEnabled()) runCommand("netsh interface set interface name=\"Wi-Fi\" admin=enabled")
+        return isConnectedToWifi()
+    }
+
     private fun netshConfig(iface: String): String =
         runCommand("netsh interface ipv4 show config name=\"$iface\"")
 
@@ -272,7 +321,7 @@ class NativeWifiPlatform(private val logger: Logger) : WifiPlatform {
 
 class NativeByteCounters(private val wifi: WifiPlatform) : ByteCounterSource {
     override fun sample(): ByteCounts? {
-        val iface = wifi.wifiInterfaceName() ?: return null
+        val iface = (wifi.activeHandle()?.id ?: wifi.wifiInterfaceName()) ?: return null
         val ps = "\$s=Get-NetAdapterStatistics -Name '$iface'; " +
             "Write-Output (\$s.ReceivedBytes.ToString()+','+\$s.SentBytes.ToString())"
         val output = runCommand("powershell.exe -NoProfile -Command \"$ps\"")
@@ -354,6 +403,10 @@ class NativePlatformServices(
     override val counters: ByteCounterSource = NativeByteCounters(wifi)
     override val systemActions: SystemActions = NativeSystemActions(logger)
     override val httpTransport: HttpTransport = NativeHttpTransport()
+
+    fun close() {
+        (wifi as? NativeWifiPlatform)?.close()
+    }
 }
 
 private val cmdCounter = AtomicInt(0)

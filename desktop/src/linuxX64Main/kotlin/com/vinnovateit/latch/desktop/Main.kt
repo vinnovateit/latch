@@ -18,46 +18,86 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableIntStateOf
 import com.compose.sdl.Window
 import com.compose.sdl.nativeComposeApp
-import com.vinnovateit.latch.core.mp.JFile
 import com.vinnovateit.latch.core.engine.LatchCommand
-import com.vinnovateit.latch.core.runtime.AcquireResult
+import com.vinnovateit.latch.core.mp.JFile
 import com.vinnovateit.latch.core.runtime.DesktopEngineRuntime
-import com.vinnovateit.latch.core.runtime.InstanceCoordinator
+import com.vinnovateit.latch.core.runtime.DesktopOwnership
 import com.vinnovateit.latch.core.runtime.OwnerKind
 import com.vinnovateit.latch.core.runtime.RuntimeCommandService
+import com.vinnovateit.latch.core.runtime.claimDesktopOwnership
+import com.vinnovateit.latch.core.settings.SettingsManager
 import com.vinnovateit.latch.core.updater.UpdateState
 import com.vinnovateit.latch.core.wifi.ConnectionStatus
+import com.vinnovateit.latch.desktop.platform.NativeLogger
 import com.vinnovateit.latch.desktop.platform.NativeNotifier
 import com.vinnovateit.latch.desktop.platform.NativeTray
 import com.vinnovateit.latch.desktop.platform.TrayIconActivation
 import com.vinnovateit.latch.ui.LatchRoot
 import com.vinnovateit.latch.ui.chrome.AppMenuHost
 import com.vinnovateit.latch.ui.chrome.LatchBackHost
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.staticCFunction
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
+import kotlin.concurrent.AtomicInt
+import platform.posix.SIGINT
+import platform.posix.SIGTERM
+import platform.posix.exit
+import platform.posix.sigaction
+import platform.posix.sigemptyset
+import sdl3.SDL_HINT_NO_SIGNAL_HANDLERS
+import sdl3.SDL_SetHint
 
 private const val START_WIDTH = 420
 private const val START_HEIGHT = 700
 
+private val signalExitRequested = AtomicInt(0)
+
+private val terminationSignalHandler = staticCFunction<Int, Unit> { _ ->
+    signalExitRequested.value = 1
+}
+
+private fun installTerminationSignalHandlers() {
+    signalExitRequested.value = 0
+    SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1")
+    memScoped {
+        val action = alloc<sigaction>()
+        sigemptyset(action.sa_mask.ptr)
+        action.__sigaction_handler.sa_handler = terminationSignalHandler
+        action.sa_flags = 0
+        sigaction(SIGTERM, action.ptr, null)
+        sigaction(SIGINT, action.ptr, null)
+    }
+}
+
 fun main(args: Array<String>) {
+    installTerminationSignalHandlers()
+    val startHidden = "--hidden" in args
+    val startupLogger = NativeLogger(echoToStdout = !startHidden)
     val serviceReady = CompletableDeferred<RuntimeCommandService>()
     var requestShow: (() -> Unit)? = null
     val handler: suspend (com.vinnovateit.latch.core.runtime.InstanceRequest) -> com.vinnovateit.latch.core.runtime.InstanceResponse =
         { request -> serviceReady.await().execute(request) }
 
     val ownership = runBlocking {
-        InstanceCoordinator.tryAcquire(JFile(AppPaths.dataDir.path), OwnerKind.DESKTOP, handler)
+        claimDesktopOwnership(JFile(AppPaths.dataDir.path), handler = handler)
     }
 
-    val (runtime, coordinator) = when (ownership) {
-        is AcquireResult.Owner -> ownership.coordinator to ownership.coordinator
-        is AcquireResult.Existing -> {
-            // Another Latch instance owns the runtime; ask it to show its window.
-            runBlocking { ownership.client.send(com.vinnovateit.latch.core.runtime.RuntimeCommand.ACTIVATE_UI) }
+    val coordinator = when (ownership) {
+        is DesktopOwnership.Owner -> ownership.coordinator
+        is DesktopOwnership.ActivatedExisting -> {
+            startupLogger.d("Main", "Activated existing Latch desktop instance.")
             return
         }
-        is AcquireResult.Failure -> {
-            println("Unable to start Latch: ${ownership.message}")
+        is DesktopOwnership.Failure -> {
+            val message = "Unable to start Latch: ${ownership.message}"
+            startupLogger.e("Main", message)
+            println(message)
+            exit(1)
             return
         }
     }
@@ -65,26 +105,39 @@ fun main(args: Array<String>) {
     val notifier = NativeNotifier()
     val app = try {
         runBlocking {
-            val created = DesktopEngineRuntime.create(notifier, echoLogsToStdout = true, syncHistoryOnStart = true)
+            val created = DesktopEngineRuntime.create(notifier, echoLogsToStdout = !startHidden, syncHistoryOnStart = true)
             created.start()
+            created.engine.submit(
+                if (SettingsManager.autoLogin.value) LatchCommand.CheckAndLogin else LatchCommand.SilentCheck,
+            )
             serviceReady.complete(
                 RuntimeCommandService(OwnerKind.DESKTOP, created, onActivateUi = { requestShow?.invoke() }),
             )
             created
         }
     } catch (error: Throwable) {
+        startupLogger.e("Main", "Failed to start Latch runtime: ${error.message}", error)
         serviceReady.completeExceptionally(error)
         coordinator.close()
+        exit(1)
         throw error
     }
 
     try {
-        nativeComposeApp {
+        if (signalExitRequested.value == 0) nativeComposeApp {
             val appScope = this
+            LaunchedEffect(Unit) {
+                while (isActive) {
+                    if (signalExitRequested.value != 0) {
+                        appScope.exitApplication()
+                        break
+                    }
+                    delay(50)
+                }
+            }
             // Manual launch (desktop entry / terminal) opens the window.
             // Only autostart / launch-at-login passes --hidden to stay in the
             // tray with no taskbar icon.
-            val startHidden = "--hidden" in args
             val showRequest = remember { mutableIntStateOf(0) }
             val appMenu = remember { AppMenuHost() }
             val backHost = remember { LatchBackHost() }
@@ -99,7 +152,7 @@ fun main(args: Array<String>) {
 
             val status by app.engine.status.collectAsState()
             val isLatched by app.engine.isLatched.collectAsState()
-            val shouldDisconnect = isLatched || status is ConnectionStatus.Connecting
+            val shouldDisconnect = isLatched
             val latestShouldDisconnect = rememberUpdatedState(shouldDisconnect)
 
             val ongoingTooltip = remember { mutableStateOf<String?>(null) }
@@ -140,8 +193,13 @@ fun main(args: Array<String>) {
                     statusText = statusText,
                     onOpen = { requestShow() },
                     onToggleConnect = {
-                        if (latestShouldDisconnect.value) app.engine.submit(LatchCommand.Logout)
-                        else app.engine.submit(LatchCommand.CheckAndLogin)
+                        if (latestShouldDisconnect.value) {
+                            SettingsManager.setAutoLogin(false)
+                            app.engine.submit(LatchCommand.Logout)
+                        } else {
+                            SettingsManager.setAutoLogin(true)
+                            app.engine.submit(LatchCommand.CheckAndLogin)
+                        }
                     },
                     onExit = { appScope.exitApplication() },
                 )
@@ -196,4 +254,5 @@ fun main(args: Array<String>) {
         runBlocking { app.close() }
         coordinator.close()
     }
+    exit(0)
 }
